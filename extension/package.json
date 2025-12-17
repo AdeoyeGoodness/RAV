@@ -1,0 +1,17 @@
+{
+    "name": "rav-browser-extension",
+    "version": "1.0.0",
+    "description": "RAV Browser Extension - Secure browser activity monitoring",
+    "scripts": {
+        "build": "tsc && npm run copy-assets",
+        "watch": "tsc --watch",
+        "copy-assets": "node scripts/copy-assets.js",
+        "clean": "rimraf dist",
+        "package": "npm run clean && npm run build"
+    },
+    "devDependencies": {
+        "@types/chrome": "^0.0.260",
+        "rimraf": "^5.0.5",
+        "typescript": "^5.3.3"
+    }
+}

@@ -1,0 +1,57 @@
+[package]
+name = "rav-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["macros", "tower-log", "multipart"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tokio = { version = "1.35", features = ["full"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "migrate"] }
+postgres = "0.19"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Authentication & Security
+jsonwebtoken = "9.2"
+bcrypt = "0.15"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Object Storage (S3-compatible) - Optional for now, will enable in Phase 2
+# aws-sdk-s3 = { version = "1.17", optional = true }
+# aws-config = { version = "1.1", optional = true }
+
+# Message Queue
+redis = { version = "0.24", features = ["tokio-comp"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+config = "0.14"
+dotenv = "0.15"
+
+# Validation
+validator = { version = "0.18", features = ["derive"] }
+
+# Rate limiting
+tower_governor = "0.2"
+
+[features]
+default = []
+# s3 = ["aws-sdk-s3", "aws-config"]
+

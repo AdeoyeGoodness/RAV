@@ -1,0 +1,33 @@
+# RAV Agent Configuration Example
+# Copy this file to config.toml and update the values
+
+[backend]
+url = "http://localhost:8080"
+# api_key = "your-api-key-here"  # Uncomment and set if using API key auth
+sync_interval_seconds = 10
+heartbeat_interval_seconds = 60
+
+[agent]
+# agent_id will be auto-generated on first run
+# hardware_fingerprint will be auto-generated on first run
+data_dir = 'C:\ProgramData\RAV'  # Windows
+# data_dir = '/var/lib/rav'  # Linux
+# data_dir = '/Library/Application Support/RAV'  # macOS
+
+[encryption]
+key_path = 'C:\ProgramData\RAV\encryption.key'
+
+[monitoring.usb]
+enabled = true
+track_file_transfers = true
+
+[monitoring.network]
+enabled = true
+track_dns = true
+track_connections = true
+
+[monitoring.screenshots]
+enabled = true
+capture_interval_seconds = 120  # 2 minutes
+compression_quality = 85  # 0-100 for JPEG
+format = "jpeg"  # "jpeg" or "png"

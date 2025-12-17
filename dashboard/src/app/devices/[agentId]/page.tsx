@@ -1,0 +1,315 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2 } from 'lucide-react'
+import { getAgents, getEvents, deleteAgentEvents } from '@/lib/api'
+import Sidebar from '@/components/Sidebar'
+import Header from '@/components/Header'
+import USBMonitoring from '@/components/USBMonitoring'
+import ScreenshotViewer from '@/components/ScreenshotViewer'
+import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
+
+interface Agent {
+  id: string
+  agent_id: string
+  hardware_fingerprint: string
+  last_seen: string
+  license_expiry: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface Event {
+  id: string
+  agent_id: string
+  event_type: string
+  timestamp: string
+  metadata: any
+  created_at: string
+}
+
+export default function DeviceDetailsPage() {
+  const params = useParams()
+  const router = useRouter()
+  const agentId = params.agentId as string
+
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [events, setEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
+  const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
+
+  useEffect(() => {
+    loadDeviceData()
+    const interval = setInterval(loadDeviceData, 10000) // Refresh every 10 seconds for faster updates
+    return () => clearInterval(interval)
+  }, [agentId])
+
+  const loadDeviceData = async () => {
+    setLoading(true)
+    try {
+      const [agentsData, eventsData] = await Promise.all([
+        getAgents(),
+        getEvents({ agent_id: agentId, limit: 10000 }),
+      ])
+
+      const foundAgent = agentsData.find(a => a.agent_id === agentId)
+      if (foundAgent) {
+        setAgent(foundAgent)
+      }
+
+      // Filter events to only show those after clear timestamp
+      const filteredEvents = clearTimestamp
+        ? eventsData.filter(event => new Date(event.timestamp) > clearTimestamp)
+        : eventsData
+
+      // If clearTimestamp is set, replace all events (don't merge with old ones)
+      // Otherwise, merge new events with existing ones to prevent data loss on refresh
+      if (clearTimestamp) {
+        // When cleared, only show events after the clear timestamp
+        // Deduplicate by ID to ensure consistency
+        const uniqueEvents = Array.from(
+          new Map(filteredEvents.map(e => [e.id, e])).values()
+        )
+        setEvents(uniqueEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+      } else {
+        // Merge new events with existing ones to prevent data loss on refresh
+        // Use Map to ensure proper deduplication by event ID
+        setEvents(prevEvents => {
+          const existingEventMap = new Map(prevEvents.map(e => [e.id, e]))
+          filteredEvents.forEach(event => {
+            existingEventMap.set(event.id, event)
+          })
+          // Convert back to array and ensure proper sorting
+          const mergedEvents = Array.from(existingEventMap.values())
+          return mergedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load device data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const clearData = () => {
+    if (confirm('Clear all displayed data? Only NEW events after this point will be shown. Old data will be hidden.')) {
+      const now = new Date()
+      setClearTimestamp(now)
+      // Immediately filter out events before the clear timestamp
+      setEvents(prevEvents => 
+        prevEvents.filter(event => new Date(event.timestamp) > now)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      )
+    }
+  }
+
+  const resetClearFilter = () => {
+    setClearTimestamp(null)
+    loadDeviceData()
+  }
+
+  const handleDeleteAllData = async () => {
+    if (!confirm(`⚠️ WARNING: This will PERMANENTLY DELETE ALL events for device "${agentId}" from the backend database.\n\nThis action cannot be undone. Are you absolutely sure?`)) {
+      return
+    }
+
+    if (!confirm(`Final confirmation: Delete ALL ${events.length} events for "${agentId}"?`)) {
+      return
+    }
+
+    try {
+      const result = await deleteAgentEvents(agentId)
+      alert(`✅ Successfully deleted ${result.deleted_count} events for device "${agentId}"`)
+      // Reload data to show empty state
+      setEvents([])
+      setClearTimestamp(null)
+      loadDeviceData()
+    } catch (error: any) {
+      console.error('Failed to delete events:', error)
+      alert(`❌ Failed to delete events: ${error.message || 'Unknown error'}`)
+    }
+  }
+
+  const getAgentStatus = (agent: Agent) => {
+    const lastSeen = new Date(agent.last_seen)
+    const now = new Date()
+    const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
+    
+    if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
+    if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
+    return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
+  }
+
+  if (loading && !agent) {
+    return (
+      <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <Sidebar />
+        <div className="flex-1 ml-64">
+          <Header />
+          <main className="pt-20 p-8 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-4 transition-colors" style={{ borderColor: 'var(--accent-cyan)' }} />
+              <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading device details...</p>
+            </div>
+          </main>
+        </div>
+      </div>
+    )
+  }
+
+  if (!agent) {
+    return (
+      <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <Sidebar />
+        <div className="flex-1 ml-64">
+          <Header />
+          <main className="pt-20 p-8">
+            <div className="text-center py-12">
+              <AlertCircle className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(255, 107, 107, 0.6)' }} />
+              <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Device not found</p>
+              <button
+                onClick={() => router.push('/devices')}
+                className="px-4 py-2 rounded-lg transition-all"
+                style={{ 
+                  backgroundColor: 'rgba(0, 217, 255, 0.2)',
+                  color: 'var(--accent-cyan)'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'; }}
+              >
+                Back to Devices
+              </button>
+            </div>
+          </main>
+        </div>
+      </div>
+    )
+  }
+
+  const status = getAgentStatus(agent)
+  const usbEvents = events.filter(e => 
+    e.event_type === 'usb_inserted' || 
+    e.event_type === 'usb_removed' || 
+    e.event_type === 'usb_file_transfer'
+  )
+
+  return (
+    <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <Sidebar />
+      <div className="flex-1 ml-64">
+        <Header />
+        <main className="pt-20 p-8 overflow-y-auto h-full">
+          <div className="max-w-7xl mx-auto space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => router.back()}
+                  className="p-2 rounded-lg transition-colors"
+                  style={{ color: 'var(--text-primary)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                >
+                  <ArrowLeft className="w-5 h-5 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
+                </button>
+                <div>
+                  <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.agent_id}</h1>
+                  <p className="mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Device Details & Forensics</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className={`px-4 py-2 rounded-lg border ${status.bg} ${status.border}`}>
+                  <span className={`${status.color} font-medium`}>
+                    {status.status.toUpperCase()}
+                  </span>
+                </div>
+                <button
+                  onClick={handleDeleteAllData}
+                  className="px-4 py-2 rounded-lg transition-all flex items-center space-x-2 border"
+                  style={{ 
+                    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+                    color: '#FF6B6B',
+                    borderColor: 'rgba(255, 107, 107, 0.3)'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.3)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'; }}
+                  title="Delete all events for this device from backend"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete All Data</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Device Info Card */}
+            <div className="border rounded-xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <h2 className="text-xl font-semibold mb-4 transition-colors" style={{ color: 'var(--text-primary)' }}>Device Information</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center space-x-3">
+                  <HardDrive className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                  <div>
+                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hardware Fingerprint</p>
+                    <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hardware_fingerprint}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                  <div>
+                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Seen</p>
+                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                  <div>
+                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Registered</p>
+                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.created_at).toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                  <div>
+                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Events</p>
+                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* USB Monitoring Section */}
+            <USBMonitoring 
+              events={events} 
+              loading={loading} 
+              onRefresh={loadDeviceData} 
+              onClear={clearData}
+              clearTimestamp={clearTimestamp}
+              onResetFilter={resetClearFilter}
+            />
+
+            {/* Screenshot Viewer Section */}
+            <ScreenshotViewer
+              events={events}
+              loading={loading}
+              onRefresh={loadDeviceData}
+              onClear={clearData}
+              clearTimestamp={clearTimestamp}
+              onResetFilter={resetClearFilter}
+            />
+
+            {/* Browser History Section */}
+            <BrowserHistoryViewer
+              events={events}
+              loading={loading}
+              onRefresh={loadDeviceData}
+              onClear={clearData}
+              clearTimestamp={clearTimestamp}
+              onResetFilter={resetClearFilter}
+            />
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
