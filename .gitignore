@@ -32,6 +32,7 @@ extension/*.tsbuildinfo
 # ============================================================================
 backend/target/
 backend/Cargo.lock
+backend/storage/
 
 # ============================================================================
 # Environment & Secrets
