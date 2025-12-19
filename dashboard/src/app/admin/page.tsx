@@ -1,0 +1,378 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon } from 'lucide-react'
+import { getOrganizations, createOrganization, updateOrganizationStatus, register, Organization } from '@/lib/api'
+import Sidebar from '@/components/Sidebar'
+import Header from '@/components/Header'
+import { useAuth } from '@/contexts/AuthContext'
+
+export default function AdminPage() {
+    const { user } = useAuth()
+    const router = useRouter()
+    const [organizations, setOrganizations] = useState<Organization[]>([])
+    const [loading, setLoading] = useState(true)
+    const [searchQuery, setSearchQuery] = useState('')
+
+    // Org Creation State
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [newOrg, setNewOrg] = useState({ name: '', license_key: '' })
+
+    // Admin Creation State
+    const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
+    const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
+    const [newAdmin, setNewAdmin] = useState({ email: '', password: '', full_name: '' })
+
+    useEffect(() => {
+        if (user && user.role !== 'super_admin') {
+            router.push('/')
+            return
+        }
+        loadData()
+    }, [user])
+
+    const loadData = async () => {
+        try {
+            const data = await getOrganizations()
+            setOrganizations(data)
+        } catch (error) {
+            console.error('Failed to load organizations:', error)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleCreate = async (e: React.FormEvent) => {
+        e.preventDefault()
+        try {
+            await createOrganization(newOrg)
+            setNewOrg({ name: '', license_key: '' })
+            setIsModalOpen(false)
+            loadData()
+        } catch (error) {
+            alert('Failed to create organization')
+        }
+    }
+
+    const handleCreateAdmin = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!selectedOrg) return
+        try {
+            await register({
+                ...newAdmin,
+                organization_id: selectedOrg.id,
+                role: 'org_admin'
+            })
+            alert(`Admin user created successfully for ${selectedOrg.name}`)
+            setIsAdminModalOpen(false)
+            setNewAdmin({ email: '', password: '', full_name: '' })
+        } catch (error) {
+            alert('Failed to create admin user. (Check if email already exists)')
+        }
+    }
+
+    const switchContext = (orgId: string | null, orgName: string) => {
+        if (orgId) {
+            localStorage.setItem('rav_organization_id', orgId)
+            localStorage.setItem('rav_organization_name', orgName)
+            alert(`Switched context to ${orgName}`)
+        } else {
+            localStorage.removeItem('rav_organization_id')
+            localStorage.removeItem('rav_organization_name')
+        }
+        router.push('/')
+    }
+
+    const toggleStatus = async (orgId: string, currentStatus: string) => {
+        const newStatus = currentStatus === 'active' ? 'paused' : 'active'
+        try {
+            await updateOrganizationStatus(orgId, newStatus)
+            loadData()
+        } catch (error) {
+            alert('Failed to update status')
+        }
+    }
+
+    const filteredOrgs = organizations.filter(org =>
+        org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        org.license_key.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+
+    return (
+        <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+            <Sidebar />
+            <div className="flex-1 ml-64">
+                <Header />
+                <main className="pt-20 p-8 overflow-y-auto h-full">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                <h1 className="text-3xl font-bold mb-2 transition-colors" style={{ color: 'var(--text-primary)' }}>Organization Management</h1>
+                                <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Global oversight of all enterprise tenants and licenses</p>
+                            </div>
+                            <button
+                                onClick={() => setIsModalOpen(true)}
+                                className="flex items-center px-4 py-2 rounded-lg font-semibold text-white cyber-glow transition-all transform hover:scale-105"
+                                style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                            >
+                                <Plus className="w-5 h-5 mr-2" />
+                                New Organization
+                            </button>
+                        </div>
+
+                        {/* Stats Overview */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                                <div className="flex items-center space-x-4">
+                                    <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-500">
+                                        <Building2 className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Total Orgs</p>
+                                        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{organizations.length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                                <div className="flex items-center space-x-4">
+                                    <div className="p-3 rounded-xl bg-purple-500/10 text-purple-500">
+                                        <ShieldCheck className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Active Licenses</p>
+                                        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{organizations.filter(o => o.status === 'active').length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                                <div className="flex items-center space-x-4">
+                                    <div className="p-3 rounded-xl bg-yellow-500/10 text-yellow-500">
+                                        <Activity className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Platform Status</p>
+                                        <p className="text-2xl font-bold text-green-500">Operational</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* List */}
+                        <div className="rounded-2xl border overflow-hidden transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                            <div className="p-4 border-b flex items-center" style={{ borderColor: 'var(--border-color)' }}>
+                                <Search className="w-5 h-5 mr-3" style={{ color: 'var(--text-tertiary)' }} />
+                                <input
+                                    type="text"
+                                    placeholder="Filter by name or license key..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="bg-transparent border-none focus:outline-none w-full text-sm"
+                                    style={{ color: 'var(--text-primary)' }}
+                                />
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="text-left text-xs uppercase tracking-wider" style={{ backgroundColor: 'rgba(255,255,255,0.02)', color: 'var(--text-tertiary)' }}>
+                                            <th className="px-6 py-4">Organization Name</th>
+                                            <th className="px-6 py-4">License Key</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Created At</th>
+                                            <th className="px-6 py-4">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y border-t" style={{ borderColor: 'var(--border-color)' }}>
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan={5} className="px-6 py-12 text-center">
+                                                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-500" />
+                                                    <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading organizations...</p>
+                                                </td>
+                                            </tr>
+                                        ) : filteredOrgs.map(org => (
+                                            <tr key={org.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center">
+                                                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center mr-3 font-bold text-xs" style={{ color: 'var(--accent-cyan)' }}>
+                                                            {org.name.charAt(0)}
+                                                        </div>
+                                                        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{org.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <code className="text-xs px-2 py-1 rounded bg-black/30 font-mono" style={{ color: 'var(--accent-purple)' }}>{org.license_key}</code>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                                        {org.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                                                    {new Date(org.created_at).toLocaleDateString()}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center space-x-2">
+                                                        <button
+                                                            onClick={() => { setSelectedOrg(org); setIsAdminModalOpen(true); }}
+                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
+                                                            style={{ backgroundColor: 'rgba(0, 217, 255, 0.1)', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+                                                            title="Onboard Organization Admin"
+                                                        >
+                                                            <UserPlus className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => switchContext(org.id, org.name)}
+                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
+                                                            style={{ backgroundColor: 'rgba(108, 92, 231, 0.1)', borderColor: 'var(--accent-purple)', color: 'var(--accent-purple)' }}
+                                                            title="Simulate Tenant Dashboard"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleStatus(org.id, org.status)}
+                                                            className="text-xs px-3 py-2 rounded-lg border transition-all hover:bg-white/10"
+                                                            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                                        >
+                                                            {org.status === 'active' ? 'Pause' : 'Activate'}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+
+            {/* Create Org Modal */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                        <h2 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>Register New Organization</h2>
+                        <form onSubmit={handleCreate} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Organization Name</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={newOrg.name}
+                                    onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
+                                    className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
+                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>License Key</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <input
+                                        type="text"
+                                        required
+                                        value={newOrg.license_key}
+                                        onChange={(e) => setNewOrg({ ...newOrg, license_key: e.target.value })}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm font-mono"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex space-x-3 mt-8">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsModalOpen(false)}
+                                    className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5"
+                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 rounded-xl font-bold text-white cyber-glow transition-all"
+                                    style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                                >
+                                    Create
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Admin Modal */}
+            {isAdminModalOpen && selectedOrg && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                        <div className="mb-6">
+                            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Onboard Tenant Admin</h2>
+                            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>Set up the primary administrator for <span className="text-white font-semibold">{selectedOrg.name}</span></p>
+                        </div>
+                        <form onSubmit={handleCreateAdmin} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Full Name</label>
+                                <div className="relative">
+                                    <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <input
+                                        type="text"
+                                        required
+                                        value={newAdmin.full_name}
+                                        onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Email Address</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <input
+                                        type="email"
+                                        required
+                                        value={newAdmin.email}
+                                        onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Initial Password</label>
+                                <div className="relative">
+                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <input
+                                        type="password"
+                                        required
+                                        value={newAdmin.password}
+                                        onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex space-x-3 mt-8">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAdminModalOpen(false)}
+                                    className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5"
+                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-3 rounded-xl font-bold text-white cyber-glow transition-all"
+                                    style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                                >
+                                    Create Account
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}

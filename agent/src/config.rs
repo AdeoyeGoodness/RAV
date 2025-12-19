@@ -15,6 +15,7 @@ pub struct Config {
 pub struct BackendConfig {
     pub url: String,
     pub api_key: Option<String>,
+    pub license_key: Option<String>,
     pub sync_interval_seconds: u64,
     pub heartbeat_interval_seconds: u64,
 }
@@ -22,6 +23,7 @@ pub struct BackendConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub agent_id: Option<String>,
+    pub organization_id: Option<String>,
     pub hardware_fingerprint: Option<String>,
     pub data_dir: PathBuf,
 }
@@ -92,6 +94,7 @@ impl Config {
                 url: std::env::var("BACKEND_URL")
                     .unwrap_or_else(|_| "http://localhost:8080".to_string()),
                 api_key: std::env::var("AGENT_API_KEY").ok(),
+                license_key: std::env::var("AGENT_LICENSE_KEY").ok(),
                 sync_interval_seconds: std::env::var("AGENT_SYNC_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|s| s.parse().ok())
@@ -103,6 +106,7 @@ impl Config {
             },
             agent: AgentConfig {
                 agent_id: None, // Will be generated on first run
+                organization_id: None,
                 hardware_fingerprint: None, // Will be generated on first run
                 data_dir: Self::get_default_data_dir()?,
             },

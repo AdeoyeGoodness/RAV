@@ -164,6 +164,7 @@ fn convert_extension_event(ext_event: &ExtensionEvent, agent_id: &str) -> Result
         "active_tab" => "browser_active_tab",
         "tab_updated" => "browser_tab_updated",
         "history_visit" => "browser_history_visit",
+        "search_query" => "browser_search_query",
         "download_started" => "browser_download_started",
         "download_completed" => "browser_download_completed",
         "download_failed" => "browser_download_failed",

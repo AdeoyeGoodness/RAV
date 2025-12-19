@@ -1,8 +1,9 @@
 use anyhow::Result;
 use axum::{
     http::StatusCode,
-    routing::{get, post, delete},
+    routing::{get, post, delete, put, patch},
     Router,
+    extract::FromRef,
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub config: Arc<AppConfig>,
     pub file_storage_dir: std::path::PathBuf,
+    pub server_start_time: chrono::DateTime<chrono::Utc>,
 }
 
 #[tokio::main]
@@ -60,17 +62,27 @@ async fn main() -> Result<()> {
         db: db.clone(),
         config: config.clone(),
         file_storage_dir: file_storage_dir.clone(),
+        server_start_time: chrono::Utc::now(),
     };
     
     // Build application
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/api/v1/auth/login", post(api::auth::login))
+        .route("/api/v1/auth/register", post(api::auth::register))
+        .route("/api/v1/admin/organizations", get(api::admin::list_organizations))
+        .route("/api/v1/admin/organizations", post(api::admin::create_organization))
+        .route("/api/v1/admin/organizations/:id/status", patch(api::admin::update_organization_status))
+        .route("/api/v1/admin/stats", get(api::admin::get_platform_stats))
+        .route("/api/v1/admin/health", get(api::admin::get_system_health))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
-        .route("/api/v1/agents/register", post(handlers::register_agent))
+        .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
+        .route("/api/v1/agents/register", post(handlers::register_agent)) // legacy
         .route("/api/v1/agents/heartbeat", post(handlers::heartbeat))
         .route("/api/v1/agents", get(handlers::list_agents))
         .route("/api/v1/agents/:agent_id/events", delete(handlers::delete_agent_events))
+        .route("/api/v1/agents/:agent_id/events/restore", put(handlers::restore_agent_events))
         .route("/api/v1/agents/:agent_id", delete(handlers::delete_agent))
         .route("/api/v1/files/upload", post(handlers::upload_file))
         .route("/api/v1/files/:file_id", get(handlers::download_file))
@@ -80,8 +92,9 @@ async fn main() -> Result<()> {
     info!("Routes registered:");
     info!("  POST /api/v1/files/upload - File upload endpoint");
     info!("  GET  /api/v1/files/:file_id - File download endpoint");
-    info!("  DELETE /api/v1/agents/:agent_id/events - Delete all events for agent");
-    info!("  DELETE /api/v1/agents/:agent_id - Delete agent and all events");
+    info!("  DELETE /api/v1/agents/:agent_id/events - Soft delete all events for agent");
+    info!("  PUT /api/v1/agents/:agent_id/events/restore - Restore soft-deleted events");
+    info!("  DELETE /api/v1/agents/:agent_id - Soft delete agent and all events");
 
     let addr = format!("{}:{}", config.host, config.port);
     info!("Server listening on {}", addr);

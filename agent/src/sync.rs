@@ -28,6 +28,7 @@ pub struct SyncManager {
     client: reqwest::Client,
     event_queue: Arc<tokio::sync::mpsc::UnboundedSender<Event>>,
     event_receiver: Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Event>>>,
+    organization_id: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl SyncManager {
@@ -46,6 +47,7 @@ impl SyncManager {
                 client,
                 event_queue: Arc::new(tx),
                 event_receiver: Arc::new(tokio::sync::Mutex::new(rx)),
+                organization_id: Arc::new(tokio::sync::Mutex::new(None)),
             })
         }
     }
@@ -65,11 +67,11 @@ impl SyncManager {
     }
 
     pub async fn run_sync_loop(&self) {
-        // Register agent on startup
-        if let Err(e) = self.register_agent().await {
-            error!("Failed to register agent: {}", e);
+        // Enroll agent on startup
+        if let Err(e) = self.enroll_agent().await {
+            error!("Failed to enroll agent: {}", e);
         } else {
-            info!("Agent registered successfully");
+            info!("Agent enrolled successfully");
         }
 
         let mut interval = interval(Duration::from_secs(
@@ -89,19 +91,23 @@ impl SyncManager {
         }
     }
 
-    async fn register_agent(&self) -> Result<()> {
+    async fn enroll_agent(&self) -> Result<()> {
         let agent_id = self.config.agent.agent_id.as_deref()
             .unwrap_or("unknown");
         let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref()
             .unwrap_or("unknown");
+        let license_key = self.config.backend.license_key.as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No license key provided for enrollment"))?;
 
-        let registration = serde_json::json!({
+        let enrollment = serde_json::json!({
             "agent_id": agent_id,
             "hardware_fingerprint": hw_fingerprint,
+            "license_key": license_key,
         });
 
-        let url = format!("{}/api/v1/agents/register", self.config.backend.url);
-        let mut request = self.client.post(&url).json(&registration);
+        info!("Attempting enrollment for agent {}...", agent_id);
+        let url = format!("{}/api/v1/agents/enroll", self.config.backend.url);
+        let mut request = self.client.post(&url).json(&enrollment);
 
         if let Some(api_key) = &self.config.backend.api_key {
             request = request.header("X-API-Key", api_key);
@@ -110,15 +116,24 @@ impl SyncManager {
         let response = request
             .send()
             .await
-            .context("Failed to register agent")?;
+            .context("Failed to connect to enrollment endpoint")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Registration failed with status {}: {}", status, body);
+            anyhow::bail!("Enrollment failed with status {}: {}", status, body);
         }
 
-        info!("Agent registered: {} ({})", agent_id, hw_fingerprint);
+        let result: serde_json::Value = response.json().await?;
+        let org_id = result.get("organization_id").and_then(|v| v.as_str())
+            .context("Server did not return organization_id")?;
+        let org_name = result.get("organization_name").and_then(|v| v.as_str())
+            .unwrap_or("Unknown Org");
+
+        let mut org_guard = self.organization_id.lock().await;
+        *org_guard = Some(org_id.to_string());
+        
+        info!("SUCCESS: Agent enrolled to Organization: {} ({})", org_name, org_id);
         Ok(())
     }
 
@@ -146,6 +161,13 @@ impl SyncManager {
         if let Some(api_key) = &self.config.backend.api_key {
             request = request.header("X-API-Key", api_key);
         }
+
+        // Add organization ID if we have it
+        let org_guard = self.organization_id.lock().await;
+        if let Some(org_id) = org_guard.as_ref() {
+            request = request.header("X-Organization-Id", org_id);
+        }
+        drop(org_guard);
 
         let response = request
             .send()
@@ -181,6 +203,13 @@ impl SyncManager {
         if let Some(api_key) = &self.config.backend.api_key {
             request = request.header("X-API-Key", api_key);
         }
+
+        // Add organization ID if we have it
+        let org_guard = self.organization_id.lock().await;
+        if let Some(org_id) = org_guard.as_ref() {
+            request = request.header("X-Organization-Id", org_id);
+        }
+        drop(org_guard);
 
         let response = request
             .send()

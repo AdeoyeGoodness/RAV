@@ -97,7 +97,7 @@ export default function DeviceDetailsPage() {
       const now = new Date()
       setClearTimestamp(now)
       // Immediately filter out events before the clear timestamp
-      setEvents(prevEvents => 
+      setEvents(prevEvents =>
         prevEvents.filter(event => new Date(event.timestamp) > now)
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       )
@@ -110,11 +110,7 @@ export default function DeviceDetailsPage() {
   }
 
   const handleDeleteAllData = async () => {
-    if (!confirm(`⚠️ WARNING: This will PERMANENTLY DELETE ALL events for device "${agentId}" from the backend database.\n\nThis action cannot be undone. Are you absolutely sure?`)) {
-      return
-    }
-
-    if (!confirm(`Final confirmation: Delete ALL ${events.length} events for "${agentId}"?`)) {
+    if (!confirm(`⚠️ WARNING: This will DELETE ALL events for device "${agentId}".\n\nAre you sure you want to continue?`)) {
       return
     }
 
@@ -135,7 +131,7 @@ export default function DeviceDetailsPage() {
     const lastSeen = new Date(agent.last_seen)
     const now = new Date()
     const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
-    
+
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
     if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
     return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
@@ -171,7 +167,7 @@ export default function DeviceDetailsPage() {
               <button
                 onClick={() => router.push('/devices')}
                 className="px-4 py-2 rounded-lg transition-all"
-                style={{ 
+                style={{
                   backgroundColor: 'rgba(0, 217, 255, 0.2)',
                   color: 'var(--accent-cyan)'
                 }}
@@ -188,9 +184,9 @@ export default function DeviceDetailsPage() {
   }
 
   const status = getAgentStatus(agent)
-  const usbEvents = events.filter(e => 
-    e.event_type === 'usb_inserted' || 
-    e.event_type === 'usb_removed' || 
+  const usbEvents = events.filter(e =>
+    e.event_type === 'usb_inserted' ||
+    e.event_type === 'usb_removed' ||
     e.event_type === 'usb_file_transfer'
   )
 
@@ -227,14 +223,14 @@ export default function DeviceDetailsPage() {
                 <button
                   onClick={handleDeleteAllData}
                   className="px-4 py-2 rounded-lg transition-all flex items-center space-x-2 border"
-                  style={{ 
+                  style={{
                     backgroundColor: 'rgba(255, 107, 107, 0.2)',
                     color: '#FF6B6B',
                     borderColor: 'rgba(255, 107, 107, 0.3)'
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.3)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'; }}
-                  title="Delete all events for this device from backend"
+                  title="Delete all events for this device"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Delete All Data</span>
@@ -278,10 +274,10 @@ export default function DeviceDetailsPage() {
             </div>
 
             {/* USB Monitoring Section */}
-            <USBMonitoring 
-              events={events} 
-              loading={loading} 
-              onRefresh={loadDeviceData} 
+            <USBMonitoring
+              events={events}
+              loading={loading}
+              onRefresh={loadDeviceData}
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}

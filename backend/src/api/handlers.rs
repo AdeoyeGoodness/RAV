@@ -1,15 +1,17 @@
 use axum::{
     extract::{Multipart, Path, Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{Json, Response},
     body::Body,
 };
+use tracing::info;
 use chrono::Utc;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
 use crate::db::models::{CreateAgent, CreateEvent, Event};
+use crate::api::auth::Claims;
 use crate::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -28,19 +30,44 @@ pub async fn ingest_events(
     let pool = state.db.pool();
     let events_count = events.len();
 
+    if events.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "status": "success",
+            "events_ingested": 0
+        })));
+    }
+
+    let first_agent_id = &events[0].agent_id;
+    let org_id = sqlx::query!(
+        "SELECT organization_id FROM agents WHERE agent_id = $1",
+        first_agent_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to query agent organization: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(|r| r.organization_id)
+    .ok_or_else(|| {
+        tracing::warn!("Agent not found for ingestion: {}", first_agent_id);
+        StatusCode::UNAUTHORIZED
+    })?;
+
     for event in events {
-        let result = sqlx::query(
+        let result = sqlx::query!(
             r#"
-            INSERT INTO events (id, agent_id, event_type, timestamp, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO events (id, organization_id, agent_id, event_type, timestamp, metadata, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
+            Uuid::new_v4(),
+            org_id,
+            event.agent_id,
+            event.event_type,
+            event.timestamp,
+            &event.metadata,
+            Utc::now()
         )
-        .bind(Uuid::new_v4())
-        .bind(&event.agent_id)
-        .bind(&event.event_type)
-        .bind(event.timestamp)
-        .bind(&event.metadata)
-        .bind(Utc::now())
         .execute(pool)
         .await;
 
@@ -52,31 +79,48 @@ pub async fn ingest_events(
 
     Ok(Json(serde_json::json!({
         "status": "success",
-        "events_ingested": events_count
+        "events_ingested": events_count,
+        "organization_id": org_id
     })))
 }
 
 pub async fn query_events(
     State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
     Query(params): Query<EventQuery>,
 ) -> Result<Json<Vec<Event>>, StatusCode> {
     let pool = state.db.pool();
 
-    // For now, use a simple query - can be enhanced with proper filtering later
+    // Determine target organization_id
+    let target_org_id = if claims.role == "super_admin" {
+        // Super Admin must explicitly provide a header to see raw data
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)? // Super Admin must specify org
+    } else {
+        // Tenants are locked to their own ID from the JWT
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
     let limit = params.limit.unwrap_or(100);
     
     let events = if let Some(agent_id) = &params.agent_id {
         sqlx::query_as::<_, Event>(
-            "SELECT id, agent_id, event_type, timestamp, metadata, created_at FROM events WHERE agent_id = $1 ORDER BY timestamp DESC LIMIT $2"
+            "SELECT id, organization_id, agent_id, event_type, timestamp, metadata, created_at FROM events WHERE agent_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY timestamp DESC LIMIT $3"
         )
         .bind(agent_id)
+        .bind(target_org_id)
         .bind(limit)
         .fetch_all(pool)
         .await
     } else {
         sqlx::query_as::<_, Event>(
-            "SELECT id, agent_id, event_type, timestamp, metadata, created_at FROM events ORDER BY timestamp DESC LIMIT $1"
+            "SELECT id, organization_id, agent_id, event_type, timestamp, metadata, created_at FROM events WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY timestamp DESC LIMIT $2"
         )
+        .bind(target_org_id)
         .bind(limit)
         .fetch_all(pool)
         .await
@@ -89,75 +133,101 @@ pub async fn query_events(
     Ok(Json(events))
 }
 
+pub async fn enroll_agent(
+    State(state): State<AppState>,
+    Json(payload): Json<CreateAgent>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let pool = state.db.pool();
+
+    // 1. Look up organization by license key (enrollment token)
+    let org = sqlx::query!(
+        "SELECT id, name FROM organizations WHERE license_key = $1 AND status = 'active'",
+        payload.license_key
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Enrollment: Failed to query organization: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let org_info = org.ok_or_else(|| {
+        tracing::warn!("Enrollment attempt with invalid/inactive token: {}", payload.license_key);
+        StatusCode::UNAUTHORIZED
+    })?;
+
+    // 2. Enroll agent (Insert or update seen timestamp)
+    sqlx::query!(
+        r#"
+        INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, last_seen, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (agent_id) DO UPDATE
+        SET updated_at = EXCLUDED.updated_at,
+            last_seen = EXCLUDED.last_seen
+        "#,
+        Uuid::new_v4(),
+        org_info.id,
+        payload.agent_id,
+        payload.hardware_fingerprint,
+        Utc::now(),
+        Utc::now(),
+        Utc::now()
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Enrollment: Failed to insert/update agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    info!("Agent enrolled: {} for Organization: {}", payload.agent_id, org_info.name);
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "agent_id": payload.agent_id,
+        "organization_id": org_info.id,
+        "organization_name": org_info.name
+    })))
+}
+
 pub async fn register_agent(
     State(state): State<AppState>,
     Json(agent): Json<CreateAgent>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let pool = state.db.pool();
-
-    let result = sqlx::query(
-        r#"
-        INSERT INTO agents (id, agent_id, hardware_fingerprint, last_seen, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (agent_id) DO UPDATE
-        SET hardware_fingerprint = EXCLUDED.hardware_fingerprint,
-            last_seen = EXCLUDED.last_seen,
-            updated_at = EXCLUDED.updated_at
-        RETURNING id
-        "#,
-    )
-    .bind(Uuid::new_v4())
-    .bind(&agent.agent_id)
-    .bind(&agent.hardware_fingerprint)
-    .bind(Utc::now())
-    .bind(Utc::now())
-    .bind(Utc::now())
-    .fetch_one(pool)
-    .await;
-
-    match result {
-        Ok(_) => Ok(Json(serde_json::json!({
-            "status": "success",
-            "message": "Agent registered"
-        }))),
-        Err(e) => {
-            tracing::error!("Failed to register agent: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct HeartbeatRequest {
-    pub agent_id: String,
-    pub hardware_fingerprint: String,
-    pub timestamp: chrono::DateTime<Utc>,
-    pub version: String,
+    // Legacy support or redirect to enroll
+    enroll_agent(State(state), Json(agent)).await
 }
 
 pub async fn heartbeat(
     State(state): State<AppState>,
-    Json(heartbeat): Json<HeartbeatRequest>,
+    headers: HeaderMap,
+    Json(heartbeat): Json<crate::db::models::Heartbeat>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let pool = state.db.pool();
 
-    let result = sqlx::query(
+    let org_id = headers
+        .get("X-Organization-Id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let result = sqlx::query!(
         r#"
         UPDATE agents
         SET last_seen = $1, updated_at = $2
-        WHERE agent_id = $3
+        WHERE agent_id = $3 AND organization_id = $4
         "#,
+        heartbeat.timestamp,
+        Utc::now(),
+        &heartbeat.agent_id,
+        org_id
     )
-    .bind(heartbeat.timestamp)
-    .bind(Utc::now())
-    .bind(&heartbeat.agent_id)
     .execute(pool)
     .await;
 
     match result {
-        Ok(_) => Ok(Json(serde_json::json!({
-            "status": "success"
-        }))),
+        Ok(res) if res.rows_affected() > 0 => Ok(Json(serde_json::json!({"status": "success"}))),
+        Ok(_) => Err(StatusCode::NOT_FOUND),
         Err(e) => {
             tracing::error!("Failed to update heartbeat: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -167,16 +237,30 @@ pub async fn heartbeat(
 
 pub async fn list_agents(
     State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     let pool = state.db.pool();
 
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
     let agents = sqlx::query(
         r#"
-        SELECT id, agent_id, hardware_fingerprint, last_seen, license_expiry, created_at, updated_at
+        SELECT id, organization_id, agent_id, hardware_fingerprint, last_seen, created_at, updated_at
         FROM agents
+        WHERE organization_id = $1 AND deleted_at IS NULL
         ORDER BY last_seen DESC
         "#,
     )
+    .bind(target_org_id)
     .fetch_all(pool)
     .await
     .map_err(|e| {
@@ -185,14 +269,14 @@ pub async fn list_agents(
     })?;
 
     let result: Vec<serde_json::Value> = agents
-        .iter()
+        .into_iter()
         .map(|row| {
             serde_json::json!({
                 "id": row.get::<Uuid, _>("id"),
+                "organization_id": row.get::<Uuid, _>("organization_id"),
                 "agent_id": row.get::<String, _>("agent_id"),
                 "hardware_fingerprint": row.get::<String, _>("hardware_fingerprint"),
                 "last_seen": row.get::<chrono::DateTime<Utc>, _>("last_seen"),
-                "license_expiry": row.get::<Option<chrono::DateTime<Utc>>, _>("license_expiry"),
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
             })
@@ -208,59 +292,49 @@ pub async fn upload_file(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let mut file_id = String::new();
     let mut file_name = String::new();
-    let mut _file_path = String::new();
-    let mut _file_size = 0u64;
+    let mut agent_id = String::new();
     let mut file_data: Option<Vec<u8>> = None;
     
-    // Parse multipart form
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         tracing::error!("Multipart error: {}", e);
         StatusCode::BAD_REQUEST
     })? {
-        let name = field.name().unwrap_or("");
-        
-        match name {
-            "file_id" => {
-                file_id = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-            }
-            "file_name" => {
-                file_name = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-            }
-            "file_path" => {
-                _file_path = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-            }
-            "file_size" => {
-                let size_str = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-                _file_size = size_str.parse().unwrap_or(0);
-            }
-            "file" => {
-                file_data = Some(field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?.to_vec());
-            }
+        match field.name().unwrap_or("") {
+            "file_id" => file_id = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
+            "file_name" => file_name = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
+            "agent_id" => agent_id = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?,
+            "file" => file_data = Some(field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?.to_vec()),
             _ => {}
         }
     }
     
-    if file_id.is_empty() || file_name.is_empty() || file_data.is_none() {
+    if file_id.is_empty() || file_name.is_empty() || file_data.is_none() || agent_id.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
+
+    let pool = state.db.pool();
+    let org_id = sqlx::query!("SELECT organization_id FROM agents WHERE agent_id = $1", agent_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map(|r| r.organization_id)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     
     let data = file_data.unwrap();
+    sqlx::query!(
+        "INSERT INTO files (file_id, organization_id, agent_id, file_name, file_size) VALUES ($1, $2, $3, $4, $5)",
+        file_id, org_id, agent_id, file_name, data.len() as i64
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to record file in DB: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     
-    // Determine file extension
-    let extension = std::path::Path::new(&file_name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
-    
-    // Save file to storage
+    let extension = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("bin");
     let file_path_storage = state.file_storage_dir.join(format!("{}.{}", file_id, extension));
-    
-    if let Err(e) = std::fs::write(&file_path_storage, &data) {
-        tracing::error!("Failed to save file: {}", e);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-    
-    tracing::info!("File uploaded: {} ({} bytes)", file_id, data.len());
+    std::fs::write(&file_path_storage, &data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     Ok(Json(serde_json::json!({
         "status": "success",
@@ -272,145 +346,151 @@ pub async fn upload_file(
 
 pub async fn download_file(
     State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
     Path(file_id): Path<String>,
 ) -> Result<Response<Body>, StatusCode> {
-    
-    // Find file in storage directory
+    let pool = state.db.pool();
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let file_record = sqlx::query!(
+        "SELECT file_name FROM files WHERE file_id = $1 AND organization_id = $2",
+        file_id, target_org_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
     let storage_dir = &state.file_storage_dir;
     let mut file_path: Option<std::path::PathBuf> = None;
-    
-    // Search for file with any extension
     if let Ok(entries) = std::fs::read_dir(storage_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                if stem == file_id {
-                    file_path = Some(path);
-                    break;
-                }
+            if path.file_stem().and_then(|s| s.to_str()) == Some(&file_id) {
+                file_path = Some(path);
+                break;
             }
         }
     }
     
     let file_path = file_path.ok_or(StatusCode::NOT_FOUND)?;
+    let file_data = std::fs::read(&file_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
     
-    // Read file
-    let file_data = std::fs::read(&file_path).map_err(|e| {
-        tracing::error!("Failed to read file: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    
-    // Get file name from path
-    let file_name = file_path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("file")
-        .to_string();
-    
-    // Determine content type
-    let content_type = if file_name.ends_with(".png") {
-        "image/png"
-    } else if file_name.ends_with(".jpg") || file_name.ends_with(".jpeg") {
-        "image/jpeg"
-    } else if file_name.ends_with(".pdf") {
-        "application/pdf"
-    } else if file_name.ends_with(".txt") {
-        "text/plain"
-    } else if file_name.ends_with(".doc") || file_name.ends_with(".docx") {
-        "application/msword"
-    } else {
-        "application/octet-stream"
+    let content_type = match std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
     };
     
-    // Create response with file
-    let response = Response::builder()
-        .status(StatusCode::OK)
+    Ok(Response::builder()
         .header(header::CONTENT_TYPE, content_type)
-        .header(
-            header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", file_name),
-        )
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", file_name))
         .body(Body::from(file_data))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    Ok(response)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }
 
 pub async fn delete_agent_events(
     State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let pool = state.db.pool();
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
     
-    // Delete all events for this agent
-    let result = sqlx::query(
-        "DELETE FROM events WHERE agent_id = $1"
+    let result = sqlx::query!(
+        "UPDATE events SET deleted_at = $1 WHERE agent_id = $2 AND organization_id = $3 AND deleted_at IS NULL",
+        Utc::now(), &agent_id, target_org_id
     )
-    .bind(&agent_id)
     .execute(pool)
-    .await;
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
-    match result {
-        Ok(result) => {
-            let deleted_count = result.rows_affected();
-            tracing::info!("Deleted {} events for agent {}", deleted_count, agent_id);
-            
-            Ok(Json(serde_json::json!({
-                "status": "success",
-                "message": format!("Deleted {} events for agent {}", deleted_count, agent_id),
-                "deleted_count": deleted_count
-            })))
-        }
-        Err(e) => {
-            tracing::error!("Failed to delete events for agent {}: {}", agent_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "deleted_count": result.rows_affected()
+    })))
 }
 
 pub async fn delete_agent(
     State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let pool = state.db.pool();
-    
-    // First delete all events for this agent
-    let events_result = sqlx::query(
-        "DELETE FROM events WHERE agent_id = $1"
-    )
-    .bind(&agent_id)
-    .execute(pool)
-    .await;
-    
-    let events_deleted = if let Ok(result) = events_result {
-        result.rows_affected()
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
     } else {
-        0
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
-    
-    // Then delete the agent itself
-    let agent_result = sqlx::query(
-        "DELETE FROM agents WHERE agent_id = $1"
+
+    sqlx::query!(
+        "UPDATE agents SET deleted_at = $1 WHERE agent_id = $2 AND organization_id = $3 AND deleted_at IS NULL",
+        Utc::now(), &agent_id, target_org_id
     )
-    .bind(&agent_id)
     .execute(pool)
-    .await;
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
-    match agent_result {
-        Ok(result) => {
-            let agent_deleted = result.rows_affected();
-            tracing::info!("Deleted agent {} and {} events", agent_id, events_deleted);
-            
-            Ok(Json(serde_json::json!({
-                "status": "success",
-                "message": format!("Deleted agent {} and {} events", agent_id, events_deleted),
-                "agent_deleted": agent_deleted > 0,
-                "events_deleted": events_deleted
-            })))
-        }
-        Err(e) => {
-            tracing::error!("Failed to delete agent {}: {}", agent_id, e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
+    Ok(Json(serde_json::json!({"status": "success"})))
+}
+
+pub async fn restore_agent_events(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // RESTRICTION: Only Super Admin can restore
+    if claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
     }
+
+    let target_org_id = headers
+        .get("X-Organization-Id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let pool = state.db.pool();
+    let result = sqlx::query!(
+        "UPDATE events SET deleted_at = NULL WHERE agent_id = $1 AND organization_id = $2 AND deleted_at IS NOT NULL",
+        &agent_id, target_org_id
+    )
+    .execute(pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "restored_count": result.rows_affected()
+    })))
 }
 

@@ -51,6 +51,9 @@ validator = { version = "0.18", features = ["derive"] }
 # Rate limiting
 tower_governor = "0.2"
 
+# Random jitter for telemetry
+rand = "0.8"
+
 [features]
 default = []
 # s3 = ["aws-sdk-s3", "aws-config"]

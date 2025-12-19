@@ -24,15 +24,35 @@ async fn main() -> Result<()> {
 
     info!("RAV Agent starting...");
 
+    // 1. Basic CLI argument parsing (Stateless enrollment)
+    let args: Vec<String> = std::env::args().collect();
+    let mut enroll_token = None;
+    for i in 0..args.len() {
+        if args[i] == "--enroll" || args[i] == "--license-key" {
+            if i + 1 < args.len() {
+                enroll_token = Some(args[i + 1].clone());
+            }
+        }
+    }
+
     // Load configuration
     let mut config = Config::load()?;
     
+    // If enrollment token was passed via CLI, update the config
+    if let Some(token) = enroll_token {
+        info!("Received enrollment token from CLI. Updating configuration...");
+        config.backend.license_key = Some(token);
+        // We will clear the agent_id to force a fresh enrollment if the token changed
+        config.agent.agent_id = None;
+        config.save()?;
+    }
+
     // Generate agent_id and hardware_fingerprint if not set
     let mut config_changed = false;
     if config.agent.agent_id.is_none() {
         let agent_id = generate_agent_id();
         config.agent.agent_id = Some(agent_id.clone());
-        info!("Generated agent_id: {}", agent_id);
+        info!("Assigned agent_id: {}", agent_id);
         config_changed = true;
     }
     
@@ -43,16 +63,19 @@ async fn main() -> Result<()> {
         config_changed = true;
     }
     
-    // Save config if we generated new IDs
+    // Save config if we generated new IDs or enrolled
     if config_changed {
-        if let Err(e) = config.save() {
-            warn!("Failed to save config: {}", e);
-        } else {
-            info!("Configuration saved");
-        }
+        config.save()?;
+        info!("Configuration persistence updated");
     }
     
     let config = Arc::new(config);
+    
+    // Validate if we have a license key
+    if config.backend.license_key.is_none() {
+        error!("CRITICAL: Agent is not enrolled! Please run with --enroll <TOKEN>");
+        return Err(anyhow::anyhow!("Agent not enrolled"));
+    }
     info!("Configuration loaded");
 
     // Initialize encryption

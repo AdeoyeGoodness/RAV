@@ -464,14 +464,16 @@ export default function BrowserHistoryViewer({
                         <span className="font-medium transition-colors truncate" style={{ color: 'var(--text-primary)' }}>
                           "{event.metadata?.query || 'Unknown query'}"
                         </span>
+                        <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(108, 92, 231, 0.2)', color: '#6C5CE7' }}>
+                          {(event.metadata?.search_engine || 'search').toUpperCase()}
+                        </span>
                       </div>
                       <p className="text-sm transition-colors truncate break-all" style={{ color: 'var(--text-tertiary)' }}>
                         {event.metadata?.url}
                       </p>
                       <div className="flex items-center flex-wrap gap-2 mt-2 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span className="whitespace-nowrap">Search Engine: {event.metadata?.search_engine || 'Unknown'}</span>
-                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser_type) }}>
-                          {event.metadata?.browser_type?.toUpperCase() || 'UNKNOWN'}
+                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
+                          {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
                         <span className="whitespace-nowrap">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>

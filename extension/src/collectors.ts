@@ -4,6 +4,7 @@
  * Collects browser activity events:
  * - Active tab changes
  * - History visits
+ * - Search queries
  * - Download events
  */
 
@@ -11,6 +12,7 @@ import {
     BrowserEvent,
     ActiveTabData,
     HistoryVisitData,
+    SearchQueryData,
     DownloadData
 } from './types.js';
 import {
@@ -23,6 +25,17 @@ import {
 import { agentClient } from './agent-client.js';
 
 const BROWSER = detectBrowser();
+
+// Search engine patterns for detecting searches
+const SEARCH_PATTERNS: { engine: string; pattern: RegExp; queryParam: string }[] = [
+    { engine: 'google', pattern: /^https?:\/\/(www\.)?google\.[a-z.]+\/search/i, queryParam: 'q' },
+    { engine: 'bing', pattern: /^https?:\/\/(www\.)?bing\.com\/search/i, queryParam: 'q' },
+    { engine: 'duckduckgo', pattern: /^https?:\/\/(www\.)?duckduckgo\.com\//i, queryParam: 'q' },
+    { engine: 'yahoo', pattern: /^https?:\/\/search\.yahoo\.com\/search/i, queryParam: 'p' },
+    { engine: 'baidu', pattern: /^https?:\/\/(www\.)?baidu\.com\/s/i, queryParam: 'wd' },
+    { engine: 'yandex', pattern: /^https?:\/\/(www\.)?yandex\.[a-z]+\/search/i, queryParam: 'text' },
+    { engine: 'ecosia', pattern: /^https?:\/\/(www\.)?ecosia\.org\/search/i, queryParam: 'q' },
+];
 
 // ============================================================================
 // Active Tab Collector
@@ -96,8 +109,15 @@ export function initHistoryCollector(): void {
     // Listen for new history visits
     chrome.history.onVisited.addListener((result) => {
         if (shouldTrackUrl(result.url)) {
+            // Create history event
             const event = createHistoryEvent(result);
             agentClient.queueEvent(event);
+
+            // Also check if this is a search query
+            const searchEvent = tryCreateSearchEvent(result);
+            if (searchEvent) {
+                agentClient.queueEvent(searchEvent);
+            }
         }
     });
 
@@ -124,6 +144,48 @@ function createHistoryEvent(item: chrome.history.HistoryItem): BrowserEvent {
 }
 
 /**
+ * Try to extract a search query from a URL
+ */
+function tryCreateSearchEvent(item: chrome.history.HistoryItem): BrowserEvent | null {
+    const url = item.url;
+    if (!url) return null;
+
+    for (const { engine, pattern, queryParam } of SEARCH_PATTERNS) {
+        if (pattern.test(url)) {
+            try {
+                const urlObj = new URL(url);
+                const query = urlObj.searchParams.get(queryParam);
+
+                if (query && query.trim().length > 0) {
+                    const data: SearchQueryData = {
+                        query: query.trim(),
+                        url: url,
+                        search_engine: engine,
+                        search_time: item.lastVisitTime
+                            ? new Date(item.lastVisitTime).toISOString()
+                            : getUTCTimestamp()
+                    };
+
+                    console.log(`[RAV] Search detected: "${query}" on ${engine}`);
+
+                    return {
+                        event_id: generateUUID(),
+                        event_type: 'search_query',
+                        timestamp: getUTCTimestamp(),
+                        browser: BROWSER,
+                        data
+                    };
+                }
+            } catch (e) {
+                console.error('[RAV] Error parsing search URL:', e);
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
  * Fetch recent history and sync (for initial load or catch-up)
  */
 export async function syncRecentHistory(maxResults: number = 100, daysBack: number = 7): Promise<number> {
@@ -137,15 +199,24 @@ export async function syncRecentHistory(maxResults: number = 100, daysBack: numb
         });
 
         let count = 0;
+        let searchCount = 0;
         for (const item of results) {
             if (shouldTrackUrl(item.url)) {
+                // Create history event
                 const event = createHistoryEvent(item);
                 agentClient.queueEvent(event);
                 count++;
+
+                // Also check for search queries
+                const searchEvent = tryCreateSearchEvent(item);
+                if (searchEvent) {
+                    agentClient.queueEvent(searchEvent);
+                    searchCount++;
+                }
             }
         }
 
-        console.log(`[RAV] Synced ${count} history items from last ${daysBack} days`);
+        console.log(`[RAV] Synced ${count} history items and ${searchCount} search queries from last ${daysBack} days`);
         return count;
     } catch (error) {
         console.error('[RAV] Failed to sync history:', error);

@@ -13,6 +13,7 @@ export type BrowserEventType =
     | 'active_tab'
     | 'tab_updated'
     | 'history_visit'
+    | 'search_query'
     | 'download_started'
     | 'download_completed'
     | 'download_failed';
@@ -38,7 +39,7 @@ export interface BrowserEvent {
     profile?: string;
 
     /** Event-specific data */
-    data: ActiveTabData | HistoryVisitData | DownloadData;
+    data: ActiveTabData | HistoryVisitData | SearchQueryData | DownloadData;
 }
 
 // ============================================================================
@@ -84,6 +85,24 @@ export interface HistoryVisitData {
 
     /** Number of times this URL has been visited */
     visit_count?: number;
+}
+
+// ============================================================================
+// Search Query Event
+// ============================================================================
+
+export interface SearchQueryData {
+    /** The search query text */
+    query: string;
+
+    /** Full URL of the search */
+    url: string;
+
+    /** Search engine used (google, bing, duckduckgo, etc.) */
+    search_engine: string;
+
+    /** Timestamp of the search */
+    search_time: string;
 }
 
 // ============================================================================
