@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{Utc, Duration};
 use crate::AppState;
-use crate::db::models::{User, CreateUser, LoginRequest, AuthResponse, UserResponse};
+use crate::db::models::{User, CreateUser, LoginRequest, AuthResponse, UserResponse, ActorType};
+use crate::services::audit::log_audit;
 use sqlx::{Row};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -108,6 +109,30 @@ pub async fn login(
         tracing::error!("JWT encoding failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Audit Log for Admins
+    if user.role == "super_admin" || user.role == "org_admin" {
+        // We need a transaction for audit log
+        if let Ok(mut tx) = pool.begin().await {
+            let actor_type = if user.role == "super_admin" { ActorType::SuperAdmin } else { ActorType::OrgAdmin };
+            
+            // Fire and forget audit (log error but don't fail login)
+            let _ = log_audit(
+                &mut tx,
+                actor_type,
+                Some(user.id),
+                user.organization_id,
+                "USER_LOGIN",
+                "USER",
+                Some(user.id.to_string()),
+                serde_json::json!({ "email": user.email }),
+                None, // IP TODO: Extract from headers if possible
+                None
+            ).await;
+            
+            let _ = tx.commit().await;
+        }
+    }
 
     Ok(Json(AuthResponse {
         token,

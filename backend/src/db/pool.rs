@@ -30,11 +30,10 @@ impl Database {
     }
 
     pub async fn run_migrations(&self) -> Result<()> {
-        sqlx::migrate!("src/db/migrations")
+        sqlx::migrate!()
             .run(self.pool())
             .await
             .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
         Ok(())
     }
 }
-

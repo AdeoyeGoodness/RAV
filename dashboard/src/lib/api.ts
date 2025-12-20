@@ -52,6 +52,8 @@ export interface Event {
   event_type: string
   timestamp: string
   metadata: any
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  category: 'system' | 'user' | 'process' | 'network' | 'file' | 'security'
   created_at: string
 }
 
@@ -70,6 +72,10 @@ export interface Agent {
 export async function getEvents(params?: {
   agent_id?: string
   event_type?: string
+  category?: string
+  severity?: string
+  start_time?: string
+  end_time?: string
   limit?: number
 }): Promise<Event[]> {
   const response = await api.get('/api/v1/events', { params })
@@ -162,6 +168,39 @@ export async function updateOrganization(orgId: string, org: { name?: string, ma
 
 export async function deleteOrganization(orgId: string): Promise<void> {
   await api.delete(`/api/v1/admin/organizations/${orgId}`)
+}
+
+export async function restoreOrganizationData(orgId: string): Promise<{ restored: { agents: number, events: number, files: number } }> {
+  const response = await api.post(`/api/v1/admin/organizations/${orgId}/restore`)
+  return response.data
+}
+
+export interface AuditLog {
+  id: string
+  timestamp: string
+  actor_type: 'super_admin' | 'org_admin' | 'system'
+  actor_id: string | null
+  organization_id: string | null
+  action_type: string
+  target_type: string
+  target_id: string | null
+  metadata: any
+  ip_address: string | null
+  user_agent: string | null
+}
+
+export async function getAuditLogs(params?: {
+  organization_id?: string
+  actor_type?: string
+  action_type?: string
+  target_type?: string
+  start_time?: string
+  end_time?: string
+  limit?: number
+  offset?: number
+}): Promise<AuditLog[]> {
+  const response = await api.get('/api/v1/admin/audits', { params })
+  return response.data
 }
 
 // Auth APIs

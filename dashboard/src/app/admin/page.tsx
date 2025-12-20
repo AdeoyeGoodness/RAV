@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2 } from 'lucide-react'
-import { getOrganizations, createOrganization, updateOrganizationStatus, deleteOrganization, register, Organization } from '@/lib/api'
+import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2, Undo2 } from 'lucide-react'
+import { getOrganizations, createOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
+
+
 
 export default function AdminPage() {
     const { user } = useAuth()
@@ -47,9 +49,19 @@ export default function AdminPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
+            // Calculate expiry time: Selected Date + Current Time
+            let finalExpiry: string | undefined = undefined;
+            if (newOrg.token_expiry) {
+                const now = new Date();
+                const selectedDate = new Date(newOrg.token_expiry);
+                // Set the time of the selected date to match the current time
+                selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+                finalExpiry = selectedDate.toISOString();
+            }
+
             await createOrganization({
                 ...newOrg,
-                token_expiry: newOrg.token_expiry ? `${newOrg.token_expiry}T23:59:59Z` : undefined
+                token_expiry: finalExpiry
             })
             setNewOrg({ name: '', enrollment_token: '', max_agents: 1000, token_expiry: '' })
             setIsModalOpen(false)
@@ -99,18 +111,38 @@ export default function AdminPage() {
         }
     }
 
-    const handleDelete = async (org: Organization) => {
-        if (!confirm(`Are you sure you want to PERMANENTLY delete "${org.name}"?\n\nThis will remove ALL agents, users, events, and files associated with this organization.\n\nType "DELETE" to confirm.`)) return // Quick simplistic confirm for now, better to use modal but prompt is safer than nothing
+    // Delete Modal State
+    const [deleteModal, setDeleteModal] = useState<{
+        isOpen: boolean;
+        org: Organization | null;
+        inputValue: string;
+    }>({ isOpen: false, org: null, inputValue: '' })
 
-        // Actually for now standard confirm is better than "Type DELETE" which requires prompt() - wait prompt() is standard
-        const confirmation = prompt(`Type "DELETE" to confirm permanent deletion of ${org.name}`)
-        if (confirmation !== 'DELETE') return
+    const handleDelete = (org: Organization) => {
+        setDeleteModal({ isOpen: true, org, inputValue: '' })
+    }
+
+    const confirmDelete = async () => {
+        if (!deleteModal.org) return
 
         try {
-            await deleteOrganization(org.id)
+            await deleteOrganization(deleteModal.org.id)
+            setDeleteModal({ isOpen: false, org: null, inputValue: '' })
             loadData()
         } catch (error) {
             alert('Failed to delete organization')
+        }
+    }
+
+    const handleRestore = async (org: Organization) => {
+        if (!confirm(`Restore deleted data for "${org.name}"?\n\nThis will recover all soft-deleted Agents, Events, and Files.\n\nType "RESTORE" to confirm.`)) return
+
+        try {
+            const res = await restoreOrganizationData(org.id)
+            alert(`Restoration Successful:\nAgents: ${res.restored.agents}\nEvents: ${res.restored.events}\nFiles: ${res.restored.files}`)
+            loadData()
+        } catch (error) {
+            alert('Failed to restore data')
         }
     }
 
@@ -253,7 +285,7 @@ export default function AdminPage() {
                                                     {org.max_agents} Agents
                                                 </td>
                                                 <td className="px-6 py-4 text-xs font-mono" style={{ color: org.token_expiry && new Date(org.token_expiry) < new Date() ? 'var(--accent-red)' : 'var(--text-secondary)' }}>
-                                                    {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString() : 'Never'}
+                                                    {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
@@ -293,6 +325,14 @@ export default function AdminPage() {
                                                             title="Delete Organization"
                                                         >
                                                             <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRestore(org)}
+                                                            className="p-2 rounded-lg border transition-all hover:bg-green-500/20 hover:border-green-500"
+                                                            style={{ backgroundColor: 'rgba(0, 255, 0, 0.05)', borderColor: 'var(--border-color)', color: 'var(--accent-green)' }}
+                                                            title="Restore Deleted Data"
+                                                        >
+                                                            <Undo2 className="w-4 h-4 text-green-500" />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -358,9 +398,11 @@ export default function AdminPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Expiry (Optional)</label>
+                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Expiry</label>
                                     <input
                                         type="date"
+                                        required
+                                        min={new Date().toISOString().split('T')[0]}
                                         value={newOrg.token_expiry}
                                         onChange={(e) => setNewOrg({ ...newOrg, token_expiry: e.target.value })}
                                         className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
@@ -459,6 +501,65 @@ export default function AdminPage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {/* Delete Confirmation Modal */}
+            {deleteModal.isOpen && deleteModal.org && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
+                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl relative overflow-hidden" style={{ backgroundColor: '#0F1629', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+
+                        {/* Red Glow Effect */}
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900" />
+
+                        <div className="mb-6 text-center">
+                            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
+                                <Trash2 className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h2 className="text-xl font-bold text-white mb-2">Delete Organization?</h2>
+                            <p className="text-sm text-gray-400">
+                                This action is <span className="text-red-400 font-semibold">irreversible</span>.
+                                It will permanently destroy <strong>{deleteModal.org.name}</strong> and all associated agents, users, and events.
+                            </p>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-gray-500">
+                                Type <span className="text-white select-all">{deleteModal.org.name}</span> to confirm
+                            </label>
+                            <input
+                                type="text"
+                                value={deleteModal.inputValue}
+                                onChange={(e) => setDeleteModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                                className="w-full px-4 py-3 rounded-xl border bg-black/40 focus:outline-none transition-all text-sm font-mono text-center"
+                                style={{
+                                    borderColor: deleteModal.inputValue === deleteModal.org.name ? 'var(--accent-red)' : 'var(--border-color)',
+                                    color: 'var(--text-primary)'
+                                }}
+                                placeholder={deleteModal.org.name}
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setDeleteModal({ isOpen: false, org: null, inputValue: '' })}
+                                className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5 text-gray-400 hover:text-white"
+                                style={{ borderColor: 'var(--border-color)' }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                disabled={deleteModal.inputValue !== deleteModal.org.name}
+                                className={`flex-1 py-3 rounded-xl font-bold text-white transition-all shadow-lg ${deleteModal.inputValue === deleteModal.org.name
+                                    ? 'bg-gradient-to-r from-red-600 to-red-800 hover:shadow-red-900/40 transform hover:scale-[1.02]'
+                                    : 'bg-gray-800 cursor-not-allowed opacity-50'
+                                    }`}
+                            >
+                                Delete Forever
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

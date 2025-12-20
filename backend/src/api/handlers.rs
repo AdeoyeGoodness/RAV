@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::db::models::{CreateAgent, CreateEvent, Event};
+use crate::db::models::{CreateAgent, CreateEvent, Event, ActorType};
+use crate::services::audit::log_audit;
 use crate::api::auth::Claims;
 use crate::AppState;
 
@@ -18,6 +19,8 @@ use crate::AppState;
 pub struct EventQuery {
     pub agent_id: Option<String>,
     pub event_type: Option<String>,
+    pub category: Option<String>,
+    pub severity: Option<String>,
     pub start_time: Option<chrono::DateTime<Utc>>,
     pub end_time: Option<chrono::DateTime<Utc>>,
     pub limit: Option<i64>,
@@ -57,8 +60,8 @@ pub async fn ingest_events(
     for event in events {
         let result = sqlx::query!(
             r#"
-            INSERT INTO events (id, organization_id, agent_id, event_type, timestamp, metadata, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO events (id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
             Uuid::new_v4(),
             org_id,
@@ -66,6 +69,8 @@ pub async fn ingest_events(
             event.event_type,
             event.timestamp,
             &event.metadata,
+            event.severity.as_deref().unwrap_or("low"),
+            event.category.as_deref().unwrap_or("system"),
             Utc::now()
         )
         .execute(pool)
@@ -107,24 +112,32 @@ pub async fn query_events(
 
     let limit = params.limit.unwrap_or(100);
     
-    let events = if let Some(agent_id) = &params.agent_id {
-        sqlx::query_as::<_, Event>(
-            "SELECT id, organization_id, agent_id, event_type, timestamp, metadata, created_at FROM events WHERE agent_id = $1 AND organization_id = $2 AND deleted_at IS NULL ORDER BY timestamp DESC LIMIT $3"
-        )
-        .bind(agent_id)
-        .bind(target_org_id)
-        .bind(limit)
-        .fetch_all(pool)
-        .await
-    } else {
-        sqlx::query_as::<_, Event>(
-            "SELECT id, organization_id, agent_id, event_type, timestamp, metadata, created_at FROM events WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY timestamp DESC LIMIT $2"
-        )
-        .bind(target_org_id)
-        .bind(limit)
-        .fetch_all(pool)
-        .await
-    }
+    let events = sqlx::query_as::<_, Event>(
+        r#"
+        SELECT id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, created_at 
+        FROM events 
+        WHERE organization_id = $1 
+          AND ($2::text IS NULL OR agent_id = $2)
+          AND ($3::text IS NULL OR event_type = $3)
+          AND ($4::text IS NULL OR category = $4)
+          AND ($5::text IS NULL OR severity = $5)
+          AND ($6::timestamptz IS NULL OR timestamp >= $6)
+          AND ($7::timestamptz IS NULL OR timestamp <= $7)
+          AND deleted_at IS NULL 
+        ORDER BY timestamp DESC 
+        LIMIT $8
+        "#
+    )
+    .bind(target_org_id)
+    .bind(&params.agent_id)
+    .bind(&params.event_type)
+    .bind(&params.category)
+    .bind(&params.severity)
+    .bind(params.start_time)
+    .bind(params.end_time)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
     .map_err(|e| {
         tracing::error!("Failed to query events: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -178,6 +191,11 @@ pub async fn enroll_agent(
     }
 
     // 2. Enroll agent (Insert or update seen timestamp)
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!("Enrollment: Failed to start transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     sqlx::query!(
         r#"
         INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at)
@@ -196,10 +214,35 @@ pub async fn enroll_agent(
         Utc::now(),
         Utc::now()
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Enrollment: Failed to insert/update agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Audit Log for Enrollment
+    log_audit(
+        &mut tx,
+        ActorType::System, // Enrollment is a SYSTEM action authorized by a token
+        None, 
+        Some(org_info.id),
+        "AGENT_ENROLLED",
+        "AGENT",
+        Some(payload.agent_id.clone()),
+        serde_json::json!({ 
+            "hostname": payload.hostname,
+            "fingerprint": payload.hardware_fingerprint 
+        }),
+        None, // IP TODO: Extract from headers if possible (needs request parts)
+        None
+    ).await.map_err(|e| {
+        tracing::error!("Enrollment: Failed to audit log: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Enrollment: Failed to commit transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 

@@ -12,6 +12,7 @@ use tracing::info;
 
 pub mod api;
 pub mod db;
+pub mod services;
 mod config;
 
 use api::handlers;
@@ -77,6 +78,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/admin/stats", get(api::admin::get_platform_stats))
         .route("/api/v1/admin/health", get(api::admin::get_system_health))
         .route("/api/v1/admin/organizations/:id", delete(api::admin::delete_organization))
+        .route("/api/v1/admin/organizations/:id/restore", post(api::admin::restore_organization_data))
+        .route("/api/v1/admin/audits", get(api::admin::list_audit_logs))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))

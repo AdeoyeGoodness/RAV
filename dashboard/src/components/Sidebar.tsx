@@ -1,15 +1,17 @@
-'use client'
-
 import { useState, useEffect } from 'react'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getSystemHealth } from '@/lib/api'
 
 export default function Sidebar() {
+  const pathname = usePathname()
   const { user, logout, isLoading } = useAuth()
   const [expandedTeams, setExpandedTeams] = useState<string[]>(['ProductStudio'])
   const [expandedWorkspace, setExpandedWorkspace] = useState<string[]>(['Fireart Studio'])
   const [health, setHealth] = useState<any>(null)
+
+  const isActive = (path: string) => pathname === path
 
   useEffect(() => {
     if (user?.role === 'super_admin') {
@@ -44,6 +46,18 @@ export default function Sidebar() {
     )
   }
 
+  const activeStyle = {
+    background: 'linear-gradient(to right, rgba(108, 92, 231, 0.3), rgba(0, 217, 255, 0.2))',
+    borderColor: 'var(--accent-cyan)',
+    color: 'var(--text-primary)'
+  }
+
+  const inactiveStyle = {
+    color: 'var(--text-secondary)',
+    backgroundColor: 'transparent',
+    borderColor: 'transparent'
+  }
+
   return (
     <div className="w-64 h-screen fixed left-0 top-0 overflow-y-auto transition-colors" style={{ backgroundColor: 'var(--bg-sidebar)', borderRight: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
       <div className="p-6">
@@ -56,10 +70,23 @@ export default function Sidebar() {
         </div>
 
         {/* Main Navigation */}
-        <nav className="space-y-2 mb-8">
-          <a href="/" className="flex items-center px-4 py-3 rounded-lg border transition-all cyber-glow-purple" style={{ background: 'linear-gradient(to right, rgba(108, 92, 231, 0.3), rgba(0, 217, 255, 0.2))', borderColor: 'var(--accent-cyan)', color: 'var(--text-primary)' }}>
-            <Home className="w-5 h-5 mr-3 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
+        <nav className="space-y-1 mb-8">
+          <a
+            href="/"
+            className={`flex items-center px-4 py-3 rounded-lg border transition-all ${isActive('/') ? 'cyber-glow-purple shadow-lg shadow-cyan-500/10' : 'hover:bg-white/5'}`}
+            style={isActive('/') ? activeStyle : inactiveStyle}
+          >
+            <Home className="w-5 h-5 mr-3 transition-colors" style={{ color: isActive('/') ? 'var(--accent-cyan)' : 'inherit' }} />
             <span className="font-medium">Home</span>
+          </a>
+
+          <a
+            href="/telemetry"
+            className={`flex items-center px-4 py-3 rounded-lg border transition-all ${isActive('/telemetry') ? 'cyber-glow-purple shadow-lg shadow-cyan-500/10' : 'hover:bg-white/5'}`}
+            style={isActive('/telemetry') ? activeStyle : inactiveStyle}
+          >
+            <Activity className="w-5 h-5 mr-3 transition-colors" style={{ color: isActive('/telemetry') ? 'var(--accent-cyan)' : 'inherit' }} />
+            <span className="font-medium">Telemetry</span>
           </a>
 
           {isLoading ? (
@@ -84,15 +111,25 @@ export default function Sidebar() {
               )}
 
               {user?.role === 'super_admin' && (
-                <a href="/admin" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-                  <Settings className="w-5 h-5 mr-3" style={{ color: 'var(--accent-cyan)' }} />
-                  <span className="font-semibold text-white">Management</span>
+                <a
+                  href="/admin"
+                  className={`flex items-center px-4 py-3 rounded-lg border transition-all ${isActive('/admin') ? 'cyber-glow-purple shadow-lg shadow-cyan-500/10' : 'hover:bg-white/5'}`}
+                  style={isActive('/admin') ? activeStyle : inactiveStyle}
+                >
+                  <Settings className="w-5 h-5 mr-3 transition-colors" style={{ color: isActive('/admin') ? 'var(--accent-cyan)' : 'inherit' }} />
+                  <span className="font-semibold">Management</span>
                 </a>
               )}
-              <a href="#" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-                <Bell className="w-5 h-5 mr-3" />
-                <span>Alerts</span>
-              </a>
+              {user?.role === 'super_admin' && (
+                <a
+                  href="/admin/audit"
+                  className={`flex items-center px-4 py-3 rounded-lg border transition-all ${isActive('/admin/audit') ? 'cyber-glow-purple shadow-lg shadow-cyan-500/10' : 'hover:bg-white/5'}`}
+                  style={isActive('/admin/audit') ? activeStyle : inactiveStyle}
+                >
+                  <Shield className="w-5 h-5 mr-3 transition-colors" style={{ color: isActive('/admin/audit') ? 'var(--accent-cyan)' : 'inherit' }} />
+                  <span className="font-semibold">Log Ledger</span>
+                </a>
+              )}
 
               {user?.role === 'super_admin' && (
                 <div className="mt-8 px-4 py-6 rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-transparent shadow-xl shadow-black/20">

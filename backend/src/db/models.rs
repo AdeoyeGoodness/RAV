@@ -35,6 +35,8 @@ pub struct Event {
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub metadata: serde_json::Value,
+    pub severity: String,
+    pub category: String,
     pub created_at: DateTime<Utc>,
 }
 
@@ -45,12 +47,13 @@ pub struct CreateEvent {
     pub timestamp: DateTime<Utc>,
     pub agent_id: String,
     pub metadata: serde_json::Value,
+    pub severity: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateAgent {
     pub agent_id: String,
-    pub hardware_fingerprint: String,
     pub hardware_fingerprint: String,
     pub enrollment_token: String,
     pub hostname: Option<String>,
@@ -60,7 +63,6 @@ pub struct CreateAgent {
 pub struct Heartbeat {
     pub agent_id: String,
     pub hardware_fingerprint: String,
-    pub timestamp: DateTime<Utc>,
     pub timestamp: DateTime<Utc>,
     pub version: String,
     pub hostname: Option<String>,
@@ -109,3 +111,39 @@ pub struct UserResponse {
     pub full_name: Option<String>,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "actor_type", rename_all = "snake_case")]
+pub enum ActorType {
+    SuperAdmin,
+    OrgAdmin,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuditLog {
+    pub id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub actor_type: ActorType,
+    pub actor_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub action_type: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAuditLog {
+    pub actor_type: ActorType,
+    pub actor_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub action_type: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+}
