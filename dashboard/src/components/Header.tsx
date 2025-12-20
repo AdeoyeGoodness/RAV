@@ -7,7 +7,7 @@ import { useAuth } from '@/contexts/AuthContext'
 
 export default function Header() {
   const { theme, toggleTheme } = useTheme()
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [currentOrgName, setCurrentOrgName] = useState<string | null>(null)
 
@@ -43,24 +43,30 @@ export default function Header() {
     <header className="h-20 flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-10 transition-colors" style={{ backgroundColor: 'var(--bg-header)', borderBottom: '1px solid var(--border-color)' }}>
       <div className="flex items-center space-x-6">
         <div>
-          <h1 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Hi, {getUserDisplayName()}</h1>
-          <div className="flex items-center space-x-2">
-            <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>{user?.role === 'super_admin' ? 'Monitoring Platform Health' : 'Monitor your endpoints'}</p>
-            {user?.role === 'super_admin' && currentOrgName && (
-              <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-left-2 duration-500">
-                <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-[10px] font-bold text-purple-500 uppercase">
-                  Viewing As: {currentOrgName}
-                </span>
-                <button
-                  onClick={resetContext}
-                  className="text-[10px] hover:text-white transition-colors underline"
-                  style={{ color: 'var(--text-tertiary)' }}
-                >
-                  Reset to Global
-                </button>
+          {isLoading ? (
+            <div className="h-6 w-48 bg-gray-700/20 rounded animate-pulse"></div>
+          ) : (
+            <>
+              <h1 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Hi, {getUserDisplayName()}</h1>
+              <div className="flex items-center space-x-2">
+                <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>{user?.role === 'super_admin' ? 'Monitoring Platform Health' : 'Monitor your endpoints'}</p>
+                {user?.role === 'super_admin' && currentOrgName && (
+                  <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-left-2 duration-500">
+                    <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-[10px] font-bold text-purple-500 uppercase">
+                      Viewing As: {currentOrgName}
+                    </span>
+                    <button
+                      onClick={resetContext}
+                      className="text-[10px] hover:text-white transition-colors underline"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      Reset to Global
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -107,11 +113,24 @@ export default function Header() {
           )}
         </button>
         <div className="text-right">
-          <p className="text-sm font-medium transition-colors" style={{ color: 'var(--text-primary)' }}>{getUserDisplayName()}</p>
-          <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>{getRoleBadge()}</p>
+          {isLoading ? (
+            <div className="space-y-1">
+              <div className="h-4 w-24 bg-gray-700/20 rounded animate-pulse ml-auto"></div>
+              <div className="h-3 w-16 bg-gray-700/20 rounded animate-pulse ml-auto"></div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm font-medium transition-colors" style={{ color: 'var(--text-primary)' }}>{getUserDisplayName()}</p>
+              <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>{getRoleBadge()}</p>
+            </>
+          )}
         </div>
         <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold cyber-glow shadow-lg" style={{ background: 'linear-gradient(to bottom right, var(--accent-cyan), var(--accent-purple))' }}>
-          {getUserDisplayName().charAt(0).toUpperCase()}
+          {isLoading ? (
+            <div className="w-full h-full rounded-full bg-white/10 animate-pulse"></div>
+          ) : (
+            getUserDisplayName().charAt(0).toUpperCase()
+          )}
         </div>
       </div>
     </header>

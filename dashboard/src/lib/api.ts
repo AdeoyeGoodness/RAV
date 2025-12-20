@@ -29,8 +29,10 @@ api.interceptors.request.use((config) => {
 export interface Organization {
   id: string
   name: string
-  license_key: string
+  enrollment_token: string
   status: string
+  max_agents: number
+  token_expiry: string | null
   created_at: string
   updated_at: string
 }
@@ -59,7 +61,7 @@ export interface Agent {
   agent_id: string
   hardware_fingerprint: string
   last_seen: string
-  license_expiry: string | null
+  token_expiry: string | null
   created_at: string
   updated_at: string
 }
@@ -78,10 +80,10 @@ export async function getAgents(): Promise<Agent[]> {
   return response.data
 }
 
-export async function registerAgent(agent: {
+export async function enrollAgent(agent: {
   agent_id: string
   hardware_fingerprint: string
-  license_key: string
+  enrollment_token: string
 }): Promise<void> {
   await api.post('/api/v1/agents/enroll', agent)
 }
@@ -143,13 +145,22 @@ export async function getOrganizations(): Promise<Organization[]> {
   return response.data
 }
 
-export async function createOrganization(org: { name: string, license_key: string }): Promise<Organization> {
+export async function createOrganization(org: { name: string, enrollment_token: string, max_agents?: number, token_expiry?: string }): Promise<Organization> {
   const response = await api.post('/api/v1/admin/organizations', org)
   return response.data
 }
 
 export async function updateOrganizationStatus(orgId: string, status: string): Promise<void> {
   await api.patch(`/api/v1/admin/organizations/${orgId}/status`, { status })
+}
+
+export async function updateOrganization(orgId: string, org: { name?: string, max_agents?: number, token_expiry?: string, status?: string }): Promise<Organization> {
+  const response = await api.patch(`/api/v1/admin/organizations/${orgId}`, org)
+  return response.data
+}
+
+export async function deleteOrganization(orgId: string): Promise<void> {
+  await api.delete(`/api/v1/admin/organizations/${orgId}`)
 }
 
 // Auth APIs

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 use crate::config::Config;
 
@@ -91,18 +92,39 @@ impl SyncManager {
         }
     }
 
-    async fn enroll_agent(&self) -> Result<()> {
-        let agent_id = self.config.agent.agent_id.as_deref()
-            .unwrap_or("unknown");
-        let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref()
-            .unwrap_or("unknown");
-        let license_key = self.config.backend.license_key.as_deref()
-            .ok_or_else(|| anyhow::anyhow!("No license key provided for enrollment"))?;
+    fn get_hardware_fingerprint(&self) -> String {
+        self.config.agent.hardware_fingerprint.as_deref()
+            .unwrap_or("unknown").to_string()
+    }
+
+    pub async fn enroll_agent(&self) -> Result<(String, String)> {
+        let agent_id = {
+            let config = self.config.agent.clone();
+            config.agent_id.unwrap_or_else(|| Uuid::new_v4().to_string())
+        };
+
+        // HARDENING: Check for existing lock-in
+        let existing_org_id = {
+            let config = self.config.agent.clone();
+            config.organization_id
+        };
+        
+        if let Some(org_id) = existing_org_id {
+            // FIX: Ensure internal state is updated even if loading from config
+            let mut org_guard = self.organization_id.lock().await;
+            *org_guard = Some(org_id.clone());
+            info!("Agent is already locked to Organization: {}. Skipping enrollment.", org_id);
+            return Ok((agent_id, org_id));
+        }
+
+        let hw_fingerprint = self.get_hardware_fingerprint();
+        let enrollment_token = self.config.backend.enrollment_token.as_deref()
+            .ok_or_else(|| anyhow::anyhow!("No enrollment token provided for technical onboarding"))?;
 
         let enrollment = serde_json::json!({
             "agent_id": agent_id,
             "hardware_fingerprint": hw_fingerprint,
-            "license_key": license_key,
+            "enrollment_token": enrollment_token,
         });
 
         info!("Attempting enrollment for agent {}...", agent_id);
@@ -126,15 +148,16 @@ impl SyncManager {
 
         let result: serde_json::Value = response.json().await?;
         let org_id = result.get("organization_id").and_then(|v| v.as_str())
-            .context("Server did not return organization_id")?;
+            .context("Server did not return organization_id")?
+            .to_string();
         let org_name = result.get("organization_name").and_then(|v| v.as_str())
             .unwrap_or("Unknown Org");
 
         let mut org_guard = self.organization_id.lock().await;
-        *org_guard = Some(org_id.to_string());
+        *org_guard = Some(org_id.clone());
         
         info!("SUCCESS: Agent enrolled to Organization: {} ({})", org_name, org_id);
-        Ok(())
+        Ok((agent_id, org_id))
     }
 
     pub async fn sync_events(&self) -> Result<()> {

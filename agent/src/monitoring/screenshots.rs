@@ -241,6 +241,7 @@ async fn upload_screenshot(
     let form = multipart::Form::new()
         .text("file_id", file_id.to_string())
         .text("file_name", file_name.clone())
+        .text("agent_id", config.agent.agent_id.clone().unwrap_or_default())
         .text("file_path", format!("screenshot://{}", file_id))
         .text("file_size", image_data.len().to_string())
         .part(

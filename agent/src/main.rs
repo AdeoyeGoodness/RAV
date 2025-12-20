@@ -3,18 +3,19 @@ use std::sync::Arc;
 use tokio::signal;
 use tracing::{info, error, warn};
 
-mod config;
-mod encryption;
-mod sync;
-mod monitoring;
-mod service;
+pub mod config;
+pub mod encryption;
+pub mod sync;
+pub mod monitoring;
+pub mod service;
+pub mod agent_logic;
 
 use config::Config;
 use sync::SyncManager;
+use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Initialize logging
+fn main() -> Result<()> {
+    // Initialize logging (Basic for now)
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -22,216 +23,154 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    info!("RAV Agent starting...");
-
-    // 1. Basic CLI argument parsing (Stateless enrollment)
+    // 1. CLI Argument Parsing
     let args: Vec<String> = std::env::args().collect();
-    let mut enroll_token = None;
+    let mut cli_token = None;
+    let mut cli_server = None;
+    let mut install_flag = false;
+    let mut uninstall_flag = false;
+
     for i in 0..args.len() {
-        if args[i] == "--enroll" || args[i] == "--license-key" {
+        if args[i] == "--enroll" || args[i] == "--enrollment-token" {
             if i + 1 < args.len() {
-                enroll_token = Some(args[i + 1].clone());
+                cli_token = Some(args[i + 1].clone());
             }
+        }
+        if args[i] == "--server" {
+            if i + 1 < args.len() {
+                cli_server = Some(args[i + 1].clone());
+            }
+        }
+        
+        // Implicitly install if enrolling? User said: "Runs once... Installs service... Exits"
+        // Let's make it implicit if enrolling.
+        if args[i] == "--install" {
+            install_flag = true;
+        }
+        if args[i] == "--uninstall" {
+            uninstall_flag = true;
         }
     }
 
-    // Load configuration
-    let mut config = Config::load()?;
-    
-    // If enrollment token was passed via CLI, update the config
-    if let Some(token) = enroll_token {
-        info!("Received enrollment token from CLI. Updating configuration...");
-        config.backend.license_key = Some(token);
-        // We will clear the agent_id to force a fresh enrollment if the token changed
-        config.agent.agent_id = None;
-        config.save()?;
+    // 2. Handle Explicit CLI Commands (Install/Enroll/Uninstall)
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag {
+        info!("RAV Agent: Processing CLI commands...");
+
+        // Uninstall?
+        if uninstall_flag {
+            #[cfg(windows)]
+            service::windows::uninstall_service()?;
+            return Ok(());
+        }
+
+        let mut config = Config::load()?;
+        let mut dirty = false;
+
+        // Update URL
+        if let Some(url) = cli_server {
+            info!("Updated Backend URL: {}", url);
+            config.backend.url = url;
+            dirty = true;
+        }
+
+        // Handle Enrollment
+        if let Some(token) = cli_token {
+            info!("Enrollment token provided. Configuring...");
+            config.backend.enrollment_token = Some(token);
+            config.agent.agent_id = None;
+            config.agent.organization_id = None;
+            
+            // We need async for enrollment
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                // Initialize strict dependency chain just for enrollment
+                // Use temp config in Arc
+                let config_arc = Arc::new(config.clone());
+                encryption::initialize(&config_arc)?;
+                let sync_manager = Arc::new(SyncManager::new(config_arc.clone()).await?);
+                
+                info!("Connecting to backend for enrollment...");
+                match sync_manager.enroll_agent().await {
+                    Ok((agent_id, org_id)) => {
+                        config.agent.organization_id = Some(org_id);
+                        config.agent.agent_id = Some(agent_id);
+                        config.backend.enrollment_token = None; // Security wipe
+                        config.save()?;
+                        info!("Enrollment Successful! Config persisted.");
+                        Ok(())
+                    },
+                    Err(e) => Err(e),
+                }
+            })?;
+        } else if dirty {
+            config.save()?;
+        }
+
+        // Install Service (Implicit or Explicit)
+        // If we enrolled successfully (or just flags passed), we proceed to install.
+        // User scenario: `rav-agent.exe --server... --enroll...` -> Install service.
+        #[cfg(windows)]
+        {
+            info!("Installing Windows Service...");
+            if let Err(e) = service::windows::install_service() {
+               // Ignore if already exists?
+               tracing::warn!("Service installation note: {}", e);
+            }
+            
+            info!("Starting Windows Service...");
+            if let Err(e) = service::windows::start_service() {
+                tracing::warn!("Service start note: {}", e);
+            }
+        }
+
+        info!("Agent setup complete. Exiting.");
+        return Ok(());
     }
 
-    // Generate agent_id and hardware_fingerprint if not set
-    let mut config_changed = false;
-    if config.agent.agent_id.is_none() {
-        let agent_id = generate_agent_id();
-        config.agent.agent_id = Some(agent_id.clone());
-        info!("Assigned agent_id: {}", agent_id);
-        config_changed = true;
+    // 3. No Flags: Try run as Service
+    #[cfg(windows)]
+    match service::windows::run_as_service() {
+        Ok(_) => {
+            // Service loop finished (stopped by SCM)
+            return Ok(());
+        },
+        Err(_) => {
+            // Failed to run as service -> We are running in Console Mode
+            // Check if service is already running (to avoid duplicate)
+            if let Ok(true) = service::windows::is_service_running() {
+                println!("RAV Agent is already running as a background service.");
+                return Ok(());
+            }
+            
+            // Debug / Foreground Mode
+            println!("Starting RAV Agent in Console Mode (Press Ctrl+C to stop)...");
+            let config = Config::load()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            
+            // Run until Ctrl+C
+            rt.block_on(async {
+                 agent_logic::run_agent(config, async {
+                     let _ = tokio::signal::ctrl_c().await;
+                 }).await
+            })?;
+        }
     }
-    
-    if config.agent.hardware_fingerprint.is_none() {
-        let hw_fingerprint = generate_hardware_fingerprint();
-        config.agent.hardware_fingerprint = Some(hw_fingerprint.clone());
-        info!("Generated hardware_fingerprint: {}", hw_fingerprint);
-        config_changed = true;
+
+    #[cfg(not(windows))]
+    {
+        // Non-Windows fallback (Linux/Mac) - Just run standard
+        // (Assuming similar service logic would be implemented in service::linux/macos eventually)
+        println!("Starting RAV Agent (Non-Windows)...");
+        let config = Config::load()?;
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(async {
+             agent_logic::run_agent(config, async {
+                 let _ = tokio::signal::ctrl_c().await;
+             }).await
+        })?;
     }
-    
-    // Save config if we generated new IDs or enrolled
-    if config_changed {
-        config.save()?;
-        info!("Configuration persistence updated");
-    }
-    
-    let config = Arc::new(config);
-    
-    // Validate if we have a license key
-    if config.backend.license_key.is_none() {
-        error!("CRITICAL: Agent is not enrolled! Please run with --enroll <TOKEN>");
-        return Err(anyhow::anyhow!("Agent not enrolled"));
-    }
-    info!("Configuration loaded");
 
-    // Initialize encryption
-    encryption::initialize(&config)?;
-    info!("Encryption initialized");
-
-    // Initialize sync manager
-    let sync_manager = Arc::new(SyncManager::new(config.clone()).await?);
-    info!("Sync manager initialized");
-
-    // Start monitoring modules
-    let monitoring_handle = start_monitoring(config.clone(), sync_manager.clone()).await?;
-    info!("Monitoring modules started");
-
-    // Start sync task
-    let sync_handle = {
-        let sync_manager = sync_manager.clone();
-        tokio::spawn(async move {
-            sync_manager.run_sync_loop().await;
-        })
-    };
-
-    info!("RAV Agent running in background. Press Ctrl+C to stop.");
-    info!("Note: Agent runs silently. Use the Dashboard at http://localhost:3000 to view data.");
-
-    // Wait for shutdown signal
-    signal::ctrl_c().await?;
-    info!("Shutdown signal received, stopping agent...");
-
-    // Graceful shutdown
-    monitoring_handle.abort();
-    sync_handle.abort();
-
-    info!("RAV Agent stopped");
     Ok(())
 }
 
-fn generate_agent_id() -> String {
-    // Use hostname as base for agent ID
-    let hostname = std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "unknown".to_string());
-    
-    // Generate a unique ID based on hostname and UUID
-    use uuid::Uuid;
-    let uuid_short = Uuid::new_v4().to_string().split('-').next().unwrap().to_string();
-    format!("{}-{}", hostname, uuid_short)
-}
-
-fn generate_hardware_fingerprint() -> String {
-    use sha2::{Sha256, Digest};
-    use std::process::Command;
-    
-    let mut hasher = Sha256::new();
-    
-    // Add hostname
-    if let Ok(hostname) = std::env::var("COMPUTERNAME") {
-        hasher.update(hostname.as_bytes());
-    }
-    
-    // Add username
-    if let Ok(username) = std::env::var("USERNAME") {
-        hasher.update(username.as_bytes());
-    }
-    
-    // Add system UUID (Windows)
-    #[cfg(windows)]
-    {
-        if let Ok(output) = Command::new("wmic")
-            .args(&["csproduct", "get", "uuid"])
-            .output()
-        {
-            if let Ok(uuid_str) = String::from_utf8(output.stdout) {
-                // Extract UUID from wmic output
-                for line in uuid_str.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() && line != "UUID" && !line.contains("---") {
-                        hasher.update(line.as_bytes());
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Add processor ID
-        if let Ok(output) = Command::new("wmic")
-            .args(&["cpu", "get", "ProcessorId"])
-            .output()
-        {
-            if let Ok(proc_id) = String::from_utf8(output.stdout) {
-                for line in proc_id.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() && line != "ProcessorId" && !line.contains("---") {
-                        hasher.update(line.as_bytes());
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    
-    format!("{:x}", hasher.finalize())
-}
-
-async fn start_monitoring(
-    config: Arc<Config>,
-    sync_manager: Arc<SyncManager>,
-) -> Result<tokio::task::JoinHandle<()>> {
-    let handle = tokio::spawn(async move {
-        // Start all monitoring modules as separate concurrent tasks
-        // Each runs in its own infinite loop, so they need to be spawned separately
-        
-        // Start USB monitoring (runs in infinite loop)
-        let config_usb = config.clone();
-        let sync_usb = sync_manager.clone();
-        tokio::spawn(async move {
-            if let Err(e) = monitoring::usb::start_monitoring(config_usb, sync_usb).await {
-                error!("USB monitoring error: {}", e);
-            }
-        });
-
-        // Start network monitoring (runs in infinite loop)
-        let config_network = config.clone();
-        let sync_network = sync_manager.clone();
-        tokio::spawn(async move {
-            if let Err(e) = monitoring::network::start_monitoring(config_network, sync_network).await {
-                error!("Network monitoring error: {}", e);
-            }
-        });
-
-        // Start screenshot monitoring (runs in infinite loop)
-        let config_screenshots = config.clone();
-        let sync_screenshots = sync_manager.clone();
-        info!("Attempting to start screenshot monitoring...");
-        tokio::spawn(async move {
-            if let Err(e) = monitoring::screenshots::start_monitoring(config_screenshots, sync_screenshots).await {
-                error!("Screenshot monitoring error: {}", e);
-            }
-        });
-
-        // Start extension server (HTTP endpoint for browser extension)
-        let config_extension = config.clone();
-        let sync_extension = sync_manager.clone();
-        info!("Starting extension server on http://127.0.0.1:8089");
-        tokio::spawn(async move {
-            if let Err(e) = monitoring::extension_server::start_extension_server(config_extension, sync_extension).await {
-                error!("Extension server error: {}", e);
-            }
-        });
-
-        // Keep this task alive forever (all monitoring tasks run in background)
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
-        }
-    });
-
-    Ok(handle)
-}
 

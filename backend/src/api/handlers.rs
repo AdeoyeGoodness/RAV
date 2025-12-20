@@ -139,10 +139,15 @@ pub async fn enroll_agent(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let pool = state.db.pool();
 
-    // 1. Look up organization by license key (enrollment token)
+    // 1. Look up organization by enrollment token
     let org = sqlx::query!(
-        "SELECT id, name FROM organizations WHERE license_key = $1 AND status = 'active'",
-        payload.license_key
+        r#"
+        SELECT id, name, token_expiry, max_agents,
+        (SELECT COUNT(*) FROM agents WHERE organization_id = organizations.id AND deleted_at IS NULL) as "current_agents!"
+        FROM organizations 
+        WHERE enrollment_token = $1 AND status = 'active'
+        "#,
+        payload.enrollment_token
     )
     .fetch_optional(pool)
     .await
@@ -152,9 +157,25 @@ pub async fn enroll_agent(
     })?;
 
     let org_info = org.ok_or_else(|| {
-        tracing::warn!("Enrollment attempt with invalid/inactive token: {}", payload.license_key);
+        tracing::warn!("Enrollment attempt with invalid/inactive token: {}", payload.enrollment_token);
         StatusCode::UNAUTHORIZED
     })?;
+
+    // HARDENING: Check token expiry
+    if let Some(expiry) = org_info.token_expiry {
+        if Utc::now() > expiry {
+            tracing::warn!("Enrollment attempt with expired token for Org: {}", org_info.name);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    // HARDENING: Check max agents
+    let current_count = org_info.current_agents;
+    let max_agents = org_info.max_agents.unwrap_or(1000);
+    if current_count >= max_agents as i64 {
+        tracing::warn!("Enrollment blocked: Org {} reached limit of {} agents", org_info.name, max_agents);
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     // 2. Enroll agent (Insert or update seen timestamp)
     sqlx::query!(

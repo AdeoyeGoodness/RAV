@@ -41,27 +41,45 @@ async fn monitor_connections(
     config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
-    let connections = get_active_connections().await?;
+    let mut previous_connections: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for conn in connections {
-        let event = Event {
-            event_type: "network_connection".to_string(),
-            timestamp: Utc::now(),
-            agent_id: config.agent.agent_id.clone().unwrap_or_default(),
-            metadata: json!({
-                "local_ip": conn.local_ip,
-                "local_port": conn.local_port,
-                "remote_ip": conn.remote_ip,
-                "remote_port": conn.remote_port,
-                "protocol": conn.protocol,
-                "process_name": conn.process_name,
-                "process_id": conn.process_id,
-            }),
-        };
-        sync_manager.queue_event(event);
+    loop {
+        // Monitor every 10 seconds
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+        if let Ok(connections) = get_active_connections().await {
+            let mut current_hashes = std::collections::HashSet::new();
+
+            for conn in connections {
+                // Create a unique signature for the connection
+                let conn_hash = format!("{}:{}-{}:{}", conn.local_ip, conn.local_port, conn.remote_ip, conn.remote_port);
+                
+                if !previous_connections.contains(&conn_hash) {
+                    // This is a NEW connection
+                    let event = Event {
+                        event_type: "network_connection".to_string(),
+                        timestamp: Utc::now(),
+                        agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                        metadata: json!({
+                            "local_ip": conn.local_ip,
+                            "local_port": conn.local_port,
+                            "remote_ip": conn.remote_ip,
+                            "remote_port": conn.remote_port,
+                            "protocol": conn.protocol,
+                            "process_name": conn.process_name,
+                            "process_id": conn.process_id,
+                            "status": "ESTABLISHED",
+                        }),
+                    };
+                    sync_manager.queue_event(event);
+                }
+                current_hashes.insert(conn_hash);
+            }
+            
+            // Update state
+            previous_connections = current_hashes;
+        }
     }
-
-    Ok(())
 }
 
 #[derive(Debug)]

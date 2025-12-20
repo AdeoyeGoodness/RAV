@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { getSystemHealth } from '@/lib/api'
 
 export default function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, isLoading } = useAuth()
   const [expandedTeams, setExpandedTeams] = useState<string[]>(['ProductStudio'])
   const [expandedWorkspace, setExpandedWorkspace] = useState<string[]>(['Fireart Studio'])
   const [health, setHealth] = useState<any>(null)
@@ -61,71 +61,82 @@ export default function Sidebar() {
             <Home className="w-5 h-5 mr-3 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
             <span className="font-medium">Home</span>
           </a>
-          {user?.role !== 'super_admin' && (
-            <>
-              <a href="/devices" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-                <Monitor className="w-5 h-5 mr-3" />
-                <span>Devices</span>
-              </a>
-              <a href="/documents" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-                <FileText className="w-5 h-5 mr-3" />
-                <span>Documents</span>
-              </a>
-            </>
-          )}
 
-          {user?.role === 'super_admin' && (
-            <a href="/admin" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-              <Settings className="w-5 h-5 mr-3" style={{ color: 'var(--accent-cyan)' }} />
-              <span className="font-semibold text-white">Management</span>
-            </a>
-          )}
-          <a href="#" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
-            <Bell className="w-5 h-5 mr-3" />
-            <span>Alerts</span>
-          </a>
-
-          {user?.role === 'super_admin' && (
-            <div className="mt-8 px-4 py-6 rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-transparent shadow-xl shadow-black/20">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-widest text-cyan-500/80">Platform Health</span>
-                <div className="flex items-center">
-                  <div className={`w-2 h-2 rounded-full ${health?.database_connected ? 'bg-[#00FF88]' : 'bg-red-500'} animate-pulse mr-2`} />
-                  <span className={`text-[10px] ${health?.database_connected ? 'text-[#00FF88]/80' : 'text-red-500/80'} font-mono`}>
-                    {health?.status || 'LOADING...'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center text-[11px] text-gray-400 mb-1">
-                    <span>CPU LOAD</span>
-                    <span>{health ? `${health.cpu_load.toFixed(1)}%` : '--%'}</span>
-                  </div>
-                  <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-cyan-500/40 transition-all duration-1000"
-                      style={{ width: health ? `${health.cpu_load}%` : '0%' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-white/5">
-                  <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-tighter">Global Orchestrator</p>
-                  <div className="flex items-center text-xs text-white/90">
-                    <div className="p-1 px-2 rounded bg-purple-500/10 text-purple-400 mr-2 text-[10px] font-mono border border-purple-500/20">
-                      {health?.orchestrator_version || 'v1.0.0'}
-                    </div>
-                    <span className="text-gray-400">Stable</span>
-                  </div>
-                </div>
-              </div>
+          {isLoading ? (
+            <div className="px-4 space-y-4 py-2">
+              <div className="h-10 bg-white/5 rounded-lg animate-pulse"></div>
+              <div className="h-10 bg-white/5 rounded-lg animate-pulse"></div>
+              <div className="h-10 bg-white/5 rounded-lg animate-pulse"></div>
             </div>
+          ) : (
+            <>
+              {user?.role !== 'super_admin' && (
+                <>
+                  <a href="/devices" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
+                    <Monitor className="w-5 h-5 mr-3" />
+                    <span>Devices</span>
+                  </a>
+                  <a href="/documents" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
+                    <FileText className="w-5 h-5 mr-3" />
+                    <span>Documents</span>
+                  </a>
+                </>
+              )}
+
+              {user?.role === 'super_admin' && (
+                <a href="/admin" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
+                  <Settings className="w-5 h-5 mr-3" style={{ color: 'var(--accent-cyan)' }} />
+                  <span className="font-semibold text-white">Management</span>
+                </a>
+              )}
+              <a href="#" className="flex items-center px-4 py-3 rounded-lg transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderColor = 'var(--accent-purple)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}>
+                <Bell className="w-5 h-5 mr-3" />
+                <span>Alerts</span>
+              </a>
+
+              {user?.role === 'super_admin' && (
+                <div className="mt-8 px-4 py-6 rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-transparent shadow-xl shadow-black/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-bold uppercase tracking-widest text-cyan-500/80">Platform Health</span>
+                    <div className="flex items-center">
+                      <div className={`w-2 h-2 rounded-full ${health?.database_connected ? 'bg-[#00FF88]' : 'bg-red-500'} animate-pulse mr-2`} />
+                      <span className={`text-[10px] ${health?.database_connected ? 'text-[#00FF88]/80' : 'text-red-500/80'} font-mono`}>
+                        {health?.status || 'LOADING...'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between items-center text-[11px] text-gray-400 mb-1">
+                        <span>CPU LOAD</span>
+                        <span>{health ? `${health.cpu_load.toFixed(1)}%` : '--%'}</span>
+                      </div>
+                      <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-500/40 transition-all duration-1000"
+                          style={{ width: health ? `${health.cpu_load}%` : '0%' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-white/5">
+                      <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-tighter">Global Orchestrator</p>
+                      <div className="flex items-center text-xs text-white/90">
+                        <div className="p-1 px-2 rounded bg-purple-500/10 text-purple-400 mr-2 text-[10px] font-mono border border-purple-500/20">
+                          {health?.orchestrator_version || 'v1.0.0'}
+                        </div>
+                        <span className="text-gray-400">Stable</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </nav>
 
-        {user?.role !== 'super_admin' && (
+        {!isLoading && user?.role !== 'super_admin' && (
           <>
             {/* Favorites */}
             <div className="mb-8">

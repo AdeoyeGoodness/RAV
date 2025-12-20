@@ -13,7 +13,9 @@ use chrono::Utc;
 #[derive(Debug, Deserialize)]
 pub struct CreateOrganization {
     pub name: String,
-    pub license_key: String,
+    pub enrollment_token: String,
+    pub max_agents: Option<i32>,
+    pub token_expiry: Option<chrono::DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,7 +34,7 @@ pub async fn list_organizations(
     let pool = state.db.pool();
     let orgs = sqlx::query_as!(
         Organization,
-        "SELECT id, name, license_key, status, created_at, updated_at FROM organizations ORDER BY created_at DESC"
+        r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at FROM organizations ORDER BY created_at DESC"#
     )
     .fetch_all(pool)
     .await
@@ -57,18 +59,71 @@ pub async fn create_organization(
     let org = sqlx::query_as!(
         Organization,
         r#"
-        INSERT INTO organizations (id, name, license_key)
-        VALUES ($1, $2, $3)
-        RETURNING id, name, license_key, status, created_at, updated_at
+        INSERT INTO organizations (id, name, enrollment_token, max_agents, token_expiry)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at
         "#,
         Uuid::new_v4(),
         payload.name,
-        payload.license_key
+        payload.enrollment_token,
+        payload.max_agents.unwrap_or(1000),
+        payload.token_expiry
     )
     .fetch_one(pool)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create organization: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(org))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateOrganization {
+    pub name: Option<String>,
+    pub max_agents: Option<i32>,
+    pub token_expiry: Option<chrono::DateTime<Utc>>,
+    pub status: Option<String>,
+}
+
+pub async fn update_organization(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(org_id): Path<Uuid>,
+    Json(payload): Json<UpdateOrganization>,
+) -> Result<Json<Organization>, StatusCode> {
+    if claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let pool = state.db.pool();
+    
+    // Dynamic query update is cleaner, but for now simple coalesce is fine
+    let org = sqlx::query_as!(
+        Organization,
+        r#"
+        UPDATE organizations
+        SET 
+            name = COALESCE($1, name),
+            max_agents = COALESCE($2, max_agents),
+            token_expiry = COALESCE($3, token_expiry),
+            status = COALESCE($4, status),
+            updated_at = $5
+        WHERE id = $6
+        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at
+        "#,
+        payload.name,
+        payload.max_agents,
+        payload.token_expiry,
+        payload.status,
+        Utc::now(),
+        org_id
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update organization: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -187,4 +242,68 @@ pub async fn get_system_health(
         database_connected: db_connected,
         orchestrator_version: env!("CARGO_PKG_VERSION").to_string(),
     }))
+}
+
+pub async fn delete_organization(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(org_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    if claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let pool = state.db.pool();
+
+    // Cascading delete - clean up everything associated with this org
+    // 1. Delete events
+    sqlx::query!("DELETE FROM events WHERE organization_id = $1", org_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization events: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 2. Delete files
+    sqlx::query!("DELETE FROM files WHERE organization_id = $1", org_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization files: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 3. Delete agents
+    sqlx::query!("DELETE FROM agents WHERE organization_id = $1", org_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization agents: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 4. Delete users
+    sqlx::query!("DELETE FROM users WHERE organization_id = $1", org_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization users: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 5. Delete organization
+    let result = sqlx::query!("DELETE FROM organizations WHERE id = $1", org_id)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    Ok(StatusCode::OK)
 }

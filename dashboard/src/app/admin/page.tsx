@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon } from 'lucide-react'
-import { getOrganizations, createOrganization, updateOrganizationStatus, register, Organization } from '@/lib/api'
+import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2 } from 'lucide-react'
+import { getOrganizations, createOrganization, updateOrganizationStatus, deleteOrganization, register, Organization } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
@@ -17,12 +17,13 @@ export default function AdminPage() {
 
     // Org Creation State
     const [isModalOpen, setIsModalOpen] = useState(false)
-    const [newOrg, setNewOrg] = useState({ name: '', license_key: '' })
+    const [newOrg, setNewOrg] = useState({ name: '', enrollment_token: '', max_agents: 1000, token_expiry: '' })
 
     // Admin Creation State
     const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
     const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
     const [newAdmin, setNewAdmin] = useState({ email: '', password: '', full_name: '' })
+    const [copiedTokenIds, setCopiedTokenIds] = useState<Set<string>>(new Set())
 
     useEffect(() => {
         if (user && user.role !== 'super_admin') {
@@ -46,11 +47,15 @@ export default function AdminPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
-            await createOrganization(newOrg)
-            setNewOrg({ name: '', license_key: '' })
+            await createOrganization({
+                ...newOrg,
+                token_expiry: newOrg.token_expiry ? `${newOrg.token_expiry}T23:59:59Z` : undefined
+            })
+            setNewOrg({ name: '', enrollment_token: '', max_agents: 1000, token_expiry: '' })
             setIsModalOpen(false)
             loadData()
         } catch (error) {
+            console.error(error)
             alert('Failed to create organization')
         }
     }
@@ -94,10 +99,54 @@ export default function AdminPage() {
         }
     }
 
+    const handleDelete = async (org: Organization) => {
+        if (!confirm(`Are you sure you want to PERMANENTLY delete "${org.name}"?\n\nThis will remove ALL agents, users, events, and files associated with this organization.\n\nType "DELETE" to confirm.`)) return // Quick simplistic confirm for now, better to use modal but prompt is safer than nothing
+
+        // Actually for now standard confirm is better than "Type DELETE" which requires prompt() - wait prompt() is standard
+        const confirmation = prompt(`Type "DELETE" to confirm permanent deletion of ${org.name}`)
+        if (confirmation !== 'DELETE') return
+
+        try {
+            await deleteOrganization(org.id)
+            loadData()
+        } catch (error) {
+            alert('Failed to delete organization')
+        }
+    }
+
+    const copyToClipboard = (text: string, id: string) => {
+        navigator.clipboard.writeText(text)
+        setCopiedTokenIds(prev => new Set(prev).add(id))
+        setTimeout(() => {
+            setCopiedTokenIds(prev => {
+                const newSet = new Set(prev)
+                newSet.delete(id)
+                return newSet
+            })
+        }, 2000)
+    }
+
+    const generateToken = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+        let token = 'RAV-'
+        for (let i = 0; i < 16; i++) {
+            if (i > 0 && i % 4 === 0) token += '-'
+            token += chars.charAt(Math.floor(Math.random() * chars.length))
+        }
+        setNewOrg(prev => ({ ...prev, enrollment_token: token }))
+    }
+
+    // Auto-generate token when modal opens
+    useEffect(() => {
+        if (isModalOpen) {
+            generateToken()
+        }
+    }, [isModalOpen])
+
     const filteredOrgs = organizations.filter(org =>
         org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        org.license_key.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+        org.enrollment_token.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     return (
         <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -140,7 +189,7 @@ export default function AdminPage() {
                                         <ShieldCheck className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Active Licenses</p>
+                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Active Tokens</p>
                                         <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{organizations.filter(o => o.status === 'active').length}</p>
                                     </div>
                                 </div>
@@ -164,7 +213,7 @@ export default function AdminPage() {
                                 <Search className="w-5 h-5 mr-3" style={{ color: 'var(--text-tertiary)' }} />
                                 <input
                                     type="text"
-                                    placeholder="Filter by name or license key..."
+                                    placeholder="Filter by name or token..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="bg-transparent border-none focus:outline-none w-full text-sm"
@@ -176,9 +225,9 @@ export default function AdminPage() {
                                     <thead>
                                         <tr className="text-left text-xs uppercase tracking-wider" style={{ backgroundColor: 'rgba(255,255,255,0.02)', color: 'var(--text-tertiary)' }}>
                                             <th className="px-6 py-4">Organization Name</th>
-                                            <th className="px-6 py-4">License Key</th>
+                                            <th className="px-6 py-4">Quota</th>
+                                            <th className="px-6 py-4">Expiry</th>
                                             <th className="px-6 py-4">Status</th>
-                                            <th className="px-6 py-4">Created At</th>
                                             <th className="px-6 py-4">Actions</th>
                                         </tr>
                                     </thead>
@@ -200,16 +249,16 @@ export default function AdminPage() {
                                                         <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{org.name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <code className="text-xs px-2 py-1 rounded bg-black/30 font-mono" style={{ color: 'var(--accent-purple)' }}>{org.license_key}</code>
+                                                <td className="px-6 py-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                    {org.max_agents} Agents
+                                                </td>
+                                                <td className="px-6 py-4 text-xs font-mono" style={{ color: org.token_expiry && new Date(org.token_expiry) < new Date() ? 'var(--accent-red)' : 'var(--text-secondary)' }}>
+                                                    {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString() : 'Never'}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                                                         {org.status}
                                                     </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                                                    {new Date(org.created_at).toLocaleDateString()}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center space-x-2">
@@ -235,6 +284,22 @@ export default function AdminPage() {
                                                             style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
                                                         >
                                                             {org.status === 'active' ? 'Pause' : 'Activate'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => copyToClipboard(org.enrollment_token, org.id)}
+                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
+                                                            style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                                            title="Copy Enrollment Token"
+                                                        >
+                                                            {copiedTokenIds.has(org.id) ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(org)}
+                                                            className="p-2 rounded-lg border transition-all hover:bg-red-500/20 hover:border-red-500"
+                                                            style={{ backgroundColor: 'rgba(255, 0, 0, 0.05)', borderColor: 'var(--border-color)', color: 'var(--accent-red)' }}
+                                                            title="Delete Organization"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -266,15 +331,46 @@ export default function AdminPage() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>License Key</label>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Enrollment Token</label>
+                                <div className="relative flex items-center">
+                                    <Key className="absolute left-3 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
                                     <input
                                         type="text"
                                         required
-                                        value={newOrg.license_key}
-                                        onChange={(e) => setNewOrg({ ...newOrg, license_key: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm font-mono"
+                                        value={newOrg.enrollment_token}
+                                        onChange={(e) => setNewOrg({ ...newOrg, enrollment_token: e.target.value })}
+                                        className="w-full pl-10 pr-12 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm font-mono"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={generateToken}
+                                        className="absolute right-3 p-1 rounded-lg hover:bg-white/10 transition-colors"
+                                        title="Regenerate Token"
+                                    >
+                                        <Activity className="w-4 h-4 text-cyan-500" />
+                                    </button>
+                                </div>
+                                <p className="text-[10px] mt-1 text-gray-500">Auto-generated secure token for agent enrollment.</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Max Agents</label>
+                                    <input
+                                        type="number"
+                                        value={newOrg.max_agents}
+                                        onChange={(e) => setNewOrg({ ...newOrg, max_agents: parseInt(e.target.value) })}
+                                        className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
+                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Expiry (Optional)</label>
+                                    <input
+                                        type="date"
+                                        value={newOrg.token_expiry}
+                                        onChange={(e) => setNewOrg({ ...newOrg, token_expiry: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
                                         style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                                     />
                                 </div>

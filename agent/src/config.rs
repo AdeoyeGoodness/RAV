@@ -15,7 +15,7 @@ pub struct Config {
 pub struct BackendConfig {
     pub url: String,
     pub api_key: Option<String>,
-    pub license_key: Option<String>,
+    pub enrollment_token: Option<String>,
     pub sync_interval_seconds: u64,
     pub heartbeat_interval_seconds: u64,
 }
@@ -94,7 +94,7 @@ impl Config {
                 url: std::env::var("BACKEND_URL")
                     .unwrap_or_else(|_| "http://localhost:8080".to_string()),
                 api_key: std::env::var("AGENT_API_KEY").ok(),
-                license_key: std::env::var("AGENT_LICENSE_KEY").ok(),
+                enrollment_token: std::env::var("AGENT_ENROLLMENT_TOKEN").ok(),
                 sync_interval_seconds: std::env::var("AGENT_SYNC_INTERVAL_SECONDS")
                     .ok()
                     .and_then(|s| s.parse().ok())

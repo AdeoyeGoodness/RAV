@@ -73,8 +73,10 @@ async fn main() -> Result<()> {
         .route("/api/v1/admin/organizations", get(api::admin::list_organizations))
         .route("/api/v1/admin/organizations", post(api::admin::create_organization))
         .route("/api/v1/admin/organizations/:id/status", patch(api::admin::update_organization_status))
+        .route("/api/v1/admin/organizations/:id", patch(api::admin::update_organization))
         .route("/api/v1/admin/stats", get(api::admin::get_platform_stats))
         .route("/api/v1/admin/health", get(api::admin::get_system_health))
+        .route("/api/v1/admin/organizations/:id", delete(api::admin::delete_organization))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
@@ -108,4 +110,3 @@ async fn main() -> Result<()> {
 async fn health_check() -> StatusCode {
     StatusCode::OK
 }
-

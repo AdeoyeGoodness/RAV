@@ -7,8 +7,10 @@ use uuid::Uuid;
 pub struct Organization {
     pub id: Uuid,
     pub name: String,
-    pub license_key: String,
+    pub enrollment_token: String,
     pub status: String,
+    pub max_agents: i32,
+    pub token_expiry: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -20,7 +22,7 @@ pub struct Agent {
     pub agent_id: String,
     pub hardware_fingerprint: String,
     pub last_seen: DateTime<Utc>,
-    pub license_expiry: Option<DateTime<Utc>>,
+    pub token_expiry: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -49,7 +51,7 @@ pub struct CreateEvent {
 pub struct CreateAgent {
     pub agent_id: String,
     pub hardware_fingerprint: String,
-    pub license_key: String,
+    pub enrollment_token: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
