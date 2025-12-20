@@ -180,16 +180,18 @@ pub async fn enroll_agent(
     // 2. Enroll agent (Insert or update seen timestamp)
     sqlx::query!(
         r#"
-        INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, last_seen, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (agent_id) DO UPDATE
         SET updated_at = EXCLUDED.updated_at,
-            last_seen = EXCLUDED.last_seen
+            last_seen = EXCLUDED.last_seen,
+            hostname = EXCLUDED.hostname
         "#,
         Uuid::new_v4(),
         org_info.id,
         payload.agent_id,
         payload.hardware_fingerprint,
+        payload.hostname,
         Utc::now(),
         Utc::now(),
         Utc::now()
@@ -235,11 +237,12 @@ pub async fn heartbeat(
     let result = sqlx::query!(
         r#"
         UPDATE agents
-        SET last_seen = $1, updated_at = $2
-        WHERE agent_id = $3 AND organization_id = $4
+        SET last_seen = $1, updated_at = $2, hostname = COALESCE($3, hostname)
+        WHERE agent_id = $4 AND organization_id = $5
         "#,
         heartbeat.timestamp,
         Utc::now(),
+        heartbeat.hostname,
         &heartbeat.agent_id,
         org_id
     )
@@ -275,7 +278,7 @@ pub async fn list_agents(
 
     let agents = sqlx::query(
         r#"
-        SELECT id, organization_id, agent_id, hardware_fingerprint, last_seen, created_at, updated_at
+        SELECT id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at
         FROM agents
         WHERE organization_id = $1 AND deleted_at IS NULL
         ORDER BY last_seen DESC
@@ -297,6 +300,7 @@ pub async fn list_agents(
                 "organization_id": row.get::<Uuid, _>("organization_id"),
                 "agent_id": row.get::<String, _>("agent_id"),
                 "hardware_fingerprint": row.get::<String, _>("hardware_fingerprint"),
+                "hostname": row.get::<Option<String>, _>("hostname"),
                 "last_seen": row.get::<chrono::DateTime<Utc>, _>("last_seen"),
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),

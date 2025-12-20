@@ -60,6 +60,7 @@ export interface Agent {
   organization_id: string
   agent_id: string
   hardware_fingerprint: string
+  hostname: string | null
   last_seen: string
   token_expiry: string | null
   created_at: string

@@ -57,6 +57,9 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 # URL parsing
 url = "2.5"
 
+# Hostname retrieval
+hostname = "0.3"
+
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.6"

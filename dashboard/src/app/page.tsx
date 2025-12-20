@@ -25,26 +25,12 @@ interface PlatformStats {
 
 export default function Home() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
   const [stats, setStats] = useState<PlatformStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [isPlatformView, setIsPlatformView] = useState(false)
-
-  useEffect(() => {
-    const orgId = typeof window !== 'undefined' ? localStorage.getItem('rav_organization_id') : null
-    const isSA = user?.role === 'super_admin' && !orgId
-    setIsPlatformView(isSA)
-
-    if (isSA) {
-      loadPlatformStats()
-    } else {
-      loadAgents()
-      const interval = setInterval(loadAgents, 30000)
-      return () => clearInterval(interval)
-    }
-  }, [user])
 
   const loadPlatformStats = async () => {
     try {
@@ -66,6 +52,24 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
+  }
+
+  useEffect(() => {
+    const orgId = typeof window !== 'undefined' ? localStorage.getItem('rav_organization_id') : null
+    const isSA = user?.role === 'super_admin' && !orgId
+    setIsPlatformView(isSA)
+
+    if (isSA) {
+      loadPlatformStats()
+    } else {
+      loadAgents()
+      const interval = setInterval(loadAgents, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
+
+  if (authLoading || !user) {
+    return <div className="min-h-screen bg-[#0F1629] flex items-center justify-center"></div>
   }
 
   const getAgentStatus = (agent: Agent) => {
@@ -250,14 +254,19 @@ export default function Home() {
                             <Monitor className={`w-6 h-6 ${status.color}`} />
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {agent.agent_id.length > 20
-                                ? `${agent.agent_id.substring(0, 20)}...`
-                                : agent.agent_id}
+                            <h3 className="text-lg font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>
+                              {agent.hostname || (agent.agent_id.length > 20 ? `${agent.agent_id.substring(0, 20)}...` : agent.agent_id)}
                             </h3>
-                            <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                              {status.status.charAt(0).toUpperCase() + status.status.slice(1)}
-                            </p>
+                            {agent.hostname && (
+                              <p className="text-[10px] uppercase font-mono mt-0.5 opacity-60" style={{ color: 'var(--text-secondary)' }}>
+                                {agent.agent_id.substring(0, 12)}...
+                              </p>
+                            )}
+                            {!agent.hostname && (
+                              <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
+                                {status.status.charAt(0).toUpperCase() + status.status.slice(1)}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className={`px-2 py-1 rounded text-xs font-medium ${status.bg} ${status.color}`}>

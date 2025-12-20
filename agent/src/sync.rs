@@ -22,6 +22,7 @@ pub struct Heartbeat {
     pub hardware_fingerprint: String,
     pub timestamp: DateTime<Utc>,
     pub version: String,
+    pub hostname: Option<String>,
 }
 
 pub struct SyncManager {
@@ -118,12 +119,15 @@ impl SyncManager {
         }
 
         let hw_fingerprint = self.get_hardware_fingerprint();
+        let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
+        
         let enrollment_token = self.config.backend.enrollment_token.as_deref()
             .ok_or_else(|| anyhow::anyhow!("No enrollment token provided for technical onboarding"))?;
 
         let enrollment = serde_json::json!({
             "agent_id": agent_id,
             "hardware_fingerprint": hw_fingerprint,
+            "hostname": hostname,
             "enrollment_token": enrollment_token,
         });
 
@@ -213,11 +217,14 @@ impl SyncManager {
         let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref()
             .unwrap_or("unknown");
 
+        let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
+
         let heartbeat = Heartbeat {
             agent_id: agent_id.to_string(),
             hardware_fingerprint: hw_fingerprint.to_string(),
             timestamp: Utc::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            hostname,
         };
 
         let url = format!("{}/api/v1/agents/heartbeat", self.config.backend.url);

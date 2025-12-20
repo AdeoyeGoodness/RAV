@@ -50,20 +50,7 @@ export default function Header() {
               <h1 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Hi, {getUserDisplayName()}</h1>
               <div className="flex items-center space-x-2">
                 <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>{user?.role === 'super_admin' ? 'Monitoring Platform Health' : 'Monitor your endpoints'}</p>
-                {user?.role === 'super_admin' && currentOrgName && (
-                  <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-left-2 duration-500">
-                    <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-[10px] font-bold text-purple-500 uppercase">
-                      Viewing As: {currentOrgName}
-                    </span>
-                    <button
-                      onClick={resetContext}
-                      className="text-[10px] hover:text-white transition-colors underline"
-                      style={{ color: 'var(--text-tertiary)' }}
-                    >
-                      Reset to Global
-                    </button>
-                  </div>
-                )}
+                {/* Context Switching Removed for Security */}
               </div>
             </>
           )}

@@ -51,7 +51,9 @@ pub struct CreateEvent {
 pub struct CreateAgent {
     pub agent_id: String,
     pub hardware_fingerprint: String,
+    pub hardware_fingerprint: String,
     pub enrollment_token: String,
+    pub hostname: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,7 +61,9 @@ pub struct Heartbeat {
     pub agent_id: String,
     pub hardware_fingerprint: String,
     pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Utc>,
     pub version: String,
+    pub hostname: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

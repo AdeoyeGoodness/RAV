@@ -270,14 +270,7 @@ export default function AdminPage() {
                                                         >
                                                             <UserPlus className="w-4 h-4" />
                                                         </button>
-                                                        <button
-                                                            onClick={() => switchContext(org.id, org.name)}
-                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
-                                                            style={{ backgroundColor: 'rgba(108, 92, 231, 0.1)', borderColor: 'var(--accent-purple)', color: 'var(--accent-purple)' }}
-                                                            title="Simulate Tenant Dashboard"
-                                                        >
-                                                            <ExternalLink className="w-4 h-4" />
-                                                        </button>
+                                                        {/* Context Switching Removed for Security */}
                                                         <button
                                                             onClick={() => toggleStatus(org.id, org.status)}
                                                             className="text-xs px-3 py-2 rounded-lg border transition-all hover:bg-white/10"
