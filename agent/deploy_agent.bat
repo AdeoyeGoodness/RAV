@@ -8,34 +8,50 @@ cd /d "%~dp0"
 set SERVER_URL=%1
 set TOKEN=%2
 
-:: --- DEFAULTS (Baked-in) ---
-if "%SERVER_URL%"=="" set SERVER_URL=http://10.245.212.213:8080
-if "%TOKEN%"=="" set TOKEN=RAV-451P-7C6E-2YZK-QZCP
-:: ---------------------------
-
-if "%SERVER_URL%"=="" (
-    echo [ERROR] No Server URL provided.
-    goto :EOF
+:: Check for Administrator privileges
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo [ERROR] Run as Administrator required.
+    pause
+    exit /b 1
 )
+
+:: --- DEFAULTS ---
+if "%SERVER_URL%"=="" set SERVER_URL=http://localhost:8080
+if "%TOKEN%"=="" set TOKEN=RAV-451P-7C6E-2YZK-QZCP
+:: ----------------
 
 echo.
 echo ==========================================
 echo      RAV Agent Enterprise Installer
 echo ==========================================
 echo.
+echo Target: C:\Program Files\RAV\rav-agent.exe
 echo Server: %SERVER_URL%
 echo Token:  %TOKEN%
 echo.
 
-:: Check if rav-agent.exe exists
+:: 1. Create Installation Directory
+if not exist "C:\Program Files\RAV" (
+    mkdir "C:\Program Files\RAV"
+)
+
+:: 2. Copy Binary
 if not exist "rav-agent.exe" (
-    echo [ERROR] rav-agent.exe not found in current directory!
+    echo [ERROR] rav-agent.exe not found in source directory!
+    pause
+    exit /b 1
+)
+copy /Y "rav-agent.exe" "C:\Program Files\RAV\rav-agent.exe" >nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [FAILURE] Failed to copy binary to Program Files.
     pause
     exit /b 1
 )
 
-echo [1/3] Enrolling and Configuring Agent...
-rav-agent.exe --server "%SERVER_URL%" --enroll "%TOKEN%" --install
+:: 3. Run Agent (Enroll & Install Service) from Target Location
+echo [1/3] Enrolling and Installing Service...
+"C:\Program Files\RAV\rav-agent.exe" --server "%SERVER_URL%" --enroll "%TOKEN%" --install
 
 if %ERRORLEVEL% NEQ 0 (
     echo [FAILURE] Enrollment or Installation failed.
