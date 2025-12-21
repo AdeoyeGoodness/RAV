@@ -21,6 +21,14 @@ pub fn initialize(config: &Config) -> Result<()> {
 }
 
 fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
+    // SECURITY: Prevent Path Traversal
+    // Ensure the path does not contain relative components like '..'
+    for component in key_path.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            anyhow::bail!("Security Violation: Encryption key path cannot contain '..'");
+        }
+    }
+
     let key_bytes = if key_path.exists() {
         // Load existing key
         let encrypted_key = fs::read(key_path)

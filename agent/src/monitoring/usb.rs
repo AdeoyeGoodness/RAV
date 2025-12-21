@@ -458,10 +458,27 @@ async fn get_usb_device_details() -> Result<std::collections::HashMap<String, St
     Ok(device_map)
 }
 
+fn is_safe_drive_letter(drive: &str) -> bool {
+    // Valid Windows drive letter: "C:" or "D:"
+    // 2 chars, first is alphabetic, second is ':'
+    if drive.len() != 2 {
+        return false;
+    }
+    let chars: Vec<char> = drive.chars().collect();
+    chars[0].is_ascii_alphabetic() && chars[1] == ':'
+}
+
 #[cfg(windows)]
 async fn take_initial_snapshot(drive_letter: &str) -> Result<std::collections::HashMap<String, u64>> {
     use std::fs;
     use std::path::Path;
+
+    // SECURITY: Validate drive letter to prevent Path Traversal
+    if !is_safe_drive_letter(drive_letter) {
+        // Log warning but don't error out the whole flow, just return empty snapshot
+        tracing::warn!("Security Warning: Invalid drive letter detected: {}", drive_letter);
+        return Ok(std::collections::HashMap::new());
+    }
     
     let drive_path = format!("{}", drive_letter);
     let path = Path::new(&drive_path);
@@ -721,6 +738,12 @@ async fn monitor_usb_file_transfers(
     use std::fs;
     use std::path::Path;
     
+    // SECURITY: Validate drive letter to prevent Path Traversal
+    if !is_safe_drive_letter(drive_letter) {
+        tracing::warn!("Security Warning: Invalid drive letter in monitor task: {}", drive_letter);
+        return Ok(());
+    }
+
     // Get current files on USB drive
     let drive_path = format!("{}", drive_letter);
     let path = Path::new(&drive_path);
