@@ -52,6 +52,17 @@ pub fn install_service() -> Result<()> {
         .arg(SERVICE_NAME)
         .arg("Remote Agent Verification Enterprise Monitor")
         .output();
+
+    // Configure Failure Recovery: Restart Service after 1 minute (60000ms) for 1st, 2nd, and subsequent failures.
+    // reset= 86400 (Reset failure count after 1 day)
+    let _ = std::process::Command::new("sc")
+        .arg("failure")
+        .arg(SERVICE_NAME)
+        .arg("reset=")
+        .arg("86400")
+        .arg("actions=")
+        .arg("restart/60000/restart/60000/restart/60000")
+        .output();
     
     info!("Service '{}' installed successfully via sc.", SERVICE_NAME);
     Ok(())

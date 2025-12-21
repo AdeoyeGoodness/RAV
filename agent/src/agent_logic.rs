@@ -7,12 +7,17 @@ use crate::config::Config;
 use crate::encryption;
 use crate::sync::SyncManager;
 use crate::monitoring;
+use crate::storage;
 
 pub async fn run_agent(config: Config, shutdown_signal: impl Future<Output = ()>) -> Result<()> {
     // 4. Initialize Dependency (SyncManager)
     let config_arc = Arc::new(config);
     encryption::initialize(&config_arc)?;
-    let sync_manager = Arc::new(SyncManager::new(config_arc.clone()).await?);
+    
+    // Init Persistence
+    let storage = Arc::new(storage::StorageManager::new(config_arc.agent.data_dir.clone())?);
+    
+    let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage).await?);
 
     info!("Sync manager initialized");
 

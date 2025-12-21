@@ -31,10 +31,13 @@ echo Server: %SERVER_URL%
 echo Token:  %TOKEN%
 echo.
 
-:: 1. Create Installation Directory
+:: 1. Create Installation Directory & Harden Permissions
 if not exist "C:\Program Files\RAV" (
     mkdir "C:\Program Files\RAV"
 )
+:: Protection: Remove inheritance, Grant System/Admins Full Control, Remove Users
+echo [Security] Hardening Program Files Directory...
+icacls "C:\Program Files\RAV" /inheritance:r /grant:r "NT AUTHORITY\SYSTEM":(OI)(CI)F "BUILTIN\Administrators":(OI)(CI)F /q >nul
 
 :: 2. Copy Binary
 if not exist "rav-agent.exe" (
@@ -60,8 +63,16 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
+:: 4. Harden Config Directory (Post-Install)
+echo [Security] Hardening Config Directory...
+if exist "C:\ProgramData\RAV" (
+    icacls "C:\ProgramData\RAV" /inheritance:r /grant:r "NT AUTHORITY\SYSTEM":(OI)(CI)F "BUILTIN\Administrators":(OI)(CI)F /q >nul
+)
+
 echo.
-echo [2/3] Verifying Service Status...
+echo [2/3] Verifying Persistence...
+:: Set dependency just in case rust code missed it, though agent usually handles retries.
+sc config "RAV Agent" depend= Tcpip/Dhcp start= auto
 sc query "RAV Agent"
 
 echo.

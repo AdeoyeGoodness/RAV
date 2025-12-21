@@ -3,10 +3,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
+use tracing::{error, info, warn, debug};
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::storage::StorageManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
@@ -28,41 +29,36 @@ pub struct Heartbeat {
 pub struct SyncManager {
     config: Arc<Config>,
     client: reqwest::Client,
-    event_queue: Arc<tokio::sync::mpsc::UnboundedSender<Event>>,
-    event_receiver: Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<Event>>>,
+    storage: Arc<StorageManager>,
     organization_id: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl SyncManager {
-    pub fn new(config: Arc<Config>) -> impl std::future::Future<Output = Result<Self>> + Send {
-        async move {
-            let client = reqwest::Client::builder()
-                .danger_accept_invalid_certs(false) // In production, use proper cert validation
-                .timeout(Duration::from_secs(30))
-                .build()
-                .context("Failed to create HTTP client")?;
+    // Modified: Now takes Arc<StorageManager> dependency
+    pub fn new(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<Self> {
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(false)
+            .timeout(Duration::from_secs(30))
+            .build()
+            .context("Failed to create HTTP client")?;
 
-            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-
-            Ok(Self {
-                config,
-                client,
-                event_queue: Arc::new(tx),
-                event_receiver: Arc::new(tokio::sync::Mutex::new(rx)),
-                organization_id: Arc::new(tokio::sync::Mutex::new(None)),
-            })
-        }
+        Ok(Self {
+            config,
+            client,
+            storage,
+            organization_id: Arc::new(tokio::sync::Mutex::new(None)),
+        })
     }
 
+    // New Behavior: Immediate Write to Disk (Store & Forward)
     pub fn queue_event(&self, event: Event) {
-        if let Err(e) = self.event_queue.send(event) {
-            error!("Failed to queue event: {}", e);
+        if let Err(e) = self.storage.save_event(&event) {
+            error!("CRITICAL: Failed to persist event to disk: {}", e);
         }
     }
 
-    // Trigger immediate sync for important events (like screenshots)
+    // Trigger immediate sync for important events
     pub async fn sync_events_immediate(&self) {
-        // Use the public sync_events method
         if let Err(e) = self.sync_events().await {
             error!("Immediate sync error: {}", e);
         }
@@ -73,7 +69,7 @@ impl SyncManager {
         if let Err(e) = self.enroll_agent().await {
             error!("Failed to enroll agent: {}", e);
         } else {
-            info!("Agent enrolled successfully");
+            info!("Agent key negotiation successful");
         }
 
         let mut interval = interval(Duration::from_secs(
@@ -84,11 +80,17 @@ impl SyncManager {
             interval.tick().await;
             
             if let Err(e) = self.sync_events().await {
-                error!("Sync error: {}", e);
+                error!("Sync cycle failed: {}", e);
             }
 
             if let Err(e) = self.send_heartbeat().await {
-                warn!("Heartbeat error: {}", e);
+                warn!("Heartbeat failed: {}", e);
+            }
+
+            // Optional: Prune old synced events to keep DB lean
+            // Run this less frequently? For now, every sync cycle is fine as it's cheap.
+            if let Err(e) = self.storage.prune_synced_events() {
+                warn!("Pruning failed: {}", e);
             }
         }
     }
@@ -104,25 +106,22 @@ impl SyncManager {
             config.agent_id.unwrap_or_else(|| Uuid::new_v4().to_string())
         };
 
-        // HARDENING: Check for existing lock-in
-        let existing_org_id = {
-            let config = self.config.agent.clone();
-            config.organization_id
-        };
+        let existing_org_id = self.config.agent.organization_id.clone();
         
         if let Some(org_id) = existing_org_id {
-            // FIX: Ensure internal state is updated even if loading from config
+            // Updating internal state
             let mut org_guard = self.organization_id.lock().await;
             *org_guard = Some(org_id.clone());
-            info!("Agent is already locked to Organization: {}. Skipping enrollment.", org_id);
+            info!("Resuming session for Organization: {}", org_id);
             return Ok((agent_id, org_id));
         }
 
+        // ... Original Enrollment Logic ...
         let hw_fingerprint = self.get_hardware_fingerprint();
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
         
         let enrollment_token = self.config.backend.enrollment_token.as_deref()
-            .ok_or_else(|| anyhow::anyhow!("No enrollment token provided for technical onboarding"))?;
+            .ok_or_else(|| anyhow::anyhow!("No enrollment token provided"))?;
 
         let enrollment = serde_json::json!({
             "agent_id": agent_id,
@@ -131,7 +130,7 @@ impl SyncManager {
             "enrollment_token": enrollment_token,
         });
 
-        info!("Attempting enrollment for agent {}...", agent_id);
+        info!("Contacting C2 for enrollment...");
         let url = format!("{}/api/v1/agents/enroll", self.config.backend.url);
         let mut request = self.client.post(&url).json(&enrollment);
 
@@ -139,20 +138,17 @@ impl SyncManager {
             request = request.header("X-API-Key", api_key);
         }
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to connect to enrollment endpoint")?;
+        let response = request.send().await.context("Enrollment request failed")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Enrollment failed with status {}: {}", status, body);
+            anyhow::bail!("Enrollment denied {}: {}", status, body);
         }
 
         let result: serde_json::Value = response.json().await?;
         let org_id = result.get("organization_id").and_then(|v| v.as_str())
-            .context("Server did not return organization_id")?
+            .context("Server missing organization_id")?
             .to_string();
         let org_name = result.get("organization_name").and_then(|v| v.as_str())
             .unwrap_or("Unknown Org");
@@ -160,28 +156,24 @@ impl SyncManager {
         let mut org_guard = self.organization_id.lock().await;
         *org_guard = Some(org_id.clone());
         
-        info!("SUCCESS: Agent enrolled to Organization: {} ({})", org_name, org_id);
+        info!("ACQUIRED: Organization '{}' ({})", org_name, org_id);
         Ok((agent_id, org_id))
     }
 
     pub async fn sync_events(&self) -> Result<()> {
-        let mut events = Vec::new();
+        // 1. Fetch from Disk
+        let batched_events = self.storage.fetch_unsynced_events(100)?; // Batch 100
         
-        // Collect events from queue (non-blocking)
-        let mut receiver = self.event_receiver.lock().await;
-        while let Ok(event) = receiver.try_recv() {
-            events.push(event);
-            if events.len() >= 100 {
-                break; // Batch size limit
-            }
-        }
-
-        if events.is_empty() {
+        if batched_events.is_empty() {
             return Ok(());
         }
 
-        info!("Syncing {} events to backend", events.len());
+        let events: Vec<&Event> = batched_events.iter().map(|(_, e)| e).collect();
+        let event_ids: Vec<i64> = batched_events.iter().map(|(id, _)| *id).collect();
 
+        info!("Pushing {} buffered events to backend...", events.len());
+
+        // 2. Send to Backend
         let url = format!("{}/api/v1/events", self.config.backend.url);
         let mut request = self.client.post(&url).json(&events);
 
@@ -189,34 +181,31 @@ impl SyncManager {
             request = request.header("X-API-Key", api_key);
         }
 
-        // Add organization ID if we have it
         let org_guard = self.organization_id.lock().await;
         if let Some(org_id) = org_guard.as_ref() {
             request = request.header("X-Organization-Id", org_id);
         }
         drop(org_guard);
 
-        let response = request
-            .send()
-            .await
-            .context("Failed to send events to backend")?;
+        let response = request.send().await.context("Sync connection failed")?;
 
         if !response.status().is_success() {
+            // On failure, we DO NOT mark as synchronized. They stay in DB for retry.
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            anyhow::bail!("Backend returned error {}: {}", status, body);
+            anyhow::bail!("Backend rejected events {}: {}", status, body);
         }
 
-        info!("Successfully synced {} events", events.len());
+        // 3. Mark Synced on Success (Transaction)
+        self.storage.mark_synced(&event_ids)?;
+        
+        info!("Confirmed delivery of {} events.", events.len());
         Ok(())
     }
 
     async fn send_heartbeat(&self) -> Result<()> {
-        let agent_id = self.config.agent.agent_id.as_deref()
-            .unwrap_or("unknown");
-        let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref()
-            .unwrap_or("unknown");
-
+        let agent_id = self.config.agent.agent_id.as_deref().unwrap_or("unknown");
+        let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref().unwrap_or("unknown");
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
 
         let heartbeat = Heartbeat {
@@ -234,24 +223,17 @@ impl SyncManager {
             request = request.header("X-API-Key", api_key);
         }
 
-        // Add organization ID if we have it
         let org_guard = self.organization_id.lock().await;
         if let Some(org_id) = org_guard.as_ref() {
             request = request.header("X-Organization-Id", org_id);
         }
-        drop(org_guard);
-
-        let response = request
-            .send()
-            .await
-            .context("Failed to send heartbeat")?;
-
+        
+        let response = request.send().await.context("Heartbeat failed")?;
+        
         if !response.status().is_success() {
-            let status = response.status();
-            anyhow::bail!("Heartbeat failed with status: {}", status);
+            anyhow::bail!("Heartbeat status: {}", response.status());
         }
 
         Ok(())
     }
 }
-

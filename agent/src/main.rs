@@ -9,6 +9,7 @@ pub mod sync;
 pub mod monitoring;
 pub mod service;
 pub mod agent_logic;
+pub mod storage;
 
 use config::Config;
 use sync::SyncManager;
@@ -87,7 +88,11 @@ fn main() -> Result<()> {
                 // Use temp config in Arc
                 let config_arc = Arc::new(config.clone());
                 encryption::initialize(&config_arc)?;
-                let sync_manager = Arc::new(SyncManager::new(config_arc.clone()).await?);
+                
+                // Init Persistence
+                let storage = Arc::new(storage::StorageManager::new(config.agent.data_dir.clone())?);
+                
+                let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage).await?);
                 
                 info!("Connecting to backend for enrollment...");
                 match sync_manager.enroll_agent().await {
