@@ -17,7 +17,7 @@ pub async fn run_agent(config: Config, shutdown_signal: impl Future<Output = ()>
     // Init Persistence
     let storage = Arc::new(storage::StorageManager::new(config_arc.agent.data_dir.clone())?);
     
-    let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage).await?);
+    let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage)?);
 
     info!("Sync manager initialized");
 

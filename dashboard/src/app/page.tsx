@@ -6,8 +6,10 @@ import Header from '@/components/Header'
 import { NarrativeTimeline } from '@/components/NarrativeTimeline'
 import { getAgents, getOrganizations } from '@/lib/api'
 import { Activity, Shield, TrendingUp, Users, Terminal, Settings } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const [stats, setStats] = useState({ orgs: 0, agents: 0 })
 
   useEffect(() => {
@@ -45,13 +47,15 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <a
-              href="/admin"
-              className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-900/20 transition-all active:scale-95 flex items-center gap-2 group"
-            >
-              <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-              Manage Organizations
-            </a>
+            {user?.role === 'super_admin' && (
+              <a
+                href="/admin"
+                className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-900/20 transition-all active:scale-95 flex items-center gap-2 group"
+              >
+                <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform" />
+                Manage Organizations
+              </a>
+            )}
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6">

@@ -423,8 +423,6 @@ pub async fn restore_organization_data(
     })?
     .rows_affected();
 
-    .rows_affected();
-
     log_audit(
         &mut tx,
         ActorType::SuperAdmin,

@@ -1,23 +1,19 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://192.168.55.213:8080'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true // Important for HttpOnly Cookies
 })
 
-// Add auth and organization context from localStorage
+// Add organization context from localStorage (Token is now cookie-managed)
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('rav_token')
     const orgId = localStorage.getItem('rav_organization_id')
-
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`
-    }
 
     if (orgId) {
       config.headers['X-Organization-Id'] = orgId
@@ -204,6 +200,15 @@ export async function getAuditLogs(params?: {
 }
 
 // Auth APIs
+export async function userLogout(): Promise<void> {
+  await api.post('/api/v1/auth/logout')
+}
+
+export async function getCurrentUser(): Promise<User> {
+  const response = await api.get('/api/v1/auth/me')
+  return response.data
+}
+
 export async function login(credentials: any): Promise<{ token: string, user: User }> {
   const response = await api.post('/api/v1/auth/login', credentials)
   return response.data

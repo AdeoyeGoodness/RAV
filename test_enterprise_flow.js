@@ -3,7 +3,7 @@ const http = require('http');
 async function request(path, method, body = null, headers = {}) {
     const data = body ? JSON.stringify(body) : '';
     const options = {
-        hostname: 'localhost',
+        hostname: '192.168.55.213',
         port: 8080,
         path: path,
         method: method,
@@ -44,7 +44,9 @@ async function run() {
     const orgName = `Acme Corp ${timestamp}`;
     const orgRes = await request('/api/v1/admin/organizations', 'POST', {
         name: orgName,
-        license_key: licenseKey
+        enrollment_token: 'RAV-TEST-TOKEN-' + timestamp,
+        max_agents: 100,
+        token_expiry: new Date(Date.now() + 86400000).toISOString()
     }, { 'Authorization': `Bearer ${token}` });
     if (orgRes.status !== 200) throw new Error(`Org creation failed: ${orgRes.body}`);
     const org = JSON.parse(orgRes.body);

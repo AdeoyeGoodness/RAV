@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { AuditLogTable } from '@/components/AuditLogTable'
@@ -9,33 +10,25 @@ import { Shield } from 'lucide-react'
 
 export default function AuditPage() {
     const router = useRouter()
-    const [authorized, setAuthorized] = useState(false)
+    const { user, isLoading } = useAuth()
 
     useEffect(() => {
-        // Basic Client-side role check (Security layered on backend too)
-        const token = localStorage.getItem('rav_token')
-
-        // Parse JWT roughly to check role for immediate redirect
-        // (Real verification happens on API calls)
-        if (!token) {
-            router.push('/login')
-            return
-        }
-
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1]))
-            if (payload.role !== 'super_admin') {
-                router.push('/') // Redirect non-super-admins
-                return
+        if (!isLoading) {
+            if (!user || user.role !== 'super_admin') {
+                router.push('/')
             }
-            setAuthorized(true)
-        } catch (e) {
-            router.push('/login')
         }
-    }, [router])
+    }, [user, isLoading, router])
 
-    if (!authorized) {
-        return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500">Verifying Authority...</div>
+    if (isLoading || !user || user.role !== 'super_admin') {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-8 h-8 border-t-2 border-purple-500 rounded-full animate-spin"></div>
+                    <span className="text-slate-500 text-sm">Verifying Clearance...</span>
+                </div>
+            </div>
+        )
     }
 
     return (

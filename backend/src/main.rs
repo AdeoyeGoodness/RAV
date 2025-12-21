@@ -71,6 +71,8 @@ async fn main() -> Result<()> {
         .route("/health", get(health_check))
         .route("/api/v1/auth/login", post(api::auth::login))
         .route("/api/v1/auth/register", post(api::auth::register))
+        .route("/api/v1/auth/me", get(api::auth::me))
+        .route("/api/v1/auth/logout", post(api::auth::logout))
         .route("/api/v1/admin/organizations", get(api::admin::list_organizations))
         .route("/api/v1/admin/organizations", post(api::admin::create_organization))
         .route("/api/v1/admin/organizations/:id/status", patch(api::admin::update_organization_status))
@@ -91,7 +93,28 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/:agent_id", delete(handlers::delete_agent))
         .route("/api/v1/files/upload", post(handlers::upload_file))
         .route("/api/v1/files/:file_id", get(handlers::download_file))
-        .layer(CorsLayer::permissive())
+        .layer(
+            CorsLayer::new()
+                .allow_origin([
+                    "http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://127.0.0.1:3000".parse::<axum::http::HeaderValue>().unwrap(),
+                    "http://192.168.55.213:3000".parse::<axum::http::HeaderValue>().unwrap(),
+                ])
+                .allow_methods([
+                    axum::http::Method::GET,
+                    axum::http::Method::POST,
+                    axum::http::Method::PATCH,
+                    axum::http::Method::PUT,
+                    axum::http::Method::DELETE,
+                ])
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    "X-Organization-Id".parse::<axum::http::HeaderName>().unwrap(),
+                ])
+                .allow_credentials(true)
+        )
+        .layer(axum::middleware::from_fn(secure_headers))
         .with_state(app_state);
     
     info!("Routes registered:");
@@ -112,4 +135,46 @@ async fn main() -> Result<()> {
 
 async fn health_check() -> StatusCode {
     StatusCode::OK
+}
+
+async fn secure_headers(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+
+    // 1. Content-Security-Policy (CSP) - Mitigate XSS
+    // Note: We allow 'unsafe-inline' for styles due to some UI frameworks, but scripts are restricted.
+    headers.insert(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:8080 http://192.168.55.213:8080; frame-ancestors 'none';".parse().unwrap()
+    );
+
+    // 2. Clickjacking Protection
+    headers.insert(
+        "X-Frame-Options",
+        "DENY".parse().unwrap()
+    );
+
+    // 3. MIME Sniffing Protection
+    headers.insert(
+        "X-Content-Type-Options",
+        "nosniff".parse().unwrap()
+    );
+
+    // 4. HSTS (Strict-Transport-Security)
+    // Force HTTPS for 1 year (only effective if served over HTTPS)
+    headers.insert(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains".parse().unwrap()
+    );
+
+    // 5. Referrer Policy
+    headers.insert(
+        "Referrer-Policy",
+        "strict-origin-when-cross-origin".parse().unwrap()
+    );
+
+    response
 }

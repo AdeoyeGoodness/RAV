@@ -92,7 +92,7 @@ fn main() -> Result<()> {
                 // Init Persistence
                 let storage = Arc::new(storage::StorageManager::new(config.agent.data_dir.clone())?);
                 
-                let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage).await?);
+                let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage)?);
                 
                 info!("Connecting to backend for enrollment...");
                 match sync_manager.enroll_agent().await {

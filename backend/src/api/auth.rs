@@ -1,7 +1,8 @@
 use axum::{
     async_trait,
     extract::{State, FromRequestParts, FromRef},
-    http::{StatusCode, request::Parts},
+    http::{StatusCode, request::Parts, header::{SET_COOKIE, COOKIE}},
+    response::IntoResponse,
     Json,
 };
 use bcrypt::{hash, verify, DEFAULT_COST};
@@ -28,17 +29,33 @@ impl FromRequestParts<AppState> for Claims
     type Rejection = StatusCode;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let auth_header = parts
-            .headers
-            .get("Authorization")
-            .and_then(|h| h.to_str().ok())
-            .ok_or(StatusCode::UNAUTHORIZED)?;
+        // 1. Try to extract from HttpOnly Cookie
+        let token = if let Some(cookie_header) = parts.headers.get(COOKIE) {
+            cookie_header.to_str()
+                .ok()
+                .and_then(|c| {
+                    c.split(';')
+                        .find(|s| s.trim().starts_with("rav_token="))
+                        .map(|s| s.trim().trim_start_matches("rav_token="))
+                })
+        } else {
+            None
+        };
 
-        if !auth_header.starts_with("Bearer ") {
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-
-        let token = &auth_header[7..];
+        // 2. Fallback to Bearer Header (Transitionary support)
+        let token = match token {
+            Some(t) => t,
+            None => {
+                let auth_header = parts.headers.get("Authorization")
+                    .and_then(|h| h.to_str().ok())
+                    .ok_or(StatusCode::UNAUTHORIZED)?;
+                
+                if !auth_header.starts_with("Bearer ") {
+                   return Err(StatusCode::UNAUTHORIZED);
+                }
+                &auth_header[7..]
+            }
+        };
 
         let token_data = decode::<Claims>(
             token,
@@ -57,7 +74,7 @@ impl FromRequestParts<AppState> for Claims
 pub async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Json<AuthResponse>, StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     let pool = state.db.pool();
 
     let user_row = sqlx::query(
@@ -134,8 +151,14 @@ pub async fn login(
         }
     }
 
-    Ok(Json(AuthResponse {
-        token,
+    // Set HttpOnly Cookie
+    let cookie = format!(
+        "rav_token={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400",
+        token
+    );
+
+    let body = Json(AuthResponse {
+        token: "".to_string(), // Removed from body for security
         user: UserResponse {
             id: user.id,
             organization_id: user.organization_id,
@@ -143,7 +166,12 @@ pub async fn login(
             role: user.role,
             full_name: user.full_name,
         },
-    }))
+    });
+
+    Ok((
+        [(SET_COOKIE, cookie)],
+        body
+    ))
 }
 
 pub async fn register(
@@ -181,4 +209,36 @@ pub async fn register(
         role: user_row.get(4),
         full_name: user_row.get(5),
     }))
+}
+
+pub async fn me(
+    claims: Claims,
+    State(state): State<AppState>,
+) -> Result<Json<UserResponse>, StatusCode> {
+    let pool = state.db.pool();
+
+    let user_row = sqlx::query(
+        "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at FROM users WHERE id = $1 AND status = 'active'"
+    )
+    .bind(claims.sub)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Me query failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    Ok(Json(UserResponse {
+        id: user_row.get(0),
+        organization_id: user_row.get(1),
+        email: user_row.get(2),
+        role: user_row.get(4),
+        full_name: user_row.get(5),
+    }))
+}
+
+pub async fn logout() -> impl IntoResponse {
+    let cookie = "rav_token=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0";
+    [(SET_COOKIE, cookie)]
 }
