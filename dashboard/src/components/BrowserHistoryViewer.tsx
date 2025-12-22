@@ -100,6 +100,24 @@ export default function BrowserHistoryViewer({
     })
     : typeFilteredEvents
 
+  // Helper helper to sanitize URLs
+  const getSafeUrl = (url?: string) => {
+    if (!url) return '#'
+    try {
+      const parsed = new URL(url)
+      // Only allow http and https protocols
+      if (['http:', 'https:'].includes(parsed.protocol)) {
+        return url
+      }
+    } catch (e) {
+      // If valid URL parsing fails, check simple startswith for relative or basic absolute
+      if (url.startsWith('/') || url.startsWith('http:') || url.startsWith('https:')) {
+        return url
+      }
+    }
+    return '#'
+  }
+
   // Sort events
   const sortedEvents = [...searchFilteredEvents].sort((a, b) => {
     const timeA = new Date(a.timestamp).getTime()
@@ -358,7 +376,7 @@ export default function BrowserHistoryViewer({
                     <>
                       <div className="flex items-center space-x-2 mb-1 overflow-hidden">
                         <a
-                          href={event.metadata?.url}
+                          href={getSafeUrl(event.metadata?.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-medium transition-colors hover:underline truncate block"
@@ -393,7 +411,7 @@ export default function BrowserHistoryViewer({
                     <>
                       <div className="flex items-center space-x-2 mb-1 overflow-hidden">
                         <a
-                          href={event.metadata?.url}
+                          href={getSafeUrl(event.metadata?.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-medium transition-colors hover:underline truncate block"

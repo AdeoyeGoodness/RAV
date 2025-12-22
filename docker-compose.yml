@@ -17,6 +17,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   minio:
     image: minio/minio:latest
@@ -35,6 +37,12 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
 
   redis:
     image: redis:7-alpine
@@ -48,6 +56,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
 
 volumes:
   postgres_data:

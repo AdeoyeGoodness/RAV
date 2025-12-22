@@ -1,8 +1,8 @@
 const https = require('http');
 
 const data = JSON.stringify({
-    email: 'admin@rav.local',
-    password: 'rav-super-password',
+    email: process.env.ADMIN_EMAIL || 'admin@rav.local',
+    password: process.env.ADMIN_PASSWORD || 'rav-super-password', // Use env var in production
     role: 'super_admin',
     full_name: 'RAV Super Admin',
     organization_id: null

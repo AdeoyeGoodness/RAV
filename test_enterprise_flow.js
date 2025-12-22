@@ -31,8 +31,8 @@ async function run() {
 
     console.log('\n--- 1. SUPER ADMIN LOGIN ---');
     const loginRes = await request('/api/v1/auth/login', 'POST', {
-        email: 'admin@rav.local',
-        password: 'rav-super-password'
+        email: process.env.ADMIN_EMAIL || 'admin@rav.local',
+        password: process.env.ADMIN_PASSWORD || 'rav-super-password'
     });
     if (loginRes.status !== 200) throw new Error('Admin login failed');
     const { token } = JSON.parse(loginRes.body);

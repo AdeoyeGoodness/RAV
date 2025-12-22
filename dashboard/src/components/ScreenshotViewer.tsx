@@ -22,17 +22,18 @@ interface ScreenshotViewerProps {
   onResetFilter?: () => void
 }
 
-export default function ScreenshotViewer({ 
-  events, 
-  loading, 
-  onRefresh, 
-  onClear, 
-  clearTimestamp, 
-  onResetFilter 
+export default function ScreenshotViewer({
+  events,
+  loading,
+  onRefresh,
+  onClear,
+  clearTimestamp,
+  onResetFilter
 }: ScreenshotViewerProps) {
   const [selectedScreenshot, setSelectedScreenshot] = useState<Event | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [loadingImage, setLoadingImage] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<string>('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [thumbnailUrls, setThumbnailUrls] = useState<Map<string, string>>(new Map())
@@ -46,10 +47,10 @@ export default function ScreenshotViewer({
   // Apply date filter
   const dateFilteredEvents = dateFilter
     ? screenshotEvents.filter(e => {
-        const eventDate = new Date(e.timestamp)
-        const filterDate = new Date(dateFilter)
-        return eventDate.toDateString() === filterDate.toDateString()
-      })
+      const eventDate = new Date(e.timestamp)
+      const filterDate = new Date(dateFilter)
+      return eventDate.toDateString() === filterDate.toDateString()
+    })
     : screenshotEvents
 
   // Sort events by timestamp
@@ -68,8 +69,9 @@ export default function ScreenshotViewer({
   }
 
   const loadScreenshotImage = async (event: Event) => {
+    setErrorMessage(null)
     if (!event.metadata?.file_id) {
-      alert('Screenshot file ID not available')
+      setErrorMessage('Screenshot file ID not available')
       return
     }
 
@@ -83,15 +85,16 @@ export default function ScreenshotViewer({
       setImageUrl(url)
     } catch (error: any) {
       console.error('Failed to load screenshot:', error)
-      alert(`Failed to load screenshot: ${error.message || 'Unknown error'}`)
+      setErrorMessage(`Failed to load screenshot: ${error.message || 'Unknown error'}`)
     } finally {
       setLoadingImage(false)
     }
   }
 
   const handleDownload = async (event: Event) => {
+    setErrorMessage(null)
     if (!event.metadata?.file_id) {
-      alert('Screenshot file ID not available')
+      setErrorMessage('Screenshot file ID not available')
       return
     }
 
@@ -100,21 +103,26 @@ export default function ScreenshotViewer({
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `screenshot_${event.metadata.file_id}.${event.metadata.format || 'jpg'}`
+      // SECURITY: Sanitize extension to prevent executing html if accidentally served
+      let ext = event.metadata.format || 'jpg'
+      const safeExts = ['jpg', 'jpeg', 'png', 'webp', 'gif']
+      if (!safeExts.includes(ext.toLowerCase())) ext = 'bin'
+
+      link.download = `screenshot_${event.metadata.file_id}.${ext}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } catch (error: any) {
       console.error('Download failed:', error)
-      alert(`Download failed: ${error.message || 'Unknown error'}`)
+      setErrorMessage(`Download failed: ${error.message || 'Unknown error'}`)
     }
   }
 
   // Load thumbnails for all visible screenshots
   useEffect(() => {
     const currentEventIds = new Set(sortedEvents.map(e => e.id))
-    
+
     // Clean up old thumbnails that are no longer in the list
     setThumbnailUrls(prev => {
       const newMap = new Map()
@@ -141,7 +149,7 @@ export default function ScreenshotViewer({
         // Mark as loading
         loadingRef.current.add(event.id)
         setLoadingThumbnails(prev => new Set(prev).add(event.id))
-        
+
         // Load thumbnail asynchronously
         downloadFile(event.metadata.file_id)
           .then(blob => {
@@ -162,7 +170,7 @@ export default function ScreenshotViewer({
             })
           })
           .catch((error: any) => {
-            console.error(`Failed to load thumbnail for ${event.id}:`, error)
+            console.error('Failed to load thumbnail for:', event.id, error)
             setThumbnailErrors(prev => new Set(prev).add(event.id))
           })
           .finally(() => {
@@ -183,7 +191,7 @@ export default function ScreenshotViewer({
   // Auto-refresh effect
   useEffect(() => {
     if (!onRefresh) return
-    
+
     const interval = setInterval(() => {
       onRefresh()
     }, 10000) // Refresh every 10 seconds for faster updates
@@ -345,7 +353,7 @@ export default function ScreenshotViewer({
             <Camera className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.2)' }} />
             <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>No screenshots found</p>
             <p className="text-sm transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }}>
-              {dateFilter 
+              {dateFilter
                 ? `No screenshots found for selected date`
                 : 'Screenshots will appear here when captured by the agent'}
             </p>
@@ -413,7 +421,7 @@ export default function ScreenshotViewer({
                 <p className="truncate font-medium transition-colors" style={{ color: 'var(--text-tertiary)' }}>{format(new Date(event.timestamp), 'MMM dd, yyyy')}</p>
                 <p className="truncate transition-colors" style={{ color: 'rgba(0, 217, 255, 0.6)' }}>{format(new Date(event.timestamp), 'HH:mm:ss')}</p>
                 <p className="transition-colors" style={{ color: 'rgba(0, 217, 255, 0.5)' }}>
-                  {event.metadata?.width && event.metadata?.height 
+                  {event.metadata?.width && event.metadata?.height
                     ? `${event.metadata.width}x${event.metadata.height}`
                     : 'Unknown size'}
                 </p>
@@ -428,7 +436,7 @@ export default function ScreenshotViewer({
 
       {/* Screenshot Modal */}
       {selectedScreenshot && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
           onClick={() => {
             setSelectedScreenshot(null)
@@ -438,7 +446,7 @@ export default function ScreenshotViewer({
             }
           }}
         >
-          <div 
+          <div
             className="border rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-auto transition-colors"
             style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
             onClick={(e) => e.stopPropagation()}
@@ -464,6 +472,15 @@ export default function ScreenshotViewer({
               </button>
             </div>
 
+            {errorMessage && (
+              <div className="mb-4 p-3 rounded-lg flex items-center bg-red-500/10 border border-red-500/20 text-red-500">
+                <span className="text-sm font-medium">{errorMessage}</span>
+                <button onClick={() => setErrorMessage(null)} className="ml-auto">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
             {loadingImage ? (
               <div className="flex items-center justify-center py-12">
                 <RefreshCw className="w-8 h-8 animate-spin transition-colors" style={{ color: 'var(--text-tertiary)' }} />
@@ -472,9 +489,9 @@ export default function ScreenshotViewer({
             ) : imageUrl ? (
               <div className="space-y-4">
                 <div className="rounded-lg p-4 flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                  <img 
-                    src={imageUrl} 
-                    alt="Screenshot" 
+                  <img
+                    src={imageUrl}
+                    alt="Screenshot"
                     className="max-w-full max-h-[60vh] rounded-lg"
                   />
                 </div>
@@ -488,7 +505,7 @@ export default function ScreenshotViewer({
                   <div>
                     <p className="mb-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>File Size</p>
                     <p className="transition-colors" style={{ color: 'var(--text-primary)' }}>
-                      {selectedScreenshot.metadata?.file_size 
+                      {selectedScreenshot.metadata?.file_size
                         ? formatFileSize(selectedScreenshot.metadata.file_size)
                         : 'Unknown'}
                     </p>

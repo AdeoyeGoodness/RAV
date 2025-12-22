@@ -20,6 +20,12 @@ const filesToCopy = [
 
 // Copy files
 filesToCopy.forEach(file => {
+    // SECURITY: Prevent traversal
+    if (file.includes('..')) {
+        console.warn(`Skipping unsafe file path: ${file}`);
+        return;
+    }
+
     const src = path.join(srcDir, file);
     const destFileName = file.includes('/') ? path.basename(file) : file;
     const dest = path.join(distDir, destFileName);

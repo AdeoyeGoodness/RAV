@@ -29,7 +29,7 @@ export class AgentClient {
      */
     queueEvent(event: BrowserEvent): void {
         this.eventQueue.push(event);
-        console.log(`[RAV] Queued event: ${event.event_type}`, event);
+        console.log('[RAV] Queued event:', event.event_type, event);
 
         // Force sync if batch size reached
         if (this.eventQueue.length >= this.config.max_batch_size) {
