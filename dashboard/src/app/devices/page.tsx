@@ -12,7 +12,6 @@ interface Agent {
   agent_id: string
   hardware_fingerprint: string
   last_seen: string
-  license_expiry: string | null
   created_at: string
   updated_at: string
 }
@@ -44,7 +43,7 @@ export default function DevicesPage() {
     const lastSeen = new Date(agent.last_seen)
     const now = new Date()
     const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
-    
+
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
     if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
     return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
@@ -96,10 +95,10 @@ export default function DevicesPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none transition-all"
-                  style={{ 
-                    backgroundColor: 'var(--bg-secondary)', 
-                    borderColor: 'var(--border-color)', 
-                    color: 'var(--text-primary)' 
+                  style={{
+                    backgroundColor: 'var(--bg-secondary)',
+                    borderColor: 'var(--border-color)',
+                    color: 'var(--text-primary)'
                   }}
                   onFocus={(e) => { e.target.style.borderColor = 'var(--accent-cyan)'; }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; }}
@@ -139,8 +138,8 @@ export default function DevicesPage() {
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {agent.agent_id.length > 20 
-                                ? `${agent.agent_id.substring(0, 20)}...` 
+                              {agent.agent_id.length > 20
+                                ? `${agent.agent_id.substring(0, 20)}...`
                                 : agent.agent_id}
                             </h3>
                             <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
@@ -176,7 +175,7 @@ export default function DevicesPage() {
                       </div>
 
                       <div className="mt-4 pt-4 border-t transition-colors" style={{ borderColor: 'var(--border-color)' }}>
-                        <button 
+                        <button
                           className="w-full py-2 rounded-lg transition-all text-sm font-medium"
                           style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}
                           onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
