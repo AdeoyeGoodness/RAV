@@ -1,5 +1,6 @@
 # Build Stage
-FROM rust:1.75-bullseye as builder
+# Build Stage
+FROM rust:latest as builder
 
 WORKDIR /usr/src/rav_backend
 COPY . .
