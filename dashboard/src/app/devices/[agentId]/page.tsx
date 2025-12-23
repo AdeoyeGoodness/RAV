@@ -15,7 +15,6 @@ interface Agent {
   agent_id: string
   hardware_fingerprint: string
   last_seen: string
-  license_expiry: string | null
   created_at: string
   updated_at: string
 }
