@@ -1,0 +1,43 @@
+{
+    # Global options
+    email admin@${DOMAIN_NAME}
+}
+
+${DOMAIN_NAME} {
+    # Frontend (Next.js)
+    handle / {
+        reverse_proxy dashboard:3000
+    }
+    handle /_next/* {
+        reverse_proxy dashboard:3000
+    }
+    handle /favicon.ico {
+        reverse_proxy dashboard:3000
+    }
+
+    # Backend API
+    handle_path /api/* {
+        rewrite * /api{path}
+        reverse_proxy backend:8080
+    }
+
+    # Minio Storage (Files)
+    handle /minio/* {
+        reverse_proxy minio:9000
+    }
+    
+    # Minio Console (Optional - restrict access in production!)
+    handle /console/* {
+        reverse_proxy minio:9001
+    }
+
+    # Security Headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+    }
+    
+    # Compression
+    encode gzip zstd
+}
