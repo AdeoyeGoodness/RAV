@@ -19,11 +19,11 @@ fi
 
 # Pull latest images (if using CI/CD) or build locally
 echo "📦 Building/Pulling images..."
-docker-compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml build
 
 # Start services
 echo "🔥 Starting services..."
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 echo "✅ Deployment complete!"
 echo "Dashboard: https://$DOMAIN_NAME"
