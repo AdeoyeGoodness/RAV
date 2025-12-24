@@ -95,7 +95,7 @@ npm ci
 mkdir -p public
 echo "# Public" > public/.gitkeep
 # Create .env.production
-echo "NEXT_PUBLIC_API_URL=https://$DOMAIN_NAME/api" > .env.production
+echo "NEXT_PUBLIC_API_URL=https://$DOMAIN_NAME" > .env.production
 npm run build
 cd ../deployment
 
