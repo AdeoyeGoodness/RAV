@@ -29,7 +29,7 @@ async function main() {
         const options = {
             hostname: '127.0.0.1',
             port: 8080,
-            path: '/api/auth/register',
+            path: '/api/v1/auth/register',
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
