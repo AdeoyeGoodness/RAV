@@ -5,8 +5,7 @@
 
 ${DOMAIN_NAME} {
     # Backend API
-    handle_path /api/* {
-        rewrite * /api{path}
+    handle /api/* {
         reverse_proxy localhost:8080
     }
 
