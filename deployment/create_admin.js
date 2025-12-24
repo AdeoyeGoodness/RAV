@@ -23,7 +23,8 @@ async function main() {
             email,
             password,
             full_name: fullName,
-            organization_name: orgName
+            organization_name: orgName,
+            role: "super_admin"
         });
 
         const options = {
