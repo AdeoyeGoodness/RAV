@@ -4,31 +4,25 @@
 }
 
 ${DOMAIN_NAME} {
-    # Frontend (Next.js)
-    handle / {
-        reverse_proxy dashboard:3000
-    }
-    handle /_next/* {
-        reverse_proxy dashboard:3000
-    }
-    handle /favicon.ico {
-        reverse_proxy dashboard:3000
-    }
-
     # Backend API
     handle_path /api/* {
         rewrite * /api{path}
-        reverse_proxy backend:8080
+        reverse_proxy localhost:8080
     }
 
     # Minio Storage (Files)
-    handle /minio/* {
-        reverse_proxy minio:9000
+    handle_path /minio/* {
+        reverse_proxy localhost:9000
     }
     
-    # Minio Console (Optional - restrict access in production!)
-    handle /console/* {
-        reverse_proxy minio:9001
+    # Minio Console
+    handle_path /console/* {
+        reverse_proxy localhost:9001
+    }
+
+    # Frontend (Next.js) - Default Fallback
+    handle {
+        reverse_proxy localhost:3000
     }
 
     # Security Headers
