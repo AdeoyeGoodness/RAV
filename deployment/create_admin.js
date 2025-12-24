@@ -27,7 +27,7 @@ async function main() {
         });
 
         const options = {
-            hostname: 'localhost',
+            hostname: '127.0.0.1',
             port: 8080,
             path: '/api/auth/register',
             method: 'POST',
