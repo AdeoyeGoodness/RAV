@@ -13,7 +13,7 @@ module.exports = {
         {
             name: 'rav-backend',
             cwd: '../backend',
-            script: './target/release/rav_backend',
+            script: './target/release/rav-backend',
             env: {
                 PORT: 8080,
                 HOST: '0.0.0.0'
