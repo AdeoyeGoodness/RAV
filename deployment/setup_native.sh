@@ -49,26 +49,7 @@ mkdir -p /root/data
 # Start Minio with PM2 if not running
 pm2 start "minio server /root/data --console-address :9001" --name rav-minio || true
 
-# 7. Build Backend
-echo "🦀 Building Backend (Release)..."
-cd ../backend
-source "$HOME/.cargo/env"
-cargo build --release
-cd ../deployment
-
-# 8. Build Dashboard
-echo "⚛️ Building Dashboard..."
-cd ../dashboard
-npm ci
-# Fix missing public folder specific to this user's issue
-mkdir -p public
-echo "# Public" > public/.gitkeep
-# Create .env.production
-echo "NEXT_PUBLIC_API_URL=https://$DOMAIN_NAME/api" > .env.production
-npm run build
-cd ../deployment
-
-# 9. Configure Environment Variables
+# 7. Configure Environment Variables (Needed for Build)
 echo "📝 Writing environment configuration..."
 cat > ../backend/.env <<EOF
 HOST=0.0.0.0
@@ -82,6 +63,27 @@ S3_BUCKET=rav-evidence
 JWT_SECRET=production_secret_key_change_me
 cors_allowed_origins=https://$DOMAIN_NAME
 EOF
+
+# 8. Build Backend
+echo "🦀 Building Backend (Release)..."
+cd ../backend
+source "$HOME/.cargo/env"
+# EXPORT DATABASE_URL so sqlx macros can connect during build
+export DATABASE_URL="postgres://rav_user:$DB_PASSWORD@localhost:5432/rav_db"
+cargo build --release
+cd ../deployment
+
+# 9. Build Dashboard
+echo "⚛️ Building Dashboard..."
+cd ../dashboard
+npm ci
+# Fix missing public folder specific to this user's issue
+mkdir -p public
+echo "# Public" > public/.gitkeep
+# Create .env.production
+echo "NEXT_PUBLIC_API_URL=https://$DOMAIN_NAME/api" > .env.production
+npm run build
+cd ../deployment
 
 # 10. Start Services with PM2
 echo "🔥 Starting Applications with PM2..."
