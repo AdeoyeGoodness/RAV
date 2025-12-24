@@ -68,8 +68,22 @@ EOF
 echo "🦀 Building Backend (Release)..."
 cd ../backend
 source "$HOME/.cargo/env"
-# EXPORT DATABASE_URL so sqlx macros can connect during build
+
+# Install sqlx-cli for migrations
+if ! command -v sqlx &> /dev/null; then
+    echo "🛠️ Installing sqlx-cli..."
+    cargo install sqlx-cli --no-default-features --features postgres
+fi
+
+# Configure Env for Build & Migrations
 export DATABASE_URL="postgres://rav_user:$DB_PASSWORD@localhost:5432/rav_db"
+
+# Run Migrations (Create Tables)
+echo "🔄 Running Database Migrations..."
+sqlx migrate run
+
+# Build
+echo "🏗️ Compiling Rust Binary..."
 cargo build --release
 cd ../deployment
 
