@@ -147,3 +147,21 @@ pub struct CreateAuditLog {
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct EnrichedAuditLog {
+    pub id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub actor_type: ActorType,
+    pub actor_id: Option<Uuid>,
+    pub organization_id: Option<Uuid>,
+    pub action_type: String,
+    pub target_type: String,
+    pub target_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    // Enriched fields from JOIN
+    pub actor_email: Option<String>,
+    pub actor_name: Option<String>,
+}

@@ -183,6 +183,8 @@ export interface AuditLog {
   metadata: any
   ip_address: string | null
   user_agent: string | null
+  actor_email: string | null
+  actor_name: string | null
 }
 
 export async function getAuditLogs(params?: {

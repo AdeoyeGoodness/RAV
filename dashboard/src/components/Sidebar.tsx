@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield } from 'lucide-react'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getSystemHealth } from '@/lib/api'
 
@@ -266,14 +266,20 @@ export default function Sidebar() {
           <div className="mt-4 mb-8">
             <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4 px-4 text-gray-600">Infrastructure</h3>
             <div className="space-y-1">
-              <button className="w-full flex items-center px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors group">
-                <CheckSquare className="w-4 h-4 mr-3 text-gray-600 group-hover:text-cyan-400" />
+              <a
+                href="/admin/compliance"
+                className={`w-full flex items-center px-4 py-2 text-sm transition-colors group ${isActive('/admin/compliance') ? 'text-white bg-white/5 border-l-2 border-cyan-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                <CheckSquare className={`w-4 h-4 mr-3 ${isActive('/admin/compliance') ? 'text-cyan-400' : 'text-gray-600 group-hover:text-cyan-400'}`} />
                 <span>Compliance Logs</span>
-              </button>
-              <button className="w-full flex items-center px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors group">
-                <Settings className="w-4 h-4 mr-3 text-gray-600 group-hover:text-cyan-400" />
+              </a>
+              <a
+                href="/admin/policies"
+                className={`w-full flex items-center px-4 py-2 text-sm transition-colors group ${isActive('/admin/policies') ? 'text-white bg-white/5 border-l-2 border-cyan-400' : 'text-gray-400 hover:text-white'}`}
+              >
+                <ShieldCheckIcon className={`w-4 h-4 mr-3 ${isActive('/admin/policies') ? 'text-cyan-400' : 'text-gray-600 group-hover:text-cyan-400'}`} />
                 <span>System Policies</span>
-              </button>
+              </a>
             </div>
           </div>
         )}

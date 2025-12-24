@@ -5,7 +5,7 @@ use axum::{
 };
 use crate::AppState;
 use crate::api::auth::Claims;
-use crate::db::models::{Organization, ActorType, AuditLog};
+use crate::db::models::{Organization, ActorType, EnrichedAuditLog};
 use crate::services::audit::log_audit;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -474,7 +474,7 @@ pub async fn list_audit_logs(
     claims: Claims,
     State(state): State<AppState>,
     Query(params): Query<AuditLogQuery>,
-) -> Result<Json<Vec<AuditLog>>, StatusCode> {
+) -> Result<Json<Vec<EnrichedAuditLog>>, StatusCode> {
     if claims.role != "super_admin" {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -484,17 +484,19 @@ pub async fn list_audit_logs(
     let offset = params.offset.unwrap_or(0);
 
     let logs = sqlx::query_as!(
-        AuditLog,
+        EnrichedAuditLog,
         r#"
-        SELECT id, timestamp, actor_type as "actor_type: ActorType", actor_id, organization_id, 
-               action_type, target_type, target_id, metadata, ip_address, user_agent
-        FROM audit_logs
-        WHERE ($1::uuid IS NULL OR organization_id = $1)
-          AND ($2::text IS NULL OR action_type = $2)
-          AND ($3::text IS NULL OR target_type = $3)
-          AND ($4::timestamptz IS NULL OR timestamp >= $4)
-          AND ($5::timestamptz IS NULL OR timestamp <= $5)
-        ORDER BY timestamp DESC
+        SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id, 
+               l.action_type, l.target_type, l.target_id, l.metadata, l.ip_address, l.user_agent,
+               u.email as actor_email, u.full_name as actor_name
+        FROM audit_logs l
+        LEFT JOIN users u ON l.actor_id = u.id
+        WHERE ($1::uuid IS NULL OR l.organization_id = $1)
+          AND ($2::text IS NULL OR l.action_type = $2)
+          AND ($3::text IS NULL OR l.target_type = $3)
+          AND ($4::timestamptz IS NULL OR l.timestamp >= $4)
+          AND ($5::timestamptz IS NULL OR l.timestamp <= $5)
+        ORDER BY l.timestamp DESC
         LIMIT $6 OFFSET $7
         "#,
         params.organization_id,
