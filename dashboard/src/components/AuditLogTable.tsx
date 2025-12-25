@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { getAuditLogs, getOrganizations, AuditLog, Organization } from '@/lib/api'
 import { format } from 'date-fns'
 import {
@@ -29,7 +30,9 @@ export function AuditLogTable() {
     })
 
     // Debounce filter changes if needed, but for now strict on-change or search button
+    const { user } = useAuth()
     const fetchLogs = async () => {
+        if (user?.role !== 'super_admin') return
         setLoading(true)
         try {
             // Clean filters (remove empty strings)
@@ -53,10 +56,12 @@ export function AuditLogTable() {
     }
 
     useEffect(() => {
-        // Fetch Orgs for filter
-        getOrganizations().then(setOrgs).catch(console.error)
-        fetchLogs()
-    }, [])
+        if (user?.role === 'super_admin') {
+            // Fetch Orgs for filter
+            getOrganizations().then(setOrgs).catch(console.error)
+            fetchLogs()
+        }
+    }, [user])
 
     const handleExport = () => {
         // Basic CSV Export

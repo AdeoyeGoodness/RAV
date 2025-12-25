@@ -106,7 +106,7 @@ pub async fn login(
     }
 
     let exp = Utc::now()
-        .checked_add_signed(Duration::hours(24))
+        .checked_add_signed(Duration::hours(4))
         .expect("valid timestamp")
         .timestamp() as usize;
 
@@ -151,9 +151,9 @@ pub async fn login(
         }
     }
 
-    // Set HttpOnly Cookie
+    // Set HttpOnly Cookie (Session only, no Max-Age)
     let cookie = format!(
-        "rav_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
+        "rav_token={}; HttpOnly; Path=/; SameSite=Lax",
         token
     );
 
