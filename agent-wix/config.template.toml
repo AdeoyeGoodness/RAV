@@ -1,0 +1,12 @@
+# RAV Agent Configuration Template
+# This file is populated at install-time by the MSI installer.
+# DO NOT EDIT MANUALLY - values are written dynamically.
+
+[backend]
+# url = "https://your-server.com"       # Written at install-time
+# enrollment_token = "RAV-XXXX"         # Written at install-time (consumed once)
+
+[agent]
+heartbeat_interval_secs = 60
+store_forward_batch_size = 50
+local_db_path = "C:\\ProgramData\\RAV\\events.db"

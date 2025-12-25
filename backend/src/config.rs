@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub s3_bucket: String,
     pub redis_url: String,
     pub jwt_secret: String,
+    pub cors_allowed_origins: String,
 }
 
 impl AppConfig {
@@ -37,6 +38,8 @@ impl AppConfig {
                 .unwrap_or_else(|_| "redis://localhost:6379".to_string()),
             jwt_secret: env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "change-me-in-production".to_string()),
+            cors_allowed_origins: env::var("cors_allowed_origins")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
         })
     }
 }

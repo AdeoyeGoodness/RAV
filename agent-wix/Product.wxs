@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  RAV Agent Universal MSI with Full GUI Wizard
+  
+  Flow: Welcome -> EULA -> Enrollment Config -> Install
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  
+  <Package Name="RAV Agent" 
+           Manufacturer="RAV Security" 
+           Version="1.0.0.0" 
+           UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
+           Scope="perMachine">
+    
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- INSTALL-TIME PROPERTIES -->
+    <Property Id="BACKEND_URL" Value="https://rav.handy.boats" />
+    <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- License file -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- Use FeatureTree UI which is simpler -->
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    
+    <!-- Custom UI elements -->
+    <UI>
+      <!-- Enrollment dialog -->
+      <Dialog Id="EnrollmentDlg" Width="370" Height="270" Title="RAV Agent - Organization Enrollment">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="300" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Organization Enrollment" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="15" Transparent="yes" NoPrefix="yes" Text="Connect this agent to your organization." />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        
+        <Control Id="BackendLabel" Type="Text" X="20" Y="65" Width="330" Height="15" NoPrefix="yes" Text="Backend Server URL:" />
+        <Control Id="BackendEdit" Type="Edit" X="20" Y="80" Width="330" Height="18" Property="BACKEND_URL" />
+        
+        <Control Id="TokenLabel" Type="Text" X="20" Y="110" Width="330" Height="15" NoPrefix="yes" Text="Enrollment Token (from your IT administrator):" />
+        <Control Id="TokenEdit" Type="Edit" X="20" Y="125" Width="330" Height="18" Property="ENROLLMENT_TOKEN" />
+
+        <Control Id="InfoText" Type="Text" X="20" Y="155" Width="330" Height="40" NoPrefix="yes" Text="Your IT administrator will provide you with the enrollment token. This links the agent to your organization's monitoring dashboard." />
+        
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
+          <Publish Event="NewDialog" Value="LicenseAgreementDlg" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="&amp;Next">
+          <Publish Event="NewDialog" Value="CustomizeDlg" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+      
+      <!-- Wire up the dialog flow: License -> Enrollment -> Customize -->
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="EnrollmentDlg" Order="3" />
+      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="EnrollmentDlg" Order="3" />
+    </UI>
+
+    <!-- Install directory structure -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="RAV Agent">
+        
+        <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+          <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
+          
+          <ServiceInstall Id="RAVAgentService"
+                          Name="RAVAgent"
+                          DisplayName="RAV Monitoring Agent"
+                          Description="Remote Asset Visibility monitoring service"
+                          Start="auto"
+                          Type="ownProcess"
+                          ErrorControl="normal"
+                          Account="LocalSystem" />
+          
+          <ServiceControl Id="StartRAVService" 
+                          Name="RAVAgent" 
+                          Start="install" 
+                          Stop="both" 
+                          Remove="uninstall" 
+                          Wait="yes" />
+        </Component>
+
+        <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
+          <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
+          
+          <IniFile Id="WriteBackendUrl" 
+                   Action="addLine" 
+                   Directory="INSTALLFOLDER" 
+                   Name="config.toml" 
+                   Section="backend" 
+                   Key="url" 
+                   Value="[BACKEND_URL]" />
+          
+          <IniFile Id="WriteEnrollmentToken" 
+                   Action="addLine" 
+                   Directory="INSTALLFOLDER" 
+                   Name="config.toml" 
+                   Section="backend" 
+                   Key="enrollment_token" 
+                   Value="[ENROLLMENT_TOKEN]" />
+        </Component>
+        
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="RAV Agent" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="ConfigFileComponent" />
+    </Feature>
+    
+  </Package>
+</Wix>

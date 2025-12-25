@@ -95,11 +95,12 @@ async fn main() -> Result<()> {
         .route("/api/v1/files/:file_id", get(handlers::download_file))
         .layer(
             CorsLayer::new()
-                .allow_origin([
-                    "http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://127.0.0.1:3000".parse::<axum::http::HeaderValue>().unwrap(),
-                    "http://192.168.55.213:3000".parse::<axum::http::HeaderValue>().unwrap(),
-                ])
+                .allow_origin(
+                    config.cors_allowed_origins
+                        .split(',')
+                        .map(|s| s.trim().parse::<axum::http::HeaderValue>().unwrap())
+                        .collect::<Vec<_>>()
+                )
                 .allow_methods([
                     axum::http::Method::GET,
                     axum::http::Method::POST,
