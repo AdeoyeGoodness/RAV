@@ -6,6 +6,7 @@ import { Monitor, Activity, Clock, HardDrive, Search } from 'lucide-react'
 import { getAgents, getEvents } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Agent {
   id: string
@@ -18,15 +19,29 @@ interface Agent {
 
 export default function DevicesPage() {
   const router = useRouter()
+  const { user, isLoading } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
-    loadAgents()
-    const interval = setInterval(loadAgents, 30000) // Refresh every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
+    if (user) {
+      loadAgents()
+      const interval = setInterval(loadAgents, 30000) // Refresh every 30 seconds
+      return () => clearInterval(interval)
+    }
+  }, [user])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+          <p className="text-cyan-500 font-medium animate-pulse">Scanning Secure Nodes...</p>
+        </div>
+      </div>
+    )
+  }
 
   const loadAgents = async () => {
     try {

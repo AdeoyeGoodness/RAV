@@ -9,6 +9,7 @@ import Header from '@/components/Header'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Agent {
   id: string
@@ -29,6 +30,7 @@ interface Event {
 }
 
 export default function DeviceDetailsPage() {
+  const { user, isLoading } = useAuth()
   const params = useParams()
   const router = useRouter()
   const agentId = params.agentId as string
@@ -39,10 +41,12 @@ export default function DeviceDetailsPage() {
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
 
   useEffect(() => {
-    loadDeviceData()
-    const interval = setInterval(loadDeviceData, 10000) // Refresh every 10 seconds for faster updates
-    return () => clearInterval(interval)
-  }, [agentId])
+    if (user) {
+      loadDeviceData()
+      const interval = setInterval(loadDeviceData, 10000) // Refresh every 10 seconds for faster updates
+      return () => clearInterval(interval)
+    }
+  }, [agentId, user])
 
   const loadDeviceData = async () => {
     setLoading(true)
@@ -136,18 +140,12 @@ export default function DeviceDetailsPage() {
     return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
   }
 
-  if (loading && !agent) {
+  if (isLoading || !user) {
     return (
-      <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
-        <Sidebar />
-        <div className="flex-1 ml-64">
-          <Header />
-          <main className="pt-20 p-8 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-4 transition-colors" style={{ borderColor: 'var(--accent-cyan)' }} />
-              <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading device details...</p>
-            </div>
-          </main>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+          <p className="text-cyan-500 font-medium animate-pulse font-mono tracking-widest text-xs">ENCRYPTING CONNECTION TO NODE {agentId}...</p>
         </div>
       </div>
     )

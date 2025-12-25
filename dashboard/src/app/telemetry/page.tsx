@@ -4,8 +4,21 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { Activity } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function TelemetryPage() {
+    const { user, isLoading } = useAuth()
+
+    if (isLoading || !user) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+                    <p className="text-cyan-500/80 font-mono text-sm tracking-widest animate-pulse">ESTABLISHING SECURE LINK...</p>
+                </div>
+            </div>
+        )
+    }
     return (
         <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-cyan-500/30">
             <Sidebar />

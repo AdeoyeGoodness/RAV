@@ -8,6 +8,9 @@ import {
     FileSearch,
     Cpu
 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 const SECTIONS = [
     {
@@ -74,6 +77,26 @@ const SECTIONS = [
 ]
 
 export default function PoliciesPage() {
+    const { user, isLoading } = useAuth()
+    const router = useRouter()
+
+    useEffect(() => {
+        if (!isLoading && !user) {
+            router.push('/login')
+        }
+    }, [user, isLoading])
+
+    if (isLoading || !user) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+                    <p className="text-blue-500 font-medium animate-pulse text-sm tracking-widest">RETRIEVING SECURITY PROTOCOLS...</p>
+                </div>
+            </div>
+        )
+    }
+
     return (
         <div className="min-h-screen bg-gray-900 text-white p-8">
             {/* Header */}
@@ -101,8 +124,8 @@ export default function PoliciesPage() {
                                 <li key={item.label} className="flex items-center justify-between text-sm">
                                     <span className="text-gray-300">{item.label}</span>
                                     <span className={`px-2 py-0.5 rounded text-xs font-medium border ${item.type === 'neutral'
-                                            ? 'bg-gray-700/50 text-gray-400 border-gray-600'
-                                            : 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
+                                        ? 'bg-gray-700/50 text-gray-400 border-gray-600'
+                                        : 'bg-emerald-900/30 text-emerald-400 border-emerald-800'
                                         }`}>
                                         {item.status}
                                     </span>

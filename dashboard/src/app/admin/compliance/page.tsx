@@ -9,6 +9,7 @@ import {
     RefreshCw,
     BadgeCheck
 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function ComplianceLogsPage() {
     const router = useRouter()
@@ -20,22 +21,17 @@ export default function ComplianceLogsPage() {
     const [actorType, setActorType] = useState('')
     const [actionType, setActionType] = useState('')
 
-    useEffect(() => {
-        checkAuthAndFetch()
-    }, [])
+    const { user, isLoading } = useAuth()
 
-    async function checkAuthAndFetch() {
-        try {
-            const user = await getCurrentUser()
+    useEffect(() => {
+        if (user) {
             if (user.role !== 'super_admin') {
-                router.push('/dashboard') // Or some other unauthorized page
-                return
+                router.push('/dashboard')
+            } else {
+                fetchLogs()
             }
-            fetchLogs()
-        } catch (err) {
-            router.push('/login')
         }
-    }
+    }, [user, isLoading])
 
     async function fetchLogs() {
         setLoading(true)
@@ -51,6 +47,17 @@ export default function ComplianceLogsPage() {
         } finally {
             setLoading(false)
         }
+    }
+
+    if (isLoading || !user || user.role !== 'super_admin') {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
+                    <p className="text-emerald-500/80 font-mono text-sm tracking-widest animate-pulse">COMPLIANCE AUTHORIZATION PENDING...</p>
+                </div>
+            </div>
+        )
     }
 
     return (

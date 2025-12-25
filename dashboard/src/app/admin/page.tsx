@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 
 
 export default function AdminPage() {
-    const { user } = useAuth()
+    const { user, isLoading } = useAuth()
     const router = useRouter()
     const [organizations, setOrganizations] = useState<Organization[]>([])
     const [loading, setLoading] = useState(true)
@@ -181,6 +181,17 @@ export default function AdminPage() {
         org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         org.enrollment_token.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    if (isLoading || !user || user.role !== 'super_admin') {
+        return (
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+                    <p className="text-cyan-500/80 font-mono text-sm tracking-widest animate-pulse">TERMINAL ACCESS RESTRICTED: VERIFYING...</p>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
