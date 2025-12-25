@@ -14,11 +14,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchStats = async () => {
+      if (!user) return;
       try {
-        const [orgs, agents] = await Promise.all([
-          getOrganizations(),
+        const fetchers: [Promise<any>, Promise<any>] = [
+          user.role === 'super_admin' ? getOrganizations() : Promise.resolve([{ id: 'current' }]),
           getAgents()
-        ])
+        ]
+        const [orgs, agents] = await Promise.all(fetchers)
         setStats({
           orgs: orgs.length,
           agents: agents.length

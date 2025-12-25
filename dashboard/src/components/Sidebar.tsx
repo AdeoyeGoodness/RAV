@@ -14,19 +14,25 @@ export default function Sidebar() {
   const isActive = (path: string) => pathname === path
 
   useEffect(() => {
-    if (user?.role === 'super_admin') {
-      const fetchHealth = async () => {
-        try {
-          const data = await getSystemHealth()
-          setHealth(data)
-        } catch (error) {
-          console.error('Failed to fetch platform health:', error)
-        }
-      }
+    let interval: NodeJS.Timeout;
 
+    const fetchHealth = async () => {
+      if (user?.role !== 'super_admin') return;
+      try {
+        const data = await getSystemHealth()
+        setHealth(data)
+      } catch (error) {
+        console.error('Failed to fetch platform health:', error)
+      }
+    }
+
+    if (user?.role === 'super_admin') {
       fetchHealth()
-      const interval = setInterval(fetchHealth, 5000)
-      return () => clearInterval(interval)
+      interval = setInterval(fetchHealth, 5000)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
     }
   }, [user])
 

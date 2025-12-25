@@ -28,12 +28,14 @@ export default function AdminPage() {
     const [copiedTokenIds, setCopiedTokenIds] = useState<Set<string>>(new Set())
 
     useEffect(() => {
-        if (user && user.role !== 'super_admin') {
-            router.push('/')
-            return
+        if (user) {
+            if (user.role !== 'super_admin') {
+                router.push('/')
+                return
+            }
+            loadData()
         }
-        loadData()
-    }, [user])
+    }, [user, router])
 
     const loadData = async () => {
         try {
