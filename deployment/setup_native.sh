@@ -101,6 +101,7 @@ cd ../deployment
 
 # 10. Start Services with PM2
 echo "🔥 Starting Applications with PM2..."
+pm2 delete all || true
 pm2 start ecosystem.config.js
 pm2 save
 
