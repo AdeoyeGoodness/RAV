@@ -1,3 +1,4 @@
+use tracing::info;
 use axum::{
     extract::{State, Path},
     http::StatusCode,
