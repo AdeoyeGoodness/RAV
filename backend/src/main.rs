@@ -116,7 +116,12 @@ async fn main() -> Result<()> {
                     axum::http::Method::DELETE,
                     axum::http::Method::OPTIONS,
                 ])
-                .allow_headers(tower_http::cors::Any)
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::COOKIE,
+                    "X-Organization-Id".parse::<axum::http::HeaderName>().unwrap(),
+                ])
                 .allow_credentials(true)
         )
         .layer(axum::middleware::from_fn(secure_headers))
