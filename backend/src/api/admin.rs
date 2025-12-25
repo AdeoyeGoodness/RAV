@@ -29,7 +29,9 @@ pub async fn list_organizations(
     claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Organization>>, StatusCode> {
+    info!("List organizations request from user: {} (role: {})", claims.sub, claims.role);
     if claims.role != "super_admin" {
+        info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -53,7 +55,9 @@ pub async fn create_organization(
     State(state): State<AppState>,
     Json(payload): Json<CreateOrganization>,
 ) -> Result<Json<Organization>, StatusCode> {
+    info!("Create organization '{}' request from user: {} (role: {})", payload.name, claims.sub, claims.role);
     if claims.role != "super_admin" {
+        info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -200,7 +204,9 @@ pub async fn get_platform_stats(
     claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<PlatformStats>, StatusCode> {
+    info!("Platform stats request from user: {} (role: {})", claims.sub, claims.role);
     if claims.role != "super_admin" {
+        info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -249,7 +255,9 @@ pub async fn get_system_health(
     claims: Claims,
     State(state): State<AppState>,
 ) -> Result<Json<SystemHealth>, StatusCode> {
+    info!("System health request from user: {} (role: {})", claims.sub, claims.role);
     if claims.role != "super_admin" {
+        info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -282,7 +290,9 @@ pub async fn delete_organization(
     State(state): State<AppState>,
     Path(org_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
+    info!("Delete organization '{}' request from user: {} (role: {})", org_id, claims.sub, claims.role);
     if claims.role != "super_admin" {
+        info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -488,7 +498,7 @@ pub async fn list_audit_logs(
         r#"
         SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id, 
                l.action_type, l.target_type, l.target_id, l.metadata, l.ip_address, l.user_agent,
-               u.email as actor_email, u.full_name as actor_name
+               u.email as "actor_email?", u.full_name as "actor_name?"
         FROM audit_logs l
         LEFT JOIN users u ON l.actor_id = u.id
         WHERE ($1::uuid IS NULL OR l.organization_id = $1)

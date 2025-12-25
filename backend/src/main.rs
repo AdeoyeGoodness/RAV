@@ -99,7 +99,13 @@ async fn main() -> Result<()> {
                 .allow_origin(
                     config.cors_allowed_origins
                         .split(',')
-                        .map(|s| s.trim().parse::<axum::http::HeaderValue>().unwrap())
+                        .flat_map(|s| {
+                            let s = s.trim();
+                            vec![
+                                s.parse::<axum::http::HeaderValue>().unwrap(),
+                                format!("{}/", s).parse::<axum::http::HeaderValue>().unwrap(),
+                            ]
+                        })
                         .collect::<Vec<_>>()
                 )
                 .allow_methods([
@@ -108,12 +114,9 @@ async fn main() -> Result<()> {
                     axum::http::Method::PATCH,
                     axum::http::Method::PUT,
                     axum::http::Method::DELETE,
+                    axum::http::Method::OPTIONS,
                 ])
-                .allow_headers([
-                    axum::http::header::CONTENT_TYPE,
-                    axum::http::header::AUTHORIZATION,
-                    "X-Organization-Id".parse::<axum::http::HeaderName>().unwrap(),
-                ])
+                .allow_headers(tower_http::cors::Any)
                 .allow_credentials(true)
         )
         .layer(axum::middleware::from_fn(secure_headers))
@@ -150,7 +153,7 @@ async fn secure_headers(
     // Note: We allow 'unsafe-inline' for styles due to some UI frameworks, but scripts are restricted.
     headers.insert(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' http://localhost:8080 http://192.168.55.213:8080; frame-ancestors 'none';".parse().unwrap()
+        "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://rav.handy.boats; frame-ancestors 'none';".parse().unwrap()
     );
 
     // 2. Clickjacking Protection

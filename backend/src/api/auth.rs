@@ -153,7 +153,7 @@ pub async fn login(
 
     // Set HttpOnly Cookie
     let cookie = format!(
-        "rav_token={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400",
+        "rav_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400",
         token
     );
 
@@ -239,6 +239,6 @@ pub async fn me(
 }
 
 pub async fn logout() -> impl IntoResponse {
-    let cookie = "rav_token=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0";
+    let cookie = "rav_token=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0";
     [(SET_COOKIE, cookie)]
 }
