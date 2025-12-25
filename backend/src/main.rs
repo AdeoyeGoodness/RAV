@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = Arc::new(AppConfig::load()?);
     info!("Configuration loaded");
+    info!("CORS Allowed Origins: {}", config.cors_allowed_origins);
 
     // Initialize database
     let db = Arc::new(Database::new(&config.database_url).await?);

@@ -61,7 +61,7 @@ S3_ACCESS_KEY=minioadmin
 S3_SECRET_KEY=minioadmin
 S3_BUCKET=rav-evidence
 JWT_SECRET=production_secret_key_change_me
-cors_allowed_origins=https://$DOMAIN_NAME
+CORS_ALLOWED_ORIGINS=https://$DOMAIN_NAME
 EOF
 
 # 8. Build Backend
