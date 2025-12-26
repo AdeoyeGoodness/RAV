@@ -12,6 +12,7 @@ interface Agent {
   id: string
   agent_id: string
   hardware_fingerprint: string
+  hostname: string | null
   last_seen: string
   created_at: string
   updated_at: string
@@ -83,7 +84,8 @@ export default function DevicesPage() {
     const query = searchQuery.toLowerCase()
     return (
       agent.agent_id.toLowerCase().includes(query) ||
-      agent.hardware_fingerprint.toLowerCase().includes(query)
+      agent.hardware_fingerprint.toLowerCase().includes(query) ||
+      (agent.hostname && agent.hostname.toLowerCase().includes(query))
     )
   })
 
@@ -153,9 +155,9 @@ export default function DevicesPage() {
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {agent.agent_id.length > 20
+                              {agent.hostname || (agent.agent_id.length > 20
                                 ? `${agent.agent_id.substring(0, 20)}...`
-                                : agent.agent_id}
+                                : agent.agent_id)}
                             </h3>
                             <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
                               {status.status.charAt(0).toUpperCase() + status.status.slice(1)}

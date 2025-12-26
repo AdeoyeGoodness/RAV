@@ -58,9 +58,11 @@ export default function DeviceDetailsPage() {
         getEvents({ agent_id: agentId, limit: 10000 }),
       ])
 
-      const foundAgent = agentsData.find(a => a.agent_id === agentId)
+      const foundAgent = agentsData.find(a => a.agent_id === agentId || a.hostname === agentId)
       if (foundAgent) {
         setAgent(foundAgent)
+      } else {
+        setAgent(null) // Explicitly set to null if truly not found
       }
 
       // Filter events to only show those after clear timestamp

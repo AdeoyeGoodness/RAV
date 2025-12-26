@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getSystemHealth } from '@/lib/api'
+import { getSystemHealth, getAgents } from '@/lib/api'
+
+interface Agent {
+  agent_id: string
+  hostname: string | null
+}
 
 export default function Sidebar() {
   const pathname = usePathname()
@@ -10,6 +15,7 @@ export default function Sidebar() {
   const [expandedTeams, setExpandedTeams] = useState<string[]>(['ProductStudio'])
   const [expandedWorkspace, setExpandedWorkspace] = useState<string[]>(['Fireart Studio'])
   const [health, setHealth] = useState<any>(null)
+  const [agents, setAgents] = useState<Agent[]>([])
 
   const isActive = (path: string) => pathname === path
 
@@ -26,9 +32,21 @@ export default function Sidebar() {
       }
     }
 
-    if (user?.role === 'super_admin') {
-      fetchHealth()
-      interval = setInterval(fetchHealth, 5000)
+    const fetchAgents = async () => {
+      try {
+        const data = await getAgents()
+        setAgents(data)
+      } catch (error) {
+        console.error('Failed to fetch agents for sidebar:', error)
+      }
+    }
+
+    if (user) {
+      if (user.role === 'super_admin') {
+        fetchHealth()
+        interval = setInterval(fetchHealth, 5000)
+      }
+      fetchAgents()
     }
 
     return () => {
@@ -212,17 +230,32 @@ export default function Sidebar() {
                   </button>
                   {expandedTeams.includes('ProductStudio') && (
                     <ul className="ml-4 mt-1 space-y-1">
-                      <li className="px-4 py-2 rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
+                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
                         USB Monitoring
                       </li>
-                      <li className="px-4 py-2 rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
+                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
                         Network Events
                       </li>
-                      <li className="px-4 py-2 rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
+                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
                         System Activity
                       </li>
-                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-tertiary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                        View All
+                      <div className="pt-2 mt-2 border-t border-white/5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-4 mb-2">Connected Endpoints</p>
+                        {agents.slice(0, 5).map(agent => (
+                          <li
+                            key={agent.agent_id}
+                            className="px-4 py-1.5 text-xs rounded-lg cursor-pointer transition-all overflow-hidden text-ellipsis whitespace-nowrap"
+                            style={{ color: 'var(--text-tertiary)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.color = 'var(--accent-cyan)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                            onClick={() => window.location.href = `/devices/${agent.agent_id}`}
+                          >
+                            {agent.hostname || agent.agent_id.substring(0, 12)}
+                          </li>
+                        ))}
+                      </div>
+                      <li className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg cursor-pointer transition-all" style={{ color: 'var(--accent-cyan)' }} onClick={() => window.location.href = '/devices'}>
+                        View All Agents →
                       </li>
                     </ul>
                   )}
