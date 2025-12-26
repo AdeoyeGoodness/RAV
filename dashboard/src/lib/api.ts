@@ -14,9 +14,19 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const orgId = localStorage.getItem('rav_organization_id')
+    const userJson = localStorage.getItem('rav_user')
 
-    if (orgId) {
-      config.headers['X-Organization-Id'] = orgId
+    // ONLY attach X-Organization-Id if user is a super_admin.
+    // org_admin has their org_id baked into their JWT, so the backend handles it.
+    if (orgId && userJson) {
+      try {
+        const user = JSON.parse(userJson)
+        if (user.role === 'super_admin') {
+          config.headers['X-Organization-Id'] = orgId
+        }
+      } catch (e) {
+        // Silently ignore parse errors
+      }
     }
   }
   return config

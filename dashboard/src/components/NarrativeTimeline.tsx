@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
-import { getAuditLogs, getEvents, AuditLog, Event, getAgents, Agent } from '@/lib/api'
+import { getAuditLogs, getOrgAuditLogs, getEvents, AuditLog, Event, getAgents, Agent } from '@/lib/api'
+import { useAuth } from '@/contexts/AuthContext'
 import { format, differenceInMinutes, isSameDay } from 'date-fns'
 import {
     Shield,
@@ -40,6 +41,7 @@ type TimelineGroup = {
 }
 
 export function NarrativeTimeline() {
+    const { user } = useAuth()
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
     const [telemetry, setTelemetry] = useState<Event[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
@@ -50,18 +52,25 @@ export function NarrativeTimeline() {
     useEffect(() => {
         fetchData()
         getAgents().then(setAgents).catch(console.error)
-    }, [filterAgent])
+    }, [filterAgent, user]) // Added user to dependency array
 
     const fetchData = async () => {
+        if (!user) return;
         setLoading(true)
         try {
             const tData = await getEvents({ limit: 300, agent_id: filterAgent || undefined })
             setTelemetry(tData)
 
             try {
-                const aData = await getAuditLogs({ limit: 100 })
+                let aData: AuditLog[] = []
+                if (user.role === 'super_admin') {
+                    aData = await getAuditLogs({ limit: 100 })
+                } else {
+                    aData = await getOrgAuditLogs({ limit: 100 })
+                }
                 setAuditLogs(aData)
             } catch (e) {
+                console.error('Audit Log Sync Error:', e)
                 setAuditLogs([])
             }
         } catch (error) {
