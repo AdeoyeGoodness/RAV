@@ -16,7 +16,7 @@ import {
     ChevronRight
 } from 'lucide-react'
 
-export function TelemetryExplorer() {
+export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string }) {
     const [events, setEvents] = useState<Event[]>([])
     const [agents, setAgents] = useState<Agent[]>([])
     const [loading, setLoading] = useState(true)
@@ -24,7 +24,7 @@ export function TelemetryExplorer() {
 
     // Filters
     const [filters, setFilters] = useState({
-        agent_id: '',
+        agent_id: initialAgentId || '',
         category: '',
         severity: '',
         event_type: '',
@@ -35,8 +35,11 @@ export function TelemetryExplorer() {
     useEffect(() => {
         // Fetch Agents for filter
         getAgents().then(setAgents).catch(console.error)
-        fetchEvents()
     }, [])
+
+    useEffect(() => {
+        fetchEvents()
+    }, [filters.agent_id, filters.category, filters.severity])
 
     const fetchEvents = async () => {
         setLoading(true)

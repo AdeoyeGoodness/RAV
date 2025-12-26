@@ -9,6 +9,7 @@ import Header from '@/components/Header'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
+import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface Agent {
@@ -299,6 +300,14 @@ export default function DeviceDetailsPage() {
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
             />
+
+            {/* General Telemetry Section */}
+            <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Full Event Observation Log</h2>
+              </div>
+              <TelemetryExplorer initialAgentId={agentId} />
+            </div>
           </div>
         </main>
       </div>

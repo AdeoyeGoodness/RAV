@@ -203,7 +203,9 @@ pub async fn enroll_agent(
         ON CONFLICT (agent_id) DO UPDATE
         SET updated_at = EXCLUDED.updated_at,
             last_seen = EXCLUDED.last_seen,
-            hostname = EXCLUDED.hostname
+            hostname = EXCLUDED.hostname,
+            hardware_fingerprint = EXCLUDED.hardware_fingerprint,
+            organization_id = EXCLUDED.organization_id
         "#,
         Uuid::new_v4(),
         org_info.id,

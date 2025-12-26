@@ -26,12 +26,16 @@ pub struct Heartbeat {
     pub hostname: Option<String>,
 }
 
+pub struct AgentIdentity {
+    pub agent_id: Option<String>,
+    pub organization_id: Option<String>,
+}
+
 pub struct SyncManager {
     config: Arc<Config>,
     client: reqwest::Client,
     storage: Arc<StorageManager>,
-    agent_id: Arc<tokio::sync::Mutex<Option<String>>>,
-    organization_id: Arc<tokio::sync::Mutex<Option<String>>>,
+    identity: Arc<tokio::sync::RwLock<AgentIdentity>>,
 }
 
 impl SyncManager {
@@ -50,18 +54,18 @@ impl SyncManager {
             config,
             client,
             storage,
-            agent_id: Arc::new(tokio::sync::Mutex::new(initial_agent_id)),
-            organization_id: Arc::new(tokio::sync::Mutex::new(initial_org_id)),
+            identity: Arc::new(tokio::sync::RwLock::new(AgentIdentity {
+                agent_id: initial_agent_id,
+                organization_id: initial_org_id,
+            })),
         })
     }
 
     pub async fn get_identity(&self) -> (String, String) {
-        let agent_id = self.agent_id.lock().await;
-        let org_id = self.organization_id.lock().await;
-        
+        let id_guard = self.identity.read().await;
         (
-            agent_id.clone().unwrap_or_else(|| "unknown".to_string()),
-            org_id.clone().unwrap_or_else(|| "unknown".to_string())
+            id_guard.agent_id.clone().unwrap_or_else(|| "unknown".to_string()),
+            id_guard.organization_id.clone().unwrap_or_else(|| "unknown".to_string()),
         )
     }
 
@@ -125,8 +129,11 @@ impl SyncManager {
         
         if let Some(org_id) = existing_org_id {
             // Updating internal state
-            let mut org_guard = self.organization_id.lock().await;
-            *org_guard = Some(org_id.clone());
+            {
+                let mut id_guard = self.identity.write().await;
+                id_guard.organization_id = Some(org_id.clone());
+                id_guard.agent_id = Some(agent_id.clone());
+            }
             info!("Resuming session for Organization: {}", org_id);
             return Ok((agent_id, org_id));
         }
@@ -168,11 +175,11 @@ impl SyncManager {
         let org_name = result.get("organization_name").and_then(|v| v.as_str())
             .unwrap_or("Unknown Org");
 
-        let mut org_guard = self.organization_id.lock().await;
-        *org_guard = Some(org_id.clone());
-        
-        let mut agent_guard = self.agent_id.lock().await;
-        *agent_guard = Some(agent_id.clone());
+        {
+            let mut id_guard = self.identity.write().await;
+            id_guard.organization_id = Some(org_id.clone());
+            id_guard.agent_id = Some(agent_id.clone());
+        }
         
         info!("ACQUIRED: Organization '{}' ({})", org_name, org_id);
 
@@ -213,11 +220,10 @@ impl SyncManager {
             request = request.header("X-API-Key", api_key);
         }
 
-        let org_guard = self.organization_id.lock().await;
-        if let Some(org_id) = org_guard.as_ref() {
+        let org_id = self.identity.read().await.organization_id.clone();
+        if let Some(org_id) = org_id {
             request = request.header("X-Organization-Id", org_id);
         }
-        drop(org_guard);
 
         let response = request.send().await.context("Sync connection failed")?;
 
@@ -255,8 +261,8 @@ impl SyncManager {
             request = request.header("X-API-Key", api_key);
         }
 
-        let org_guard = self.organization_id.lock().await;
-        if let Some(org_id) = org_guard.as_ref() {
+        let org_id = self.identity.read().await.organization_id.clone();
+        if let Some(org_id) = org_id {
             request = request.header("X-Organization-Id", org_id);
         }
         
