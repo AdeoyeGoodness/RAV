@@ -10,25 +10,36 @@ const api = axios.create({
   withCredentials: true // Important for HttpOnly Cookies
 })
 
-// Add organization context from localStorage (Token is now cookie-managed)
-api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const orgId = localStorage.getItem('rav_organization_id')
-    const userJson = localStorage.getItem('rav_user')
+// Internal authority state (not persistent in localStorage)
+let internalRole: string | null = null
+let internalOrgId: string | null = null
 
-    // ONLY attach X-Organization-Id if user is a super_admin.
-    // org_admin has their org_id baked into their JWT, so the backend handles it.
-    if (orgId && userJson) {
-      try {
-        const user = JSON.parse(userJson)
-        if (user.role === 'super_admin') {
-          config.headers['X-Organization-Id'] = orgId
-        }
-      } catch (e) {
-        // Silently ignore parse errors
-      }
+/**
+ * Enterprise-Grade Authority Sync
+ * Called by AuthContext to inject verified JWT claims into the API layer.
+ */
+export function setApiAuthority(role: string | null, orgId: string | null) {
+  internalRole = role
+  internalOrgId = orgId
+}
+
+api.interceptors.request.use((config) => {
+  // 1. Role-Gating Firewall
+  // Block restricted API calls BEFORE they leave the browser if role is insufficient.
+  if (config.url?.includes('/api/v1/admin/')) {
+    if (internalRole !== 'super_admin') {
+      console.error(`🛡️ [API Firewall] Blocked unauthorized ${config.method?.toUpperCase()} to ${config.url}. Expected: super_admin, Actual: ${internalRole}`)
+      return Promise.reject(new Error('Unauthorized: Role insufficient for platform administration'))
     }
   }
+
+  // 2. Organization Context Gating
+  // ONLY attach X-Organization-Id if user is a verified super_admin.
+  // This prevents org_admin users from inadvertently overriding their JWT scope.
+  if (internalRole === 'super_admin' && internalOrgId) {
+    config.headers['X-Organization-Id'] = internalOrgId
+  }
+
   return config
 })
 

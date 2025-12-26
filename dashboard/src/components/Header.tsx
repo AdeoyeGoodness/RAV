@@ -9,18 +9,9 @@ export default function Header() {
   const { theme, toggleTheme } = useTheme()
   const { user, isLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
-  const [currentOrgName, setCurrentOrgName] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
-    const updateOrgName = () => {
-      setCurrentOrgName(localStorage.getItem('rav_organization_name'))
-    }
-    updateOrgName()
-
-    // Check for changes in localStorage (simple way)
-    const interval = setInterval(updateOrgName, 2000)
-    return () => clearInterval(interval)
   }, [])
 
   const getUserDisplayName = () => {
@@ -33,11 +24,6 @@ export default function Header() {
     return 'User'
   }
 
-  const resetContext = () => {
-    localStorage.removeItem('rav_organization_id')
-    localStorage.removeItem('rav_organization_name')
-    window.location.reload()
-  }
 
   return (
     <header className="h-20 flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-10 transition-colors" style={{ backgroundColor: 'var(--bg-header)', borderBottom: '1px solid var(--border-color)' }}>

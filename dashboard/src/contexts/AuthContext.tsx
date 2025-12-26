@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { User, getCurrentUser, userLogout } from '@/lib/api'
+import { User, getCurrentUser, userLogout, setApiAuthority } from '@/lib/api'
 
 interface AuthContextType {
     user: User | null
@@ -24,21 +24,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                // Try to hydrate session from HttpOnly Cookie
+                // Authority comes from the backend/JWT, not localStorage
                 const user = await getCurrentUser()
                 setUser(user)
+                setApiAuthority(user.role, user.organization_id)
                 if (user.organization_id) {
                     localStorage.setItem('rav_organization_id', user.organization_id)
                 }
             } catch (error) {
-                // 401 Unauthorized -> No active session
                 setUser(null)
+                setApiAuthority(null, null)
                 localStorage.removeItem('rav_organization_id')
             } finally {
                 setIsLoading(false)
             }
         }
         checkAuth()
+
+        // CROSS-TAB SYNC: Listen for auth changes in other tabs
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'rav_auth_sync') {
+                // If another tab logged out or changed, we must re-verify or reload
+                window.location.reload()
+            }
+        }
+        window.addEventListener('storage', handleStorageChange)
+        return () => window.removeEventListener('storage', handleStorageChange)
     }, [])
 
     useEffect(() => {
@@ -52,15 +63,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, [user, isLoading, pathname, router])
 
     const login = (token: string, user: User) => {
-        // Token is now in HttpOnly Cookie, we just update state
-        // Token arg is kept for signature compatibility but ignored
         setUser(user)
-        setToken(null) // Token is not accessible to JS
-        if (user.organization_id) {
-            localStorage.setItem('rav_organization_id', user.organization_id)
-        } else {
-            localStorage.removeItem('rav_organization_id')
-        }
+        setApiAuthority(user.role, user.organization_id)
+        setToken(null)
+        // Broadcast change to other tabs
+        localStorage.setItem('rav_auth_sync', Date.now().toString())
         router.push('/')
     }
 
@@ -70,11 +77,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {
             console.error("Logout failed", e)
         }
-        setToken(null)
         setUser(null)
-        localStorage.removeItem('rav_token') // Cleanup legacy
-        localStorage.removeItem('rav_user') // Cleanup legacy
+        setToken(null)
+        setApiAuthority(null, null)
         localStorage.removeItem('rav_organization_id')
+        // Cleanup legacy keys
+        localStorage.removeItem('rav_token')
+        localStorage.removeItem('rav_user')
+        // Broadcast logout to other tabs
+        localStorage.setItem('rav_auth_sync', Date.now().toString())
         router.push('/login')
     }
 
