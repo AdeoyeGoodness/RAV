@@ -122,7 +122,7 @@ impl SyncManager {
     pub async fn enroll_agent(&self) -> Result<(String, String)> {
         let agent_id = {
             let config = self.config.agent.clone();
-            config.agent_id.unwrap_or_else(|| Uuid::new_v4().to_string())
+            config.agent_id.unwrap_or_else(|| crate::agent_logic::generate_agent_id())
         };
 
         let existing_org_id = self.config.agent.organization_id.clone();

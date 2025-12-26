@@ -16,6 +16,7 @@ interface Agent {
   id: string
   agent_id: string
   hardware_fingerprint: string
+  hostname: string | null
   last_seen: string
   created_at: string
   updated_at: string
@@ -208,7 +209,7 @@ export default function DeviceDetailsPage() {
                   <ArrowLeft className="w-5 h-5 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
                 </button>
                 <div>
-                  <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.agent_id}</h1>
+                  <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || agent.agent_id}</h1>
                   <p className="mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Device Details & Forensics</p>
                 </div>
               </div>
@@ -245,6 +246,13 @@ export default function DeviceDetailsPage() {
                   <div>
                     <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hardware Fingerprint</p>
                     <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hardware_fingerprint}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                  <div>
+                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>System Hostname</p>
+                    <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">

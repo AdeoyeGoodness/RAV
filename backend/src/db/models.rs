@@ -21,6 +21,7 @@ pub struct Agent {
     pub organization_id: Uuid,
     pub agent_id: String,
     pub hardware_fingerprint: String,
+    pub hostname: Option<String>,
     pub last_seen: DateTime<Utc>,
     pub token_expiry: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
