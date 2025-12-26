@@ -100,6 +100,14 @@ export async function getPlatformStats(): Promise<{
   return response.data;
 }
 
+export async function getOrgStats(): Promise<{
+  total_agents: number,
+  active_last_24h: number
+}> {
+  const response = await api.get('/api/v1/org/stats');
+  return response.data;
+}
+
 export async function getSystemHealth(): Promise<{
   status: string,
   uptime_seconds: number,
@@ -145,6 +153,11 @@ export async function restoreAgentEvents(agentId: string): Promise<{ status: str
 // Admin APIs
 export async function getOrganizations(): Promise<Organization[]> {
   const response = await api.get('/api/v1/admin/organizations')
+  return response.data;
+}
+
+export async function getOrgDetails(): Promise<Organization> {
+  const response = await api.get('/api/v1/org/me')
   return response.data
 }
 
@@ -198,6 +211,19 @@ export async function getAuditLogs(params?: {
   offset?: number
 }): Promise<AuditLog[]> {
   const response = await api.get('/api/v1/admin/audits', { params })
+  return response.data
+}
+
+export async function getOrgAuditLogs(params?: {
+  actor_type?: string
+  action_type?: string
+  target_type?: string
+  start_time?: string
+  end_time?: string
+  limit?: number
+  offset?: number
+}): Promise<AuditLog[]> {
+  const response = await api.get('/api/v1/org/audits', { params })
   return response.data
 }
 

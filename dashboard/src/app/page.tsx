@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { NarrativeTimeline } from '@/components/NarrativeTimeline'
-import { getAgents, getOrganizations } from '@/lib/api'
+import { getAgents, getOrganizations, getPlatformStats, getOrgStats } from '@/lib/api'
 import { Activity, Shield, TrendingUp, Users, Terminal, Settings } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -16,15 +16,19 @@ export default function DashboardPage() {
     const fetchStats = async () => {
       if (!user) return;
       try {
-        const fetchers: [Promise<any>, Promise<any>] = [
-          user.role === 'super_admin' ? getOrganizations() : Promise.resolve([{ id: 'current' }]),
-          getAgents()
-        ]
-        const [orgs, agents] = await Promise.all(fetchers)
-        setStats({
-          orgs: orgs.length,
-          agents: agents.length
-        })
+        if (user.role === 'super_admin') {
+          const stats = await getPlatformStats()
+          setStats({
+            orgs: stats.total_organizations,
+            agents: stats.total_agents
+          })
+        } else {
+          const stats = await getOrgStats()
+          setStats({
+            orgs: 1, // Only seeing their own
+            agents: stats.total_agents
+          })
+        }
       } catch (e) {
         console.error("Failed to fetch dashboard stats:", e)
       }

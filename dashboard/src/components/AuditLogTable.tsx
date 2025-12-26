@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getAuditLogs, getOrganizations, AuditLog, Organization } from '@/lib/api'
+import { getAuditLogs, getOrgAuditLogs, getOrganizations, AuditLog, Organization } from '@/lib/api'
 import { format } from 'date-fns'
 import {
     Shield,
@@ -29,39 +29,37 @@ export function AuditLogTable() {
         end_time: ''
     })
 
-    // Debounce filter changes if needed, but for now strict on-change or search button
     const { user } = useAuth()
+
     const fetchLogs = async () => {
-        if (user?.role !== 'super_admin') return
         setLoading(true)
         try {
-            // Clean filters (remove empty strings)
-            const cleanFilters: any = {}
-            if (filters.organization_id) cleanFilters.organization_id = filters.organization_id
-            if (filters.actor_type) cleanFilters.actor_type = filters.actor_type
-            if (filters.action_type) cleanFilters.action_type = filters.action_type
-            if (filters.target_type) cleanFilters.target_type = filters.target_type
-            // Add time filters if valid ISO strings (basic implementation)
-
-            const data = await getAuditLogs({
-                ...cleanFilters,
-                limit: 100 // Hard limit for now
-            })
-            setLogs(data)
-        } catch (error) {
-            console.error('Failed to fetch audit logs', error)
+            const params: any = {
+                limit: 50,
+                ...filters
+            }
+            if (user?.role === 'super_admin') {
+                const data = await getAuditLogs(params)
+                setLogs(data)
+            } else {
+                const data = await getOrgAuditLogs(params)
+                setLogs(data)
+            }
+        } catch (err) {
+            console.error('Failed to fetch audit logs:', err)
         } finally {
             setLoading(false)
         }
     }
 
     useEffect(() => {
-        if (user?.role === 'super_admin') {
-            // Fetch Orgs for filter
-            getOrganizations().then(setOrgs).catch(console.error)
+        if (user) {
+            if (user.role === 'super_admin') {
+                getOrganizations().then(setOrgs).catch(console.error)
+            }
             fetchLogs()
         }
-    }, [user])
+    }, [user, filters])
 
     const handleExport = () => {
         // Basic CSV Export
