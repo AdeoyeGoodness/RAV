@@ -231,10 +231,11 @@ async fn start_windows_monitoring(
                             .map(|(drive, _)| drive.clone())
                             .collect();
                         
+                        let (agent_id, _) = sync_manager.get_identity().await;
                         let event = Event {
                             event_type: "usb_inserted".to_string(),
                             timestamp: Utc::now(),
-                            agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                            agent_id,
                             metadata: json!({
                                 "device_id": device_id,
                                 "device_name": device_name,
@@ -257,10 +258,11 @@ async fn start_windows_monitoring(
                     info!("USB device removed: {} ({})", device_id, device_name);
                     known.remove(&device_id);
                     
+                    let (agent_id, _) = sync_manager.get_identity().await;
                     let event = Event {
                         event_type: "usb_removed".to_string(),
                         timestamp: Utc::now(),
-                        agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                        agent_id,
                         metadata: json!({
                             "device_id": device_id,
                             "device_name": device_name,
@@ -933,10 +935,11 @@ async fn log_file_transfer(
         metadata["destination_path"] = json!(dst);
     }
     
+    let (agent_id, _) = sync_manager.get_identity().await;
     let event = Event {
         event_type: "usb_file_transfer".to_string(),
         timestamp: Utc::now(),
-        agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+        agent_id,
         metadata,
     };
     
@@ -978,10 +981,13 @@ async fn backup_and_upload_file(
     
     let url = format!("{}/api/v1/files/upload", config.backend.url);
     
+    let (agent_id, _) = _sync_manager.get_identity().await;
+    
     // Create multipart form
     let form = multipart::Form::new()
         .text("file_id", file_id.clone())
         .text("file_name", file_name.to_string())
+        .text("agent_id", agent_id)
         .text("file_path", source_path.to_string())
         .text("file_size", file_size.to_string())
         .part("file", multipart::Part::bytes(file_data)
@@ -1111,10 +1117,11 @@ async fn start_linux_monitoring(
                         info!("USB device inserted: {}", device_id);
                         known.insert(device_id.clone());
                         
+                        let (agent_id, _) = sync_manager.get_identity().await;
                         let event = Event {
                             event_type: "usb_inserted".to_string(),
                             timestamp: Utc::now(),
-                            agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                            agent_id,
                             metadata: json!({
                                 "device_id": device_id,
                                 "platform": "linux"

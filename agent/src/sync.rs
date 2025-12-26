@@ -30,6 +30,7 @@ pub struct SyncManager {
     config: Arc<Config>,
     client: reqwest::Client,
     storage: Arc<StorageManager>,
+    agent_id: Arc<tokio::sync::Mutex<Option<String>>>,
     organization_id: Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
@@ -42,12 +43,26 @@ impl SyncManager {
             .build()
             .context("Failed to create HTTP client")?;
 
+        let initial_agent_id = config.agent.agent_id.clone();
+        let initial_org_id = config.agent.organization_id.clone();
+
         Ok(Self {
             config,
             client,
             storage,
-            organization_id: Arc::new(tokio::sync::Mutex::new(None)),
+            agent_id: Arc::new(tokio::sync::Mutex::new(initial_agent_id)),
+            organization_id: Arc::new(tokio::sync::Mutex::new(initial_org_id)),
         })
+    }
+
+    pub async fn get_identity(&self) -> (String, String) {
+        let agent_id = self.agent_id.lock().await;
+        let org_id = self.organization_id.lock().await;
+        
+        (
+            agent_id.clone().unwrap_or_else(|| "unknown".to_string()),
+            org_id.clone().unwrap_or_else(|| "unknown".to_string())
+        )
     }
 
     // New Behavior: Immediate Write to Disk (Store & Forward)
@@ -156,7 +171,24 @@ impl SyncManager {
         let mut org_guard = self.organization_id.lock().await;
         *org_guard = Some(org_id.clone());
         
+        let mut agent_guard = self.agent_id.lock().await;
+        *agent_guard = Some(agent_id.clone());
+        
         info!("ACQUIRED: Organization '{}' ({})", org_name, org_id);
+
+        // PERSISTENCE: Save the newly acquired identity to disk
+        // This ensures the agent remains the same after a reboot.
+        let mut new_config = (*self.config).clone();
+        new_config.agent.agent_id = Some(agent_id.clone());
+        new_config.agent.organization_id = Some(org_id.clone());
+        new_config.backend.enrollment_token = None; // Security: Wipe token after use
+
+        if let Err(e) = new_config.save() {
+            error!("Failed to persist enrollment state to disk: {}", e);
+        } else {
+            info!("Agent identity persisted to config.toml");
+        }
+
         Ok((agent_id, org_id))
     }
 
@@ -204,12 +236,12 @@ impl SyncManager {
     }
 
     async fn send_heartbeat(&self) -> Result<()> {
-        let agent_id = self.config.agent.agent_id.as_deref().unwrap_or("unknown");
-        let hw_fingerprint = self.config.agent.hardware_fingerprint.as_deref().unwrap_or("unknown");
+        let (agent_id, _) = self.get_identity().await;
+        let hw_fingerprint = self.get_hardware_fingerprint();
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
 
         let heartbeat = Heartbeat {
-            agent_id: agent_id.to_string(),
+            agent_id,
             hardware_fingerprint: hw_fingerprint.to_string(),
             timestamp: Utc::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),

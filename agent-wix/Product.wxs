@@ -64,47 +64,21 @@
     <!-- Install directory structure -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="RAV Agent">
-        
         <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
           <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
-          
-          <ServiceInstall Id="RAVAgentService"
-                          Name="RAVAgent"
-                          DisplayName="RAV Monitoring Agent"
-                          Description="Remote Asset Visibility monitoring service"
-                          Start="auto"
-                          Type="ownProcess"
-                          ErrorControl="normal"
-                          Account="LocalSystem" />
-          
-          <ServiceControl Id="StartRAVService" 
-                          Name="RAVAgent" 
-                          Start="install" 
-                          Stop="both" 
-                          Remove="uninstall" 
-                          Wait="yes" />
+          <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem" />
+          <ServiceControl Id="StartRAVService" Name="RAVAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
         </Component>
+      </Directory>
+    </StandardDirectory>
 
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="ProgramDataRAV" Name="RAV">
         <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
           <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
-          
-          <IniFile Id="WriteBackendUrl" 
-                   Action="addLine" 
-                   Directory="INSTALLFOLDER" 
-                   Name="config.toml" 
-                   Section="backend" 
-                   Key="url" 
-                   Value="[BACKEND_URL]" />
-          
-          <IniFile Id="WriteEnrollmentToken" 
-                   Action="addLine" 
-                   Directory="INSTALLFOLDER" 
-                   Name="config.toml" 
-                   Section="backend" 
-                   Key="enrollment_token" 
-                   Value="[ENROLLMENT_TOKEN]" />
+          <IniFile Id="WriteBackendUrl" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="url" Value="&quot;[BACKEND_URL]&quot;" />
+          <IniFile Id="WriteEnrollmentToken" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="enrollment_token" Value="&quot;[ENROLLMENT_TOKEN]&quot;" />
         </Component>
-        
       </Directory>
     </StandardDirectory>
 

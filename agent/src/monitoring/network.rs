@@ -55,11 +55,11 @@ async fn monitor_connections(
                 let conn_hash = format!("{}:{}-{}:{}", conn.local_ip, conn.local_port, conn.remote_ip, conn.remote_port);
                 
                 if !previous_connections.contains(&conn_hash) {
-                    // This is a NEW connection
+                    let (agent_id, _) = sync_manager.get_identity().await;
                     let event = Event {
                         event_type: "network_connection".to_string(),
                         timestamp: Utc::now(),
-                        agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                        agent_id,
                         metadata: json!({
                             "local_ip": conn.local_ip,
                             "local_port": conn.local_port,

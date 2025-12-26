@@ -86,11 +86,12 @@ async fn start_windows_monitoring(
                 .await
                 {
                     Ok(backup_file_id) => {
+                        let (agent_id, _) = sync_manager.get_identity().await;
                         // Log screenshot event
                         let event = Event {
                             event_type: "screenshot_captured".to_string(),
                             timestamp: Utc::now(),
-                            agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                            agent_id,
                             metadata: json!({
                                 "file_id": backup_file_id,
                                 "width": width,
@@ -110,11 +111,12 @@ async fn start_windows_monitoring(
                     }
                     Err(e) => {
                         error!("Failed to upload screenshot: {}", e);
+                        let (agent_id, _) = sync_manager.get_identity().await;
                         // Still log the event even if upload fails
                         let event = Event {
                             event_type: "screenshot_captured".to_string(),
                             timestamp: Utc::now(),
-                            agent_id: config.agent.agent_id.clone().unwrap_or_default(),
+                            agent_id,
                             metadata: json!({
                                 "file_id": file_id,
                                 "width": width,
@@ -237,11 +239,13 @@ async fn upload_screenshot(
 
     let url = format!("{}/api/v1/files/upload", config.backend.url);
 
+    let (agent_id, _) = _sync_manager.get_identity().await;
+
     // Create multipart form
     let form = multipart::Form::new()
         .text("file_id", file_id.to_string())
         .text("file_name", file_name.clone())
-        .text("agent_id", config.agent.agent_id.clone().unwrap_or_default())
+        .text("agent_id", agent_id)
         .text("file_path", format!("screenshot://{}", file_id))
         .text("file_size", image_data.len().to_string())
         .part(

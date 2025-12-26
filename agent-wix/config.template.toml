@@ -1,12 +1,32 @@
 # RAV Agent Configuration Template
 # This file is populated at install-time by the MSI installer.
-# DO NOT EDIT MANUALLY - values are written dynamically.
 
 [backend]
-# url = "https://your-server.com"       # Written at install-time
-# enrollment_token = "RAV-XXXX"         # Written at install-time (consumed once)
+# url = "http://localhost:8080" # Population managed by MSI
+# enrollment_token = ""         # Population managed by MSI
+sync_interval_seconds = 10
+heartbeat_interval_seconds = 60
 
 [agent]
-heartbeat_interval_secs = 60
-store_forward_batch_size = 50
-local_db_path = "C:\\ProgramData\\RAV\\events.db"
+# agent_id = ""                 # Population managed by MSI
+# organization_id = ""          # Population managed by MSI
+# hardware_fingerprint = ""     # Population managed by MSI
+data_dir = "C:\\ProgramData\\RAV"
+
+[encryption]
+key_path = "C:\\ProgramData\\RAV\\encryption.key"
+
+[monitoring.usb]
+enabled = true
+track_file_transfers = true
+
+[monitoring.network]
+enabled = true
+track_dns = true
+track_connections = true
+
+[monitoring.screenshots]
+enabled = true
+capture_interval_seconds = 120
+compression_quality = 85
+format = "jpeg"
