@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { NarrativeTimeline } from '@/components/NarrativeTimeline'
-import { getAgents, getOrganizations, getPlatformStats, getOrgStats } from '@/lib/api'
-import { Activity, Shield, TrendingUp, Users, Terminal, Settings, ChevronDown } from 'lucide-react'
+import { getAgents, getOrganizations, getPlatformStats, getOrgStats, getOrgDetails, Organization } from '@/lib/api'
+import { Activity, Shield, TrendingUp, Users, Terminal, Settings, ChevronDown, Copy, Check } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function DashboardPage() {
   const { user, isLoading } = useAuth()
   const [stats, setStats] = useState({ orgs: 0, agents: 0 })
+  const [org, setOrg] = useState<Organization | null>(null)
+  const [copiedToken, setCopiedToken] = useState(false)
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -23,14 +25,18 @@ export default function DashboardPage() {
             agents: stats.total_agents
           })
         } else {
-          const stats = await getOrgStats()
+          const [stats, orgDetails] = await Promise.all([
+            getOrgStats(),
+            getOrgDetails()
+          ])
           setStats({
-            orgs: 1, // Only seeing their own
+            orgs: 1,
             agents: stats.total_agents
           })
+          setOrg(orgDetails)
         }
       } catch (e) {
-        console.error("Failed to fetch dashboard stats:", e)
+        console.error("Failed to fetch dashboard data:", e)
       }
     }
     fetchStats()
@@ -166,6 +172,50 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Organization Identity Card for Org Admins */}
+                {user?.role === 'org_admin' && org && (
+                  <div className="bg-slate-900/40 border border-purple-500/20 rounded-[2rem] p-6 backdrop-blur-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[10px] font-black text-purple-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                          Organization Identity
+                        </h4>
+                        <div className="px-2 py-0.5 rounded-full bg-purple-500/10 text-[8px] font-bold text-purple-400 border border-purple-500/20 uppercase">
+                          Authorized
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="text-xl font-black text-white tracking-tight leading-tight">{org.name}</p>
+                        <p className="text-[9px] text-slate-500 font-mono">{org.id}</p>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-3">
+                        <div>
+                          <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mb-1">Enrollment Token</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <code className="text-xs font-mono text-cyan-400 block truncate">{org.enrollment_token}</code>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(org.enrollment_token);
+                                setCopiedToken(true);
+                                setTimeout(() => setCopiedToken(false), 2000);
+                              }}
+                              className="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-cyan-400 flex-shrink-0"
+                            >
+                              {copiedToken ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[8px] text-slate-600 italic leading-relaxed">
+                          Use this token to enroll new agents into your secure enclave.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

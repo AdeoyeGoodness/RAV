@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon } from 'lucide-react'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getSystemHealth, getAgents } from '@/lib/api'
+import { getSystemHealth, getAgents, getOrgDetails, Organization as OrgType } from '@/lib/api'
 
 interface Agent {
   agent_id: string
@@ -16,6 +16,8 @@ export default function Sidebar() {
   const [expandedWorkspace, setExpandedWorkspace] = useState<string[]>(['Fireart Studio'])
   const [health, setHealth] = useState<any>(null)
   const [agents, setAgents] = useState<Agent[]>([])
+  const [org, setOrg] = useState<OrgType | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const isActive = (path: string) => pathname === path
 
@@ -41,10 +43,23 @@ export default function Sidebar() {
       }
     }
 
+    const fetchOrg = async () => {
+      if (user?.role === 'org_admin') {
+        try {
+          const data = await getOrgDetails()
+          setOrg(data)
+        } catch (error) {
+          console.error('Failed to fetch org details for sidebar:', error)
+        }
+      }
+    }
+
     if (user) {
       if (user.role === 'super_admin') {
         fetchHealth()
         interval = setInterval(fetchHealth, 5000)
+      } else {
+        fetchOrg()
       }
       fetchAgents()
     }
@@ -251,6 +266,42 @@ export default function Sidebar() {
                 </div>
               </div>
             </div>
+
+            {/* Organization Identity */}
+            {user?.role === 'org_admin' && org && (
+              <div className="mt-4 px-4 py-6 rounded-2xl border border-white/5 bg-gradient-to-b from-white/5 to-transparent shadow-xl shadow-black/20">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-purple-500/80">Organization</span>
+                  <div className={`w-2 h-2 rounded-full ${org.status === 'active' ? 'bg-[#00FF88]' : 'bg-red-500'} animate-pulse`} />
+                </div>
+
+                <h4 className="text-sm font-black text-white/90 mb-4 whitespace-nowrap overflow-hidden text-ellipsis">
+                  {org.name}
+                </h4>
+
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-black/40 border border-white/5 relative group/token">
+                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1.5 font-bold">Enrollment Token</p>
+                    <div className="flex items-center justify-between">
+                      <code className="text-[10px] font-mono text-cyan-400/80 tracking-tighter">
+                        {org.enrollment_token.substring(0, 8)}••••
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(org.enrollment_token);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-slate-400 hover:text-cyan-400"
+                        title="Copy Token"
+                      >
+                        {copied ? <ShieldCheckIcon className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

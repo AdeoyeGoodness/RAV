@@ -57,10 +57,13 @@ impl FromRequestParts<AppState> for Claims
             }
         };
 
+        let mut validation = Validation::default();
+        validation.leeway = 300; // 5 minutes leeway for clock drift
+
         let token_data = decode::<Claims>(
             token,
             &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
-            &Validation::default(),
+            &validation,
         )
         .map_err(|e| {
             tracing::error!("JWT validation failed: {}", e);
@@ -106,7 +109,7 @@ pub async fn login(
     }
 
     let exp = Utc::now()
-        .checked_add_signed(Duration::hours(4))
+        .checked_add_signed(Duration::hours(24))
         .expect("valid timestamp")
         .timestamp() as usize;
 
