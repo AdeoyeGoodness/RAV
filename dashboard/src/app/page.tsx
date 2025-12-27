@@ -5,7 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { NarrativeTimeline } from '@/components/NarrativeTimeline'
 import { getAgents, getOrganizations, getPlatformStats, getOrgStats } from '@/lib/api'
-import { Activity, Shield, TrendingUp, Users, Terminal, Settings } from 'lucide-react'
+import { Activity, Shield, TrendingUp, Users, Terminal, Settings, ChevronDown } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function DashboardPage() {
@@ -102,7 +102,16 @@ export default function DashboardPage() {
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
                     System Pulse
                   </h3>
-                  <TrendingUp className="w-4 h-4 text-slate-700" />
+                  <div className="relative group/filter">
+                    <select
+                      className="appearance-none bg-white/5 border border-white/5 rounded-xl pl-3 pr-8 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest outline-none focus:border-cyan-500/40 transition-all cursor-pointer backdrop-blur-3xl"
+                    >
+                      <option value="all">Status: All</option>
+                      <option value="online">Online Only</option>
+                      <option value="offline">Offline Only</option>
+                    </select>
+                    <ChevronDown className="w-3 h-3 text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none group-hover/filter:text-cyan-500 transition-colors" />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
@@ -113,13 +122,13 @@ export default function DashboardPage() {
                     color="text-cyan-400"
                   />
                   <StatCard
-                    label="Digital Entities"
+                    label="Forensic Nodes"
                     value={stats.orgs.toString()}
                     icon={<Shield className="w-4 h-4" />}
                     color="text-purple-400"
                   />
                   <StatCard
-                    label="Inbound Streams"
+                    label="Stream Integrity"
                     value="Nominal"
                     icon={<Activity className="w-4 h-4" />}
                     color="text-green-400"

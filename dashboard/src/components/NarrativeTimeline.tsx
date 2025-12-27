@@ -192,20 +192,26 @@ export function NarrativeTimeline() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 relative z-10">
+                <div className="flex items-center gap-3 relative z-[100]">
                     <div className="relative">
                         <select
-                            className="appearance-none bg-black/40 border border-white/5 rounded-2xl pl-4 pr-10 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest outline-none focus:border-purple-500/40 transition-all cursor-pointer backdrop-blur-md"
+                            className="appearance-none bg-slate-950/80 border border-white/10 rounded-2xl pl-4 pr-10 py-1.5 text-[10px] font-bold text-slate-300 uppercase tracking-widest outline-none focus:border-purple-500/60 transition-all cursor-pointer backdrop-blur-xl relative z-[110]"
                             value={filterAgent}
                             onChange={(e) => setFilterAgent(e.target.value)}
                         >
-                            <option value="">Global Narrative</option>
+                            <option value="" className="bg-slate-950">Global Narrative</option>
                             {agents.map(a => (
-                                <option key={a.agent_id} value={a.agent_id}>{a.hostname || a.agent_id.substring(0, 8)}</option>
+                                <option key={a.agent_id} value={a.agent_id} className="bg-slate-950">{a.hostname || a.agent_id.substring(0, 8)}</option>
                             ))}
                         </select>
-                        <ChevronDown className="w-3 h-3 text-slate-600 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <ChevronDown className="w-3 h-3 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none z-[120]" />
                     </div>
+                    <button
+                        onClick={fetchData}
+                        className="p-2 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 rounded-xl transition-all active:scale-95 group/refresh"
+                    >
+                        <Search className={`w-3.5 h-3.5 text-slate-500 group-hover/refresh:text-purple-400 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
             </div>
 

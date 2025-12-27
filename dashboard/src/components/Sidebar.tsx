@@ -199,19 +199,9 @@ export default function Sidebar() {
 
         {!isLoading && user?.role !== 'super_admin' && (
           <>
-            {/* Favorites */}
+            {/* Agents */}
             <div className="mb-8">
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Favorites</h3>
-              <ul className="space-y-1">
-                <li className="px-4 py-2 rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
-                  • Active Agents
-                </li>
-              </ul>
-            </div>
-
-            {/* Teams */}
-            <div className="mb-8">
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Agents</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Platform Agents</h3>
               <div className="space-y-1">
                 <div>
                   <button
@@ -221,7 +211,10 @@ export default function Sidebar() {
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                   >
-                    <span>Monitoring Agents</span>
+                    <span className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-cyan-500" />
+                      Monitoring Agents
+                    </span>
                     {expandedTeams.includes('ProductStudio') ? (
                       <ChevronDown className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
                     ) : (
@@ -229,73 +222,33 @@ export default function Sidebar() {
                     )}
                   </button>
                   {expandedTeams.includes('ProductStudio') && (
-                    <ul className="ml-4 mt-1 space-y-1">
-                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
-                        USB Monitoring
-                      </li>
-                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
-                        Network Events
-                      </li>
-                      <li className="px-4 py-2 text-sm rounded-lg cursor-pointer transition-all" style={{ color: 'var(--text-secondary)' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.borderLeft = '2px solid var(--accent-cyan)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderLeft = 'none'; }}>
-                        System Activity
-                      </li>
-                      <div className="pt-2 mt-2 border-t border-white/5">
+                    <ul className="ml-4 mt-2 space-y-1 group">
+                      <div className="pt-1">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 px-4 mb-2">Connected Endpoints</p>
-                        {agents.slice(0, 5).map(agent => (
-                          <li
-                            key={agent.agent_id}
-                            className="px-4 py-1.5 text-xs rounded-lg cursor-pointer transition-all overflow-hidden text-ellipsis whitespace-nowrap"
-                            style={{ color: 'var(--text-tertiary)' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.color = 'var(--accent-cyan)'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
-                            onClick={() => window.location.href = `/devices/${agent.agent_id}`}
-                          >
-                            {agent.hostname || agent.agent_id.substring(0, 12)}
-                          </li>
-                        ))}
+                        {agents.length === 0 ? (
+                          <li className="px-4 py-2 text-[10px] text-slate-600 italic">No agents connected</li>
+                        ) : (
+                          agents.slice(0, 8).map(agent => (
+                            <li
+                              key={agent.agent_id}
+                              className="px-4 py-1.5 text-xs rounded-lg cursor-pointer transition-all overflow-hidden text-ellipsis whitespace-nowrap flex items-center gap-2"
+                              style={{ color: 'var(--text-tertiary)' }}
+                              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; e.currentTarget.style.color = 'var(--accent-cyan)'; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
+                              onClick={() => window.location.href = `/devices/${agent.agent_id}`}
+                            >
+                              <div className="w-1.5 h-1.5 rounded-full bg-cyan-500/40" />
+                              {agent.hostname || agent.agent_id.substring(0, 12)}
+                            </li>
+                          ))
+                        )}
                       </div>
-                      <li className="px-4 py-2 text-[10px] font-bold uppercase tracking-widest rounded-lg cursor-pointer transition-all" style={{ color: 'var(--accent-cyan)' }} onClick={() => window.location.href = '/devices'}>
+                      <li className="px-4 py-2 mt-2 text-[10px] font-bold uppercase tracking-widest rounded-lg cursor-pointer transition-all border border-transparent hover:border-cyan-500/20 hover:bg-cyan-500/5" style={{ color: 'var(--accent-cyan)' }} onClick={() => window.location.href = '/devices'}>
                         View All Agents →
                       </li>
                     </ul>
                   )}
                 </div>
-                <button
-                  onClick={() => toggleTeam('AnimateStudio')}
-                  className="w-full flex items-center justify-between px-4 py-2 rounded-lg transition-all"
-                  style={{ color: 'var(--text-secondary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(108, 92, 231, 0.2)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                >
-                  <span>Forensics Tools</span>
-                  {expandedTeams.includes('AnimateStudio') ? (
-                    <ChevronDown className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Workspace */}
-            <div className="mb-8">
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3 px-4 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Workspace</h3>
-              <div className="space-y-1">
-                <button
-                  onClick={() => toggleWorkspace('Fireart Studio')}
-                  className="w-full flex items-center justify-between px-4 py-2 border rounded-lg cyber-glow-purple transition-all"
-                  style={{ background: 'linear-gradient(to right, rgba(108, 92, 231, 0.3), rgba(0, 217, 255, 0.2))', borderColor: 'var(--accent-cyan)', color: 'var(--text-primary)' }}
-                >
-                  <div className="flex items-center">
-                    <Flame className="w-4 h-4 mr-2 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                    <span>RAV Platform</span>
-                  </div>
-                  {expandedWorkspace.includes('Fireart Studio') ? (
-                    <ChevronDown className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
               </div>
             </div>
           </>
@@ -327,10 +280,10 @@ export default function Sidebar() {
         <div className="mt-auto pt-8 border-t" style={{ borderColor: 'var(--border-color)' }}>
           <button
             onClick={logout}
-            className="w-full flex items-center px-4 py-3 rounded-lg text-red-500 hover:bg-red-500/10 transition-all"
+            className="w-full flex items-center px-4 py-3 rounded-lg text-red-500 hover:bg-red-500/10 transition-all group"
           >
-            <LogOut className="w-5 h-5 mr-3" />
-            <span>Logout</span>
+            <LogOut className="w-5 h-5 mr-3 group-hover:rotate-12 transition-transform" />
+            <span className="font-bold uppercase tracking-widest text-xs">Logout Session</span>
           </button>
         </div>
       </div>
