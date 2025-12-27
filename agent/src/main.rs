@@ -137,7 +137,15 @@ fn main() -> Result<()> {
             }
         }
 
-        info!("Agent setup complete. Exiting.");
+        info!("Agent setup complete. Transitioning to monitoring mode...");
+        
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(async {
+             agent_logic::run_agent(config, async {
+                 let _ = tokio::signal::ctrl_c().await;
+             }).await
+        })?;
+        
         return Ok(());
     }
 

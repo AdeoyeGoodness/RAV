@@ -282,10 +282,9 @@ pub async fn heartbeat(
     let result = sqlx::query!(
         r#"
         UPDATE agents
-        SET last_seen = $1, updated_at = $2, hostname = COALESCE($3, hostname)
-        WHERE agent_id = $4 AND organization_id = $5
+        SET last_seen = $1, updated_at = $1, hostname = COALESCE($2, hostname)
+        WHERE agent_id = $3 AND organization_id = $4
         "#,
-        heartbeat.timestamp,
         Utc::now(),
         heartbeat.hostname,
         &heartbeat.agent_id,

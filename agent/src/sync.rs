@@ -116,7 +116,8 @@ impl SyncManager {
 
     fn get_hardware_fingerprint(&self) -> String {
         self.config.agent.hardware_fingerprint.as_deref()
-            .unwrap_or("unknown").to_string()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| crate::agent_logic::generate_hardware_fingerprint())
     }
 
     pub async fn enroll_agent(&self) -> Result<(String, String)> {
@@ -188,6 +189,7 @@ impl SyncManager {
         let mut new_config = (*self.config).clone();
         new_config.agent.agent_id = Some(agent_id.clone());
         new_config.agent.organization_id = Some(org_id.clone());
+        new_config.agent.hardware_fingerprint = Some(hw_fingerprint);
         new_config.backend.enrollment_token = None; // Security: Wipe token after use
 
         if let Err(e) = new_config.save() {

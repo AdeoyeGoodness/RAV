@@ -48,65 +48,117 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-purple-500/30">
+    <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-purple-500/30 overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden ml-64">
+      <div className="flex-1 flex flex-col overflow-hidden ml-64 relative">
+        {/* Background Ambient Glows */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-600/10 blur-[120px] rounded-full pointer-events-none" />
+
         <Header />
-        <main className="flex-1 overflow-auto p-6 space-y-6 mt-20">
+        <main className="flex-1 overflow-auto p-8 space-y-8 mt-20 relative z-10 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
           {/* Dashboard Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-cyan-400 to-blue-500 bg-clip-text text-transparent flex items-center gap-2">
+          <div className="flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-black bg-gradient-to-r from-white via-slate-200 to-slate-500 bg-clip-text text-transparent flex items-center gap-3 tracking-tight">
                 Operational Intelligence
               </h1>
-              <p className="text-slate-400 text-sm mt-1">
-                Forensic narrative and platform authority overview.
-              </p>
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-1 bg-gradient-to-r from-purple-500 to-transparent rounded-full" />
+                <p className="text-slate-500 text-xs font-medium uppercase tracking-[0.2em]">
+                  Forensic narrative and platform authority overview.
+                </p>
+              </div>
             </div>
 
             {user?.role === 'super_admin' && (
               <a
                 href="/admin"
-                className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-900/20 transition-all active:scale-95 flex items-center gap-2 group"
+                className="px-6 py-3 bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 hover:border-purple-500/30 text-white rounded-2xl font-bold text-xs shadow-2xl backdrop-blur-md transition-all active:scale-95 flex items-center gap-2 group relative overflow-hidden"
               >
-                <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-                Manage Organizations
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform relative z-10" />
+                <span className="relative z-10 uppercase tracking-widest">Global Governance</span>
               </a>
             )}
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_350px] gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-8 items-start">
             {/* Main Narrative Thread */}
-            <div className="space-y-6">
-              <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
+            <div className="space-y-8 animate-in fade-in slide-in-from-left-4 duration-700 delay-100">
+              <div className="bg-slate-900/40 border border-white/10 rounded-[2.5rem] p-8 backdrop-blur-3xl shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent opacity-50" />
+                <div className="absolute -inset-[500px] bg-gradient-to-tr from-purple-500/5 via-transparent to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000 pointer-events-none" />
                 <NarrativeTimeline />
               </div>
             </div>
 
             {/* Sidebar Widgets / Context */}
-            <div className="space-y-6">
+            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-700 delay-200">
               {/* Quick Stats */}
-              <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-5 space-y-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4" /> System Pulse
-                </h3>
+              <div className="bg-slate-900/40 border border-white/10 rounded-[2rem] p-6 backdrop-blur-2xl shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                    System Pulse
+                  </h3>
+                  <TrendingUp className="w-4 h-4 text-slate-700" />
+                </div>
+
                 <div className="grid grid-cols-1 gap-4">
-                  <StatCard label="Live Agents" value={stats.agents.toString()} icon={<Users className="w-4 h-4 text-cyan-400" />} />
-                  <StatCard label="Organizations" value={stats.orgs.toString()} icon={<Shield className="w-4 h-4 text-purple-400" />} />
-                  <StatCard label="Telemetry Flow" value="High" icon={<Activity className="w-4 h-4 text-green-400" />} />
+                  <StatCard
+                    label="Active Endpoints"
+                    value={stats.agents.toString()}
+                    icon={<Users className="w-4 h-4" />}
+                    color="text-cyan-400"
+                  />
+                  <StatCard
+                    label="Digital Entities"
+                    value={stats.orgs.toString()}
+                    icon={<Shield className="w-4 h-4" />}
+                    color="text-purple-400"
+                  />
+                  <StatCard
+                    label="Inbound Streams"
+                    value="Nominal"
+                    icon={<Activity className="w-4 h-4" />}
+                    color="text-green-400"
+                  />
                 </div>
               </div>
 
               {/* Integrity Warning */}
-              <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-5">
-                <div className="flex gap-3">
-                  <Terminal className="w-5 h-5 text-red-500 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider">Forensic Warning</h4>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                      All timeline data is subject to Rule 4 Immutability. Any discrepancy in audit logs must be reported to the platform root administrator immediately.
+              <div className="bg-red-500/[0.02] border border-red-500/20 rounded-[2rem] p-6 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-red-500/[0.02] opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="flex gap-4 relative z-10">
+                  <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 h-fit">
+                    <Terminal className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                      Forensic Immutability Warning
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shadow-[0_0_10px_rgba(239,68,68,1)]" />
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-medium leading-[1.6]">
+                      All timeline data is subject to <span className="text-red-400 font-bold">Protocol Rule 4 (Immutability)</span>. Any discrepancy between authority logs and telemetry must be escalated to platform high-command immediately.
                     </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Operational Status Card */}
+              <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-white/5 rounded-[2rem] p-6 shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <Shield className="w-16 h-16" />
+                </div>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Platform Authority</h4>
+                <div className="flex items-end justify-between">
+                  <div className="space-y-1">
+                    <p className="text-2xl font-black text-white">LOCKED</p>
+                    <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Integrity Verified</p>
+                  </div>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map(i => <div key={i} className="w-1 h-3 bg-indigo-500/40 rounded-full" />)}
                   </div>
                 </div>
               </div>
@@ -118,14 +170,19 @@ export default function DashboardPage() {
   )
 }
 
-function StatCard({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) {
+function StatCard({ label, value, icon, color }: { label: string, value: string, icon: React.ReactNode, color: string }) {
   return (
-    <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-white/10 transition-colors">
-      <div className="flex items-center gap-3">
-        <div className="p-1.5 bg-slate-950 rounded-lg">{icon}</div>
-        <span className="text-xs text-slate-400">{label}</span>
+    <div className="flex items-center justify-between p-4 bg-white/[0.02] hover:bg-white/[0.05] rounded-[1.25rem] border border-white/5 hover:border-white/10 transition-all duration-300 group/card relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-r from-white/[0.02] to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity" />
+      <div className="flex items-center gap-4 relative z-10">
+        <div className={`p-2 bg-slate-950 rounded-xl border border-white/5 shadow-inner transition-colors group-hover/card:border-white/20 ${color}`}>
+          {icon}
+        </div>
+        <div className="space-y-0.5">
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+        </div>
       </div>
-      <span className="text-sm font-bold text-slate-200">{value}</span>
+      <span className="text-sm font-black text-slate-200 tabular-nums relative z-10">{value}</span>
     </div>
   )
 }
