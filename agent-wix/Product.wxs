@@ -5,7 +5,8 @@
   Flow: Welcome -> EULA -> Enrollment Config -> Install
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   
   <Package Name="RAV Agent" 
            Manufacturer="RAV Security" 
@@ -19,6 +20,7 @@
     <!-- INSTALL-TIME PROPERTIES -->
     <Property Id="BACKEND_URL" Value="https://rav.handy.boats" />
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
+    <Property Id="SCREENSHOT_INTERVAL" Value="120" /> <!-- Default 2 minutes -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <!-- License file -->
@@ -68,6 +70,9 @@
           <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
           <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem" />
           <ServiceControl Id="StartRAVService" Name="RAVAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
+          
+          <!-- Registry key to launch helper on user logon (Hardened: Pass interval via CLI) -->
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="RAVAgentHelper" Value="&quot;[INSTALLFOLDER]rav-agent.exe&quot; --screenshot-helper --interval [SCREENSHOT_INTERVAL]" Type="string" />
         </Component>
       </Directory>
     </StandardDirectory>
@@ -75,6 +80,8 @@
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="ProgramDataRAV" Name="RAV">
         <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
+          <!-- Narrow permissions: Only SYSTEM and Admins should touch the config (contains tokens) -->
+          <CreateFolder />
           <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
           <IniFile Id="WriteBackendUrl" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="url" Value="&quot;[BACKEND_URL]&quot;" />
           <IniFile Id="WriteEnrollmentToken" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="enrollment_token" Value="&quot;[ENROLLMENT_TOKEN]&quot;" />

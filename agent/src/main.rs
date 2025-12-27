@@ -16,29 +16,13 @@ use sync::SyncManager;
 use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
 
 fn main() -> Result<()> {
-    // Initialize logging (Standard + File)
-    let log_dir = "C:\\ProgramData\\RAV\\logs";
-    let _ = std::fs::create_dir_all(log_dir);
-    
-    let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "rav_agent=info".into()),
-        )
-        .with_writer(non_blocking)
-        .init();
-
-    info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
-
-    // 1. CLI Argument Parsing
+    // 1. CLI Argument Parsing (Fast, no side effects)
     let args: Vec<String> = std::env::args().collect();
-    let mut cli_token = None;
-    let mut cli_server = None;
     let mut install_flag = false;
     let mut uninstall_flag = false;
+    let mut helper_flag = false;
+    let mut cli_token = None;
+    let mut cli_server = None;
 
     for i in 0..args.len() {
         if args[i] == "--enroll" || args[i] == "--enrollment-token" {
@@ -51,20 +35,68 @@ fn main() -> Result<()> {
                 cli_server = Some(args[i + 1].clone());
             }
         }
-        
-        // Implicitly install if enrolling? User said: "Runs once... Installs service... Exits"
-        // Let's make it implicit if enrolling.
         if args[i] == "--install" {
             install_flag = true;
         }
         if args[i] == "--uninstall" {
             uninstall_flag = true;
         }
+        if args[i] == "--screenshot-helper" {
+            helper_flag = true;
+        }
     }
 
-    // 2. Handle Explicit CLI Commands (Install/Enroll/Uninstall)
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag {
+    // 2. Initialize Logging
+    if helper_flag {
+        // Screenshot Helper: No file logging (Security requirement: No disk writes)
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
+            .init();
+        info!("RAV Screenshot Helper starting...");
+    } else {
+        // Service/CLI: Standard + File Logging
+        let log_dir = "C:\\ProgramData\\RAV\\logs";
+        let _ = std::fs::create_dir_all(log_dir);
+        let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
+            .with_writer(non_blocking)
+            .init();
+        
+        // This guard must live for the duration of the program, but for CLI commands it's fine 
+        // if it stays in this block scope then drops. For the service, we'll need to handle it better.
+        // Actually, leaking the guard is a common pattern for simple agents if we want logs on exit.
+        std::mem::forget(_guard); 
+        
+        info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
+    }
+
+    // 3. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper)
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag {
         info!("RAV Agent: Processing CLI commands...");
+
+        // Screenshot Helper?
+        if helper_flag {
+            let mut interval_secs = 60; // Default
+            for i in 0..args.len() {
+                if args[i] == "--interval" && i + 1 < args.len() {
+                    if let Ok(val) = args[i + 1].parse::<u64>() {
+                        interval_secs = val;
+                    }
+                }
+            }
+            
+            info!("RAV Agent: Running in Screenshot Helper mode (Interval: {}s)...", interval_secs);
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                if let Err(e) = monitoring::screenshots::run_helper(interval_secs).await {
+                    error!("Screenshot helper failed: {}", e);
+                }
+            })?;
+            return Ok(());
+        }
 
         // Uninstall?
         if uninstall_flag {
