@@ -127,38 +127,34 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Integrity Warning */}
-              <div className="bg-red-500/[0.02] border border-red-500/20 rounded-[2rem] p-6 relative overflow-hidden group">
-                <div className="absolute inset-0 bg-red-500/[0.02] opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="flex gap-4 relative z-10">
-                  <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 h-fit">
-                    <Terminal className="w-5 h-5 text-red-500" />
-                  </div>
-                  <div className="space-y-2">
-                    <h4 className="text-[10px] font-black text-red-500 uppercase tracking-[0.2em] flex items-center gap-2">
-                      Forensic Immutability Warning
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shadow-[0_0_10px_rgba(239,68,68,1)]" />
-                    </h4>
-                    <p className="text-[11px] text-slate-400 font-medium leading-[1.6]">
-                      All timeline data is subject to <span className="text-red-400 font-bold">Protocol Rule 4 (Immutability)</span>. Any discrepancy between authority logs and telemetry must be escalated to platform high-command immediately.
-                    </p>
+              {/* Integrity & Governance Section */}
+              <div className="space-y-4">
+                <div className="bg-slate-900/40 border border-white/5 rounded-[2rem] p-6 backdrop-blur-2xl relative overflow-hidden group hover:border-red-500/20 transition-colors">
+                  <div className="flex gap-4 relative z-10">
+                    <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/10">
+                      <Shield className="w-5 h-5 text-red-500/80" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        Data Integrity
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
+                        All forensic streams are cryptographically locked. Unresolved discrepancies trigger protocol escalation.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Operational Status Card */}
-              <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-white/5 rounded-[2rem] p-6 shadow-2xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <Shield className="w-16 h-16" />
-                </div>
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Platform Authority</h4>
-                <div className="flex items-end justify-between">
-                  <div className="space-y-1">
-                    <p className="text-2xl font-black text-white">LOCKED</p>
-                    <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Integrity Verified</p>
-                  </div>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4].map(i => <div key={i} className="w-1 h-3 bg-indigo-500/40 rounded-full" />)}
+                <div className="bg-indigo-600/5 border border-indigo-500/10 rounded-[2rem] p-6 backdrop-blur-3xl relative overflow-hidden group">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black text-indigo-400/60 uppercase tracking-widest">Platform Status</p>
+                      <p className="text-xl font-black text-slate-200 tracking-tight">ENFORCED</p>
+                    </div>
+                    <div className="p-2 bg-indigo-500/10 rounded-xl border border-indigo-500/10">
+                      <Terminal className="w-4 h-4 text-indigo-400" />
+                    </div>
                   </div>
                 </div>
               </div>
