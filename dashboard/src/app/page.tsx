@@ -142,37 +142,8 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Integrity & Governance Section */}
+              {/* Integrity & Governance Section removed as per request */}
               <div className="space-y-4">
-                <div className="bg-slate-900/40 border border-white/5 rounded-[2rem] p-6 backdrop-blur-2xl relative overflow-hidden group hover:border-red-500/20 transition-colors">
-                  <div className="flex gap-4 relative z-10">
-                    <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/10">
-                      <Shield className="w-5 h-5 text-red-500/80" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                        Data Integrity
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500/40" />
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed">
-                        All forensic streams are cryptographically locked. Unresolved discrepancies trigger protocol escalation.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-indigo-600/5 border border-indigo-500/10 rounded-[2rem] p-6 backdrop-blur-3xl relative overflow-hidden group">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-black text-indigo-400/60 uppercase tracking-widest">Platform Status</p>
-                      <p className="text-xl font-black text-slate-200 tracking-tight">ENFORCED</p>
-                    </div>
-                    <div className="p-2 bg-indigo-500/10 rounded-xl border border-indigo-500/10">
-                      <Terminal className="w-4 h-4 text-indigo-400" />
-                    </div>
-                  </div>
-                </div>
-
                 {/* Organization Identity Card for Org Admins */}
                 {user?.role === 'org_admin' && org && (
                   <div className="bg-slate-900/40 border border-purple-500/20 rounded-[2rem] p-6 backdrop-blur-2xl relative overflow-hidden group">
