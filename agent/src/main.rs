@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::sync::Arc;
-use tokio::signal;
-use tracing::{info, error, warn};
+// use tokio::signal;
+use tracing::info;
 
 pub mod config;
 pub mod encryption;
@@ -13,7 +13,7 @@ pub mod storage;
 
 use config::Config;
 use sync::SyncManager;
-use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
+// use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
 
 fn main() -> Result<()> {
     // 1. CLI Argument Parsing (Fast, no side effects)
@@ -65,9 +65,7 @@ fn main() -> Result<()> {
             .with_writer(non_blocking)
             .init();
         
-        // This guard must live for the duration of the program, but for CLI commands it's fine 
-        // if it stays in this block scope then drops. For the service, we'll need to handle it better.
-        // Actually, leaking the guard is a common pattern for simple agents if we want logs on exit.
+        // This guard must live for the duration of the program.
         std::mem::forget(_guard); 
         
         info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
@@ -91,9 +89,7 @@ fn main() -> Result<()> {
             info!("RAV Agent: Running in Screenshot Helper mode (Interval: {}s)...", interval_secs);
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async {
-                if let Err(e) = monitoring::screenshots::run_helper(interval_secs).await {
-                    error!("Screenshot helper failed: {}", e);
-                }
+                monitoring::screenshots::run_helper(interval_secs).await
             })?;
             return Ok(());
         }

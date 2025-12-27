@@ -195,10 +195,10 @@ async fn capture_and_send() -> Result<()> {
     let mut image_data = Vec::new();
     
     {
-        let mut buffer = std::io::Cursor::new(&mut image_data);
-        let png_bytes = image.to_png().context("PNG encode fail")?;
-        let img = image::load_from_memory(&png_bytes).context("Internal image load fail")?;
-        img.write_to(&mut buffer, image::ImageFormat::Jpeg).context("JPEG re-encode fail")?;
+        use std::io::Cursor;
+        let mut buffer = Cursor::new(&mut image_data);
+        // screenshots 0.8 capture() returns image::RgbaImage
+        image.write_to(&mut buffer, image::ImageFormat::Jpeg).context("JPEG encode fail")?;
     }
 
     let packet = ScreenshotPacket {

@@ -12,7 +12,7 @@ use windows_service::{
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 use anyhow::{Context, Result};
-use tracing::{info, error};
+use tracing::info;
 
 use crate::config::Config;
 use crate::agent_logic;

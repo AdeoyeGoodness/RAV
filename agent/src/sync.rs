@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn, debug};
-use uuid::Uuid;
+use tracing::{error, info, warn};
+// use uuid::Uuid;
 
 use crate::config::Config;
 use crate::storage::StorageManager;
