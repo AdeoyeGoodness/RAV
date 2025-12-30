@@ -43,7 +43,7 @@ pub async fn list_organizations(
         CASE 
             WHEN token_expiry < NOW() THEN 'expired' 
             ELSE status 
-        END as status, 
+        END as "status!", 
         COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at FROM organizations ORDER BY created_at DESC"#
     )
     .fetch_all(pool)
