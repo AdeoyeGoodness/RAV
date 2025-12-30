@@ -202,6 +202,16 @@ impl SyncManager {
     }
 
     pub async fn sync_events(&self) -> Result<()> {
+        // 0. Pre-flight check: Do not sync if we don't have an ID
+        let (agent_id, _) = self.get_identity().await;
+        if agent_id == "unknown" {
+            // Be silent or log warning only occasionally? 
+            // For now, silent return is safer to stop spam, 
+            // but let's log once so we know why it's quiet.
+            // tracing::warn!("Agent ID unknown: Skipping sync cycle until enrolled.");
+            return Ok(());
+        }
+
         // 1. Fetch from Disk
         let batched_events = self.storage.fetch_unsynced_events(100)?; // Batch 100
         
@@ -245,6 +255,11 @@ impl SyncManager {
 
     async fn send_heartbeat(&self) -> Result<()> {
         let (agent_id, _) = self.get_identity().await;
+        
+        if agent_id == "unknown" {
+            return Ok(());
+        }
+
         let hw_fingerprint = self.get_hardware_fingerprint();
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
 
