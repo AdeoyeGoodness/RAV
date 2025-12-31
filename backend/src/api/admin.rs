@@ -39,7 +39,7 @@ pub async fn list_organizations(
     let pool = state.db.pool();
 
     let orgs = sqlx::query(
-        r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at FROM organizations ORDER BY created_at DESC"#
+        r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents", token_expiry, created_at, updated_at FROM organizations ORDER BY created_at DESC"#
     )
     .fetch_all(pool)
     .await
