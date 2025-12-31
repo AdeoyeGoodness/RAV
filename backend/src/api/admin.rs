@@ -29,7 +29,7 @@ pub struct UpdateStatus {
 pub async fn list_organizations(
     claims: Claims,
     State(state): State<AppState>,
-) -> Result<Json<Vec<Organization>>, StatusCode> {
+) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
     info!("List organizations request from user: {} (role: {})", claims.sub, claims.role);
     if claims.role != "super_admin" {
         info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
@@ -37,8 +37,8 @@ pub async fn list_organizations(
     }
 
     let pool = state.db.pool();
-    let orgs = sqlx::query_as!(
-        Organization,
+
+    let orgs = sqlx::query(
         r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at FROM organizations ORDER BY created_at DESC"#
     )
     .fetch_all(pool)
@@ -48,7 +48,30 @@ pub async fn list_organizations(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(orgs))
+    let result: Vec<serde_json::Value> = orgs
+        .into_iter()
+        .map(|row| {
+            use sqlx::Row;
+            let created_at = row.get::<chrono::DateTime<Utc>, _>("created_at");
+            let token_expiry = row.get::<Option<chrono::DateTime<Utc>>, _>("token_expiry");
+
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id"),
+                "name": row.get::<String, _>("name"),
+                "enrollment_token": row.get::<String, _>("enrollment_token"),
+                "max_agents": row.get::<i32, _>("max_agents"),
+                "token_expiry": token_expiry,
+                "created_at": created_at,
+                "created_at_ms": created_at.timestamp_millis(),
+                "status": row.get::<String, _>("status"),
+                "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at")
+            })
+        })
+        .collect();
+
+    Ok(Json(result))
+
+
 }
 
 pub async fn create_organization(

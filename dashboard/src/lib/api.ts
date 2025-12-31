@@ -51,6 +51,7 @@ export interface Organization {
   max_agents: number
   token_expiry: string | null
   created_at: string
+  created_at_ms: number
   updated_at: string
 }
 

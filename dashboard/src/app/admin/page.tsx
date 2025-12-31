@@ -302,7 +302,7 @@ export default function AdminPage() {
                                                     {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
                                                 </td>
                                                 <td className="px-6 py-4 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-                                                    {new Date(org.created_at.endsWith('Z') ? org.created_at : org.created_at + 'Z').toLocaleString(undefined, {
+                                                    {new Date(org.created_at_ms).toLocaleString(undefined, {
                                                         year: 'numeric',
                                                         month: 'short',
                                                         day: 'numeric',
