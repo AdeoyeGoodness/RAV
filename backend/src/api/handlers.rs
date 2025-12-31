@@ -339,13 +339,15 @@ pub async fn list_agents(
     let result: Vec<serde_json::Value> = agents
         .into_iter()
         .map(|row| {
+            let last_seen = row.get::<chrono::DateTime<Utc>, _>("last_seen");
             serde_json::json!({
                 "id": row.get::<Uuid, _>("id"),
                 "organization_id": row.get::<Uuid, _>("organization_id"),
                 "agent_id": row.get::<String, _>("agent_id"),
                 "hardware_fingerprint": row.get::<String, _>("hardware_fingerprint"),
                 "hostname": row.get::<Option<String>, _>("hostname"),
-                "last_seen": row.get::<chrono::DateTime<Utc>, _>("last_seen"),
+                "last_seen": last_seen,
+                "last_seen_ms": last_seen.timestamp_millis(),
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
             })

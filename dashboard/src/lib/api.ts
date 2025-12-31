@@ -81,6 +81,7 @@ export interface Agent {
   hardware_fingerprint: string
   hostname: string | null
   last_seen: string
+  last_seen_ms: number
   token_expiry: string | null
   created_at: string
   updated_at: string

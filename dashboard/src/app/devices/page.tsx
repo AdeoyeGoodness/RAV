@@ -3,20 +3,12 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Monitor, Activity, Clock, HardDrive, Search } from 'lucide-react'
-import { getAgents, getEvents } from '@/lib/api'
+import { getAgents, getEvents, Agent } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
 
-interface Agent {
-  id: string
-  agent_id: string
-  hardware_fingerprint: string
-  hostname: string | null
-  last_seen: string
-  created_at: string
-  updated_at: string
-}
+
 
 export default function DevicesPage() {
   const router = useRouter()
@@ -56,21 +48,18 @@ export default function DevicesPage() {
   }
 
   const getAgentStatus = (agent: Agent) => {
-    // Fix: Ensure timestamp is treated as UTC if lacking timezone info
-    const rawLastSeen = agent.last_seen;
-    const lastSeen = new Date(rawLastSeen.endsWith('Z') ? rawLastSeen : rawLastSeen + 'Z');
-    const now = new Date()
-    const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
+    // Golden Rule: Use epoch milliseconds for logic
+    const msSinceLastSeen = Date.now() - agent.last_seen_ms;
+    const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
 
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
     if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
     return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
   }
 
-  const formatLastSeen = (timestamp: string) => {
-    const date = new Date(timestamp.endsWith('Z') ? timestamp : timestamp + 'Z')
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
+  const formatLastSeen = (agent: Agent) => {
+    // Use epoch ms for calculation
+    const diffMs = Date.now() - agent.last_seen_ms;
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
@@ -182,7 +171,7 @@ export default function DevicesPage() {
                         <div className="flex items-center space-x-2 text-sm">
                           <Clock className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
                           <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last seen:</span>
-                          <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>{formatLastSeen(agent.last_seen)}</span>
+                          <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>{formatLastSeen(agent)}</span>
                         </div>
                         <div className="flex items-center space-x-2 text-sm">
                           <Activity className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
