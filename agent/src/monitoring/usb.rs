@@ -231,19 +231,25 @@ async fn start_windows_monitoring(
                             .map(|(drive, _)| drive.clone())
                             .collect();
                         
-                        let (agent_id, _) = sync_manager.get_identity().await;
-                        let event = Event {
-                            event_type: "usb_inserted".to_string(),
-                            timestamp: Utc::now(),
-                            agent_id,
-                            metadata: json!({
-                                "device_id": device_id,
-                                "device_name": device_name,
-                                "platform": "windows",
-                                "drive_letters": device_drives
-                            }),
-                        };
-                        sync_manager.queue_event(event);
+                        if device_name != "Unknown Device" {
+                             let (agent_id, _) = sync_manager.get_identity().await;
+                             let event = Event {
+                                 event_type: "usb_inserted".to_string(),
+                                 timestamp: Utc::now(),
+                                 agent_id,
+                                 category: "usb".to_string(),
+                                 severity: "low".to_string(),
+                                 metadata: json!({
+                                     "device_id": device_id,
+                                     "device_name": device_name,
+                                     "platform": "windows",
+                                     "drive_letters": device_drives
+                                 }),
+                             };
+                             sync_manager.queue_event(event);
+                        } else {
+                            info!("Skipping event for Unknown Device: {}", device_id);
+                        }
                     }
                 }
 
@@ -258,18 +264,24 @@ async fn start_windows_monitoring(
                     info!("USB device removed: {} ({})", device_id, device_name);
                     known.remove(&device_id);
                     
-                    let (agent_id, _) = sync_manager.get_identity().await;
-                    let event = Event {
-                        event_type: "usb_removed".to_string(),
-                        timestamp: Utc::now(),
-                        agent_id,
-                        metadata: json!({
-                            "device_id": device_id,
-                            "device_name": device_name,
-                            "platform": "windows"
-                        }),
-                    };
-                    sync_manager.queue_event(event);
+                    if device_name != "Unknown Device" {
+                        let (agent_id, _) = sync_manager.get_identity().await;
+                        let event = Event {
+                            event_type: "usb_removed".to_string(),
+                            timestamp: Utc::now(),
+                            agent_id,
+                            category: "usb".to_string(),
+                            severity: "low".to_string(),
+                            metadata: json!({
+                                "device_id": device_id,
+                                "device_name": device_name,
+                                "platform": "windows"
+                            }),
+                        };
+                        sync_manager.queue_event(event);
+                    } else {
+                        info!("Skipping event for Unknown Device: {}", device_id);
+                    }
                 }
                 
                 // Log current device count for debugging (only if there's a change)
@@ -940,6 +952,8 @@ async fn log_file_transfer(
         event_type: "usb_file_transfer".to_string(),
         timestamp: Utc::now(),
         agent_id,
+        category: "usb".to_string(),
+        severity: "medium".to_string(),
         metadata,
     };
     
@@ -1122,6 +1136,8 @@ async fn start_linux_monitoring(
                             event_type: "usb_inserted".to_string(),
                             timestamp: Utc::now(),
                             agent_id,
+                            category: "usb".to_string(),
+                            severity: "low".to_string(),
                             metadata: json!({
                                 "device_id": device_id,
                                 "platform": "linux"

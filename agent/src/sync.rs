@@ -14,6 +14,8 @@ pub struct Event {
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub agent_id: String,
+    pub category: String, // Added for correct filtering
+    pub severity: String, // Added for correct filtering
     pub metadata: serde_json::Value,
 }
 

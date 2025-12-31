@@ -137,6 +137,8 @@ async fn handle_helper_connection(
                     event_type: "screenshot_captured".to_string(),
                     timestamp: Utc::now(),
                     agent_id,
+                    category: "screenshot".to_string(),
+                    severity: "medium".to_string(),
                     metadata: json!({
                         "file_id": file_id,
                         "width": packet.width,
