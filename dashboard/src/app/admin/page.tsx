@@ -272,7 +272,6 @@ export default function AdminPage() {
                                             <th className="px-6 py-4">Organization Name</th>
                                             <th className="px-6 py-4">Quota</th>
                                             <th className="px-6 py-4">Expiry</th>
-                                            <th className="px-6 py-4">Created At</th>
                                             <th className="px-6 py-4">Status</th>
                                             <th className="px-6 py-4">Actions</th>
                                         </tr>
@@ -300,16 +299,6 @@ export default function AdminPage() {
                                                 </td>
                                                 <td className="px-6 py-4 text-xs font-mono" style={{ color: org.token_expiry && new Date(org.token_expiry) < new Date() ? 'var(--accent-red)' : 'var(--text-secondary)' }}>
                                                     {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
-                                                </td>
-                                                <td className="px-6 py-4 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
-                                                    {new Date(org.created_at.endsWith('Z') ? org.created_at : org.created_at + 'Z').toLocaleString(undefined, {
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit',
-                                                        second: '2-digit'
-                                                    })}
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>

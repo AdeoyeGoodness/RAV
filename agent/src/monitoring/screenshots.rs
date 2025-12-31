@@ -1,266 +1,292 @@
-use anyhow::{Result, Context};
+use anyhow::Result;
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::config::Config;
 use crate::sync::{Event, SyncManager};
-
-const PIPE_NAME: &str = r"\\.\pipe\RAVAgentScreenshots";
-
-// Security Descriptor: 
-// D:(A;;GA;;;SY) -> SYSTEM Full Access
-// (A;;GA;;;BA)   -> Administrators Full Access
-// (A;;GRGW;;;AU) -> Authenticated Users Read/Write (Allow helper connection)
-// Reject anonymous (not in string)
-const PIPE_SECURITY_DESCRIPTOR: &str = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;AU)";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ScreenshotPacket {
-    pub width: u32,
-    pub height: u32,
-    pub format: String,
-    pub image_data: Vec<u8>,
-}
 
 pub async fn start_monitoring(
     config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
+    info!("Screenshot monitoring check: enabled={}", config.monitoring.screenshots.enabled);
     if !config.monitoring.screenshots.enabled {
-        info!("Screenshot monitoring is disabled in config");
+        info!("Screenshot monitoring is disabled");
         return Ok(());
     }
 
+    info!("Starting screenshot monitoring");
+
     #[cfg(windows)]
     {
-        info!("Starting Hardened Screenshot IPC Server on {}", PIPE_NAME);
-        tokio::spawn(async move {
-            if let Err(e) = run_ipc_server(config, sync_manager).await {
-                error!("Screenshot IPC Server error: {}", e);
-            }
-        });
+        start_windows_monitoring(config, sync_manager).await?;
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
-        info!("Screenshot monitoring not implemented for this platform");
+        start_macos_monitoring(config, sync_manager).await?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        start_linux_monitoring(config, sync_manager).await?;
     }
 
     Ok(())
 }
 
 #[cfg(windows)]
-async fn run_ipc_server(config: Arc<Config>, sync_manager: Arc<SyncManager>) -> Result<()> {
-    use tokio::net::windows::named_pipe::ServerOptions;
-
-    loop {
-        // Create pipe with restricted access
-        let server = ServerOptions::new()
-            .first_pipe_instance(true)
-            .create(PIPE_NAME)
-            .context("Failed to create named pipe instance")?;
-            
-        // Note: Advanced security descriptors are usually applied via CreateNamedPipe
-        // but tokio doesn't expose SD directly. However, we can use sc.exe/cacls 
-        // to verify or use winapi to set security after creation.
-        // For this implementation, we rely on the service running as SYSTEM 
-        // which gives us some baseline isolation, but we'll focus on INPUT VALIDATION.
-
-        info!("Waiting for screenshot helper...");
-        server.connect().await?;
-        
-        let config = config.clone();
-        let sync_manager = sync_manager.clone();
-        let mut server = server;
-
-        tokio::spawn(async move {
-            if let Err(e) = handle_helper_connection(&mut server, config, sync_manager).await {
-                warn!("Helper connection closed: {}", e);
-            }
-        });
-    }
-}
-
-#[cfg(windows)]
-async fn handle_helper_connection(
-    pipe: &mut tokio::net::windows::named_pipe::NamedPipeServer,
+async fn start_windows_monitoring(
     config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
-    loop {
-        // 1. Read Payload Length (4 bytes)
-        let mut len_buf = [0u8; 4];
-        if pipe.read_exact(&mut len_buf).await.is_err() {
-            break; 
-        }
-        let len = u32::from_le_bytes(len_buf) as usize;
+    use sha2::{Sha256, Digest};
 
-        // One-way trust: Strict size limit (20MB)
-        if len > 20 * 1024 * 1024 {
-            anyhow::bail!("REJECTED: Oversized screenshot packet ({} bytes)", len);
-        }
+    let capture_interval = Duration::from_secs(config.monitoring.screenshots.capture_interval_seconds);
+    let mut interval_timer = interval(capture_interval);
 
-        // 2. Read JSON Packet
-        let mut packet_buf = vec![0u8; len];
-        pipe.read_exact(&mut packet_buf).await?;
-        
-        let packet: ScreenshotPacket = serde_json::from_slice(&packet_buf)
-            .context("Failed to parse screenshot packet structure")?;
-
-        // 3. One-way trust: Strict Metadata Validation
-        if packet.width > 8192 || packet.height > 8192 {
-            anyhow::bail!("REJECTED: Malformed dimensions ({}x{})", packet.width, packet.height);
-        }
-        
-        if packet.format != "jpeg" && packet.format != "png" {
-            anyhow::bail!("REJECTED: Forbidden image format: {}", packet.format);
-        }
-
-        if packet.image_data.is_empty() {
-             anyhow::bail!("REJECTED: Empty image data");
-        }
-
-        info!("Validated screenshot received ({}x{}, {} bytes)", packet.width, packet.height, packet.image_data.len());
-
-        // 4. Process & Upload
-        let file_id = format!("scr_{}_{}", Utc::now().timestamp(), uuid::Uuid::new_v4().to_string().get(..8).unwrap());
-        
-        match upload_screenshot(&file_id, &packet.image_data, &config, &sync_manager).await {
-            Ok(_) => {
-                let (agent_id, _) = sync_manager.get_identity().await;
-                let event = Event {
-                    event_type: "screenshot_captured".to_string(),
-                    timestamp: Utc::now(),
-                    agent_id,
-                    category: "screenshot".to_string(),
-                    severity: "medium".to_string(),
-                    metadata: json!({
-                        "file_id": file_id,
-                        "width": packet.width,
-                        "height": packet.height,
-                        "file_size": packet.image_data.len(),
-                        "format": packet.format,
-                        "platform": "windows",
-                        "security": "hardened_ipc"
-                    }),
-                };
-                sync_manager.queue_event(event);
-                sync_manager.sync_events_immediate().await;
-            }
-            Err(e) => {
-                error!("IPC Server: Upload failed for packet: {}", e);
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Entry point for the USER-MODE HELPER.
-/// Decoupled: Does NOT read config.toml from disk.
-pub async fn run_helper(interval_secs: u64) -> Result<()> {
-    info!("RAV Hardened Screenshot Helper starting (Interval: {}s)...", interval_secs);
-    
-    // Safety: Helper never writes to disk, never talks to network.
-    let mut interval_timer = interval(Duration::from_secs(interval_secs));
+    info!(
+        "Screenshot monitoring started: interval={}s, format={}, quality={}",
+        config.monitoring.screenshots.capture_interval_seconds,
+        config.monitoring.screenshots.format,
+        config.monitoring.screenshots.compression_quality
+    );
 
     loop {
         interval_timer.tick().await;
 
-        match capture_and_send().await {
-            Ok(_) => info!("Screenshot captured and piped to service."),
-            Err(e) => error!("Helper capture/send error: {}", e),
+        // Capture screenshot
+        match capture_windows_screenshot(&config).await {
+            Ok((image_data, width, height)) => {
+                info!("Screenshot captured: {}x{} ({} bytes)", width, height, image_data.len());
+
+                // Generate file ID from hash
+                let mut hasher = Sha256::new();
+                hasher.update(&image_data);
+                hasher.update(Utc::now().to_rfc3339().as_bytes());
+                let file_hash = format!("{:x}", hasher.finalize());
+                let file_id = format!(
+                    "screenshot_{}_{}",
+                    Utc::now().format("%Y%m%d_%H%M%S"),
+                    &file_hash[..16]
+                );
+
+                // Upload screenshot to backend
+                match upload_screenshot(
+                    &file_id,
+                    &image_data,
+                    width,
+                    height,
+                    &config,
+                    &sync_manager,
+                )
+                .await
+                {
+                    Ok(backup_file_id) => {
+                        let (agent_id, _) = sync_manager.get_identity().await;
+                        // Log screenshot event
+                        let event = Event {
+                            event_type: "screenshot_captured".to_string(),
+                            timestamp: Utc::now(),
+                            agent_id,
+                            metadata: json!({
+                                "file_id": backup_file_id,
+                                "width": width,
+                                "height": height,
+                                "file_size": image_data.len(),
+                                "format": config.monitoring.screenshots.format,
+                                "platform": "windows",
+                            }),
+                        };
+                        sync_manager.queue_event(event);
+                        // Trigger immediate sync for screenshots to reduce delay
+                        let sync_manager_clone = sync_manager.clone();
+                        tokio::spawn(async move {
+                            sync_manager_clone.sync_events_immediate().await;
+                        });
+                        info!("Screenshot uploaded and event logged: {}", backup_file_id);
+                    }
+                    Err(e) => {
+                        error!("Failed to upload screenshot: {}", e);
+                        let (agent_id, _) = sync_manager.get_identity().await;
+                        // Still log the event even if upload fails
+                        let event = Event {
+                            event_type: "screenshot_captured".to_string(),
+                            timestamp: Utc::now(),
+                            agent_id,
+                            metadata: json!({
+                                "file_id": file_id,
+                                "width": width,
+                                "height": height,
+                                "file_size": image_data.len(),
+                                "format": config.monitoring.screenshots.format,
+                                "platform": "windows",
+                                "upload_error": format!("{}", e),
+                            }),
+                        };
+                        sync_manager.queue_event(event);
+                        // Trigger immediate sync even for failed uploads
+                        let sync_manager_clone = sync_manager.clone();
+                        tokio::spawn(async move {
+                            sync_manager_clone.sync_events_immediate().await;
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to capture screenshot: {}", e);
+            }
         }
     }
 }
 
 #[cfg(windows)]
-async fn capture_and_send() -> Result<()> {
+async fn capture_windows_screenshot(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     use screenshots::Screen;
-    use tokio::net::windows::named_pipe::ClientOptions;
+    use image::{DynamicImage, ImageOutputFormat, RgbImage, ImageBuffer};
+    use std::io::Cursor;
 
-    // 1. Capture Screen
-    let screens = Screen::all().context("Failed to iterate screens")?;
+    // Get all screens
+    let screens = Screen::all()?;
     if screens.is_empty() {
-        anyhow::bail!("No screens found in user session");
+        anyhow::bail!("No screens found");
     }
 
-    let screen = &screens[0]; 
-    let image = screen.capture().context("Capture failure")?;
-    
-    // Default to JPEG for the helper
-    let format = "jpeg".to_string();
-    let mut image_data = Vec::new();
-    
-    {
-        use std::io::Cursor;
-        let mut buffer = Cursor::new(&mut image_data);
-        // screenshots 0.8 capture() returns image::RgbaImage
-        image.write_to(&mut buffer, image::ImageFormat::Jpeg).context("JPEG encode fail")?;
-    }
+    // Capture primary screen (first screen)
+    let screen = &screens[0];
+    let image = screen.capture()?;
+    let width = image.width() as u32;
+    let height = image.height() as u32;
 
-    let packet = ScreenshotPacket {
-        width: image.width() as u32,
-        height: image.height() as u32,
-        format,
-        image_data,
+    // In screenshots 0.8, Image has a save() method, but we need bytes
+    // Save to a temporary file and read it back, or convert directly
+    // Let's use the save method to a temp file, then read bytes
+    let temp_path = std::env::temp_dir().join(format!(
+        "rav_screenshot_{}.png",
+        chrono::Utc::now().timestamp_millis()
+    ));
+    
+    // Save screenshot to temp file
+    image.save(&temp_path)?;
+    
+    // Read the file bytes
+    let image_data = std::fs::read(&temp_path)?;
+    
+    // Clean up temp file
+    let _ = std::fs::remove_file(&temp_path);
+    
+    // If format is JPEG, we need to convert PNG to JPEG
+    let final_data = if config.monitoring.screenshots.format == "jpeg" {
+        // Decode PNG and re-encode as JPEG
+        let img = image::load_from_memory(&image_data)?;
+        let rgb_img = img.to_rgb8();
+        let (jpeg_width, jpeg_height) = rgb_img.dimensions();
+        let rgb_bytes = rgb_img.into_raw();
+        let mut jpeg_data = Vec::new();
+        {
+            use image::codecs::jpeg::JpegEncoder;
+            let mut encoder = JpegEncoder::new_with_quality(
+                &mut jpeg_data,
+                config.monitoring.screenshots.compression_quality,
+            );
+            encoder.encode(
+                &rgb_bytes,
+                jpeg_width,
+                jpeg_height,
+                image::ColorType::Rgb8,
+            )?;
+        }
+        jpeg_data
+    } else {
+        // Keep as PNG
+        image_data
     };
 
-    let serialized = serde_json::to_vec(&packet).context("Serialization error")?;
-    let len = serialized.len() as u32;
-
-    // 2. Connect to Pipe and Send
-    // Client ensures it only connects to the LOCAL pipe.
-    let mut client = ClientOptions::new()
-        .open(PIPE_NAME)
-        .context("Service pipe not found. Is RAVAgent service running?")?;
-
-    client.write_all(&len.to_le_bytes()).await?;
-    client.write_all(&serialized).await?;
-    client.flush().await?;
-
-    Ok(())
+    Ok((final_data, width, height))
 }
 
+#[cfg(windows)]
 async fn upload_screenshot(
     file_id: &str,
     image_data: &[u8],
+    _width: u32,
+    _height: u32,
     config: &Config,
-    sync_manager: &SyncManager,
+    _sync_manager: &SyncManager,
 ) -> Result<String> {
     use reqwest::multipart;
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
+        .timeout(std::time::Duration::from_secs(60)) // 1 minute timeout for image uploads
+        .connect_timeout(std::time::Duration::from_secs(30))
         .build()?;
 
-    let (agent_id, _) = sync_manager.get_identity().await;
-    let extension = if config.monitoring.screenshots.format == "png" { "png" } else { "jpg" };
-    let file_name = format!("{}.{}", file_id, extension);
-    let mime_type = if extension == "png" { "image/png" } else { "image/jpeg" };
+    let extension = if config.monitoring.screenshots.format == "png" {
+        "png"
+    } else {
+        "jpg"
+    };
+
+    let file_name = format!("screenshot_{}.{}", file_id, extension);
+    let mime_type = if config.monitoring.screenshots.format == "png" {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
 
     let url = format!("{}/api/v1/files/upload", config.backend.url);
 
+    let (agent_id, _) = _sync_manager.get_identity().await;
+
+    // Create multipart form
     let form = multipart::Form::new()
         .text("file_id", file_id.to_string())
         .text("file_name", file_name.clone())
         .text("agent_id", agent_id)
-        .part("file", multipart::Part::bytes(image_data.to_vec()).file_name(file_name).mime_str(mime_type)?);
+        .text("file_path", format!("screenshot://{}", file_id))
+        .text("file_size", image_data.len().to_string())
+        .part(
+            "file",
+            multipart::Part::bytes(image_data.to_vec())
+                .file_name(file_name)
+                .mime_str(mime_type)?,
+        );
 
     let mut request = client.post(&url).multipart(form);
+
     if let Some(api_key) = &config.backend.api_key {
         request = request.header("X-API-Key", api_key);
     }
 
-    let response = request.send().await.context("Upload request failed")?;
+    let response = request.send().await?;
+
     if !response.status().is_success() {
-        anyhow::bail!("Upload failed: {}", response.status());
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("Backend returned error {}: {}", status, body);
     }
 
     Ok(file_id.to_string())
+}
+
+#[cfg(target_os = "macos")]
+async fn start_macos_monitoring(
+    config: Arc<Config>,
+    sync_manager: Arc<SyncManager>,
+) -> Result<()> {
+    info!("macOS screenshot monitoring not yet implemented");
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn start_linux_monitoring(
+    config: Arc<Config>,
+    sync_manager: Arc<SyncManager>,
+) -> Result<()> {
+    info!("Linux screenshot monitoring not yet implemented");
+    Ok(())
 }
 

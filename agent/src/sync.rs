@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
-// use uuid::Uuid;
+use tracing::{error, info, warn, debug};
+use uuid::Uuid;
 
 use crate::config::Config;
 use crate::storage::StorageManager;
@@ -14,8 +14,6 @@ pub struct Event {
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub agent_id: String,
-    pub category: String, // Added for correct filtering
-    pub severity: String, // Added for correct filtering
     pub metadata: serde_json::Value,
 }
 
@@ -118,8 +116,7 @@ impl SyncManager {
 
     fn get_hardware_fingerprint(&self) -> String {
         self.config.agent.hardware_fingerprint.as_deref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| crate::agent_logic::generate_hardware_fingerprint())
+            .unwrap_or("unknown").to_string()
     }
 
     pub async fn enroll_agent(&self) -> Result<(String, String)> {
@@ -191,7 +188,6 @@ impl SyncManager {
         let mut new_config = (*self.config).clone();
         new_config.agent.agent_id = Some(agent_id.clone());
         new_config.agent.organization_id = Some(org_id.clone());
-        new_config.agent.hardware_fingerprint = Some(hw_fingerprint);
         new_config.backend.enrollment_token = None; // Security: Wipe token after use
 
         if let Err(e) = new_config.save() {
@@ -204,16 +200,6 @@ impl SyncManager {
     }
 
     pub async fn sync_events(&self) -> Result<()> {
-        // 0. Pre-flight check: Do not sync if we don't have an ID
-        let (agent_id, _) = self.get_identity().await;
-        if agent_id == "unknown" {
-            // Be silent or log warning only occasionally? 
-            // For now, silent return is safer to stop spam, 
-            // but let's log once so we know why it's quiet.
-            // tracing::warn!("Agent ID unknown: Skipping sync cycle until enrolled.");
-            return Ok(());
-        }
-
         // 1. Fetch from Disk
         let batched_events = self.storage.fetch_unsynced_events(100)?; // Batch 100
         
@@ -257,11 +243,6 @@ impl SyncManager {
 
     async fn send_heartbeat(&self) -> Result<()> {
         let (agent_id, _) = self.get_identity().await;
-        
-        if agent_id == "unknown" {
-            return Ok(());
-        }
-
         let hw_fingerprint = self.get_hardware_fingerprint();
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
 

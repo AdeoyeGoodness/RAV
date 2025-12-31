@@ -28,7 +28,7 @@ export default function DevicesPage() {
   useEffect(() => {
     if (user) {
       loadAgents()
-      const interval = setInterval(loadAgents, 5000) // Refresh every 5 seconds
+      const interval = setInterval(loadAgents, 30000) // Refresh every 30 seconds
       return () => clearInterval(interval)
     }
   }, [user])
@@ -56,9 +56,7 @@ export default function DevicesPage() {
   }
 
   const getAgentStatus = (agent: Agent) => {
-    // Fix: Ensure timestamp is treated as UTC if lacking timezone info
-    const rawLastSeen = agent.last_seen;
-    const lastSeen = new Date(rawLastSeen.endsWith('Z') ? rawLastSeen : rawLastSeen + 'Z');
+    const lastSeen = new Date(agent.last_seen)
     const now = new Date()
     const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
 
@@ -68,7 +66,7 @@ export default function DevicesPage() {
   }
 
   const formatLastSeen = (timestamp: string) => {
-    const date = new Date(timestamp.endsWith('Z') ? timestamp : timestamp + 'Z')
+    const date = new Date(timestamp)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMins = Math.floor(diffMs / 60000)
@@ -99,19 +97,9 @@ export default function DevicesPage() {
         <main className="pt-20 p-8 overflow-y-auto h-full">
           <div className="max-w-7xl mx-auto">
             {/* Header */}
-            <div className="mb-6 flex justify-between items-end">
-              <div>
-                <h1 className="text-3xl font-bold mb-2 transition-colors" style={{ color: 'var(--text-primary)' }}>Devices</h1>
-                <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Manage and monitor all connected devices</p>
-              </div>
-              <button
-                onClick={loadAgents}
-                className="px-4 py-2 rounded-lg border flex items-center gap-2 hover:bg-white/5 transition-all active:scale-95"
-                style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
-              >
-                <Activity className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold mb-2 transition-colors" style={{ color: 'var(--text-primary)' }}>Devices</h1>
+              <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Manage and monitor all connected devices</p>
             </div>
 
             {/* Search Bar */}

@@ -185,8 +185,6 @@ fn convert_extension_event(ext_event: &ExtensionEvent, agent_id: &str) -> Result
         event_type: event_type.to_string(),
         timestamp,
         agent_id: agent_id.to_string(),
-        category: "browser".to_string(),
-        severity: "low".to_string(),
         metadata,
     })
 }

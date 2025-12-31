@@ -38,7 +38,7 @@ pub async fn start_monitoring(
 }
 
 async fn monitor_connections(
-    _config: Arc<Config>,
+    config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
     let mut previous_connections: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -60,8 +60,6 @@ async fn monitor_connections(
                         event_type: "network_connection".to_string(),
                         timestamp: Utc::now(),
                         agent_id,
-                        category: "network".to_string(),
-                        severity: "low".to_string(),
                         metadata: json!({
                             "local_ip": conn.local_ip,
                             "local_port": conn.local_port,
