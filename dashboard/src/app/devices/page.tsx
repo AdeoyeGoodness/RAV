@@ -56,7 +56,9 @@ export default function DevicesPage() {
   }
 
   const getAgentStatus = (agent: Agent) => {
-    const lastSeen = new Date(agent.last_seen)
+    // Fix: Ensure timestamp is treated as UTC if lacking timezone info
+    const rawLastSeen = agent.last_seen;
+    const lastSeen = new Date(rawLastSeen.endsWith('Z') ? rawLastSeen : rawLastSeen + 'Z');
     const now = new Date()
     const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
 
@@ -66,7 +68,7 @@ export default function DevicesPage() {
   }
 
   const formatLastSeen = (timestamp: string) => {
-    const date = new Date(timestamp)
+    const date = new Date(timestamp.endsWith('Z') ? timestamp : timestamp + 'Z')
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMins = Math.floor(diffMs / 60000)
