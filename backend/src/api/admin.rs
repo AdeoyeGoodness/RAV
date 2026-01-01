@@ -63,7 +63,15 @@ pub async fn list_organizations(
                 "token_expiry": token_expiry,
                 "created_at": created_at,
                 "created_at_ms": created_at.timestamp_millis(),
-                "status": row.get::<String, _>("status"),
+                "status": if let Some(expiry) = token_expiry {
+                    if expiry < Utc::now() {
+                        "expired".to_string()
+                    } else {
+                        row.get::<String, _>("status")
+                    }
+                } else {
+                    row.get::<String, _>("status")
+                },
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at")
             })
         })
