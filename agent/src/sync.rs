@@ -206,8 +206,23 @@ impl SyncManager {
             return Ok(());
         }
 
-        let events: Vec<&Event> = batched_events.iter().map(|(_, e)| e).collect();
+        // Clone events to allow modification (rebinding agent_id)
+        let mut events: Vec<Event> = batched_events.iter().map(|(_, e)| e.clone()).collect();
         let event_ids: Vec<i64> = batched_events.iter().map(|(id, _)| *id).collect();
+
+        // Late Binding: ALWAYS bind events to current identity before sending
+        // This ensures events captured before enrollment are correctly tagged
+        let (current_agent_id, _) = self.get_identity().await;
+        if current_agent_id != "unknown" {
+            for event in &mut events {
+                // Force all events to use the enrolled agent_id
+                event.agent_id = current_agent_id.clone();
+            }
+            info!("Rebinding {} events to agent_id: {}", events.len(), current_agent_id);
+        } else {
+            warn!("Cannot sync: agent_id is still 'unknown' (not enrolled yet)");
+            return Ok(()); // Don't send events with unknown agent_id
+        }
 
         info!("Pushing {} buffered events to backend...", events.len());
 

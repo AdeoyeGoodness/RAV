@@ -55,6 +55,9 @@ async fn start_windows_monitoring(
     // Map drive letters to USB device IDs (to tie transfers to specific devices)
     let drive_to_device: Arc<Mutex<std::collections::HashMap<String, (String, String)>>> = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
+    // Cache device names on insertion so we can show proper names on removal
+    let device_name_cache: Arc<Mutex<std::collections::HashMap<String, String>>> = Arc::new(Mutex::new(std::collections::HashMap::new()));
+
     // Take initial snapshot of currently connected USB devices to avoid false positives
     // Only devices inserted/removed AFTER this point will be logged
     info!("Taking initial snapshot of connected USB devices (these will not be logged as insertions)...");
@@ -222,8 +225,32 @@ async fn start_windows_monitoring(
                             .cloned()
                             .unwrap_or_else(|| "Unknown Device".to_string());
                         
+                        // Filter: Skip boring USB devices (hubs, controllers, root hubs)
+                        let device_id_lower = device_id.to_lowercase();
+                        if device_id_lower.contains("hub") || 
+                           device_id_lower.contains("controller") ||
+                           device_id_lower.contains("root_hub") ||
+                           device_name.to_lowercase().contains("hub") ||
+                           device_name.to_lowercase().contains("controller") {
+                            known.insert(device_id.clone());
+                            continue; // Skip logging for USB hubs/controllers
+                        }
+                        
+                        // Also skip internal USB devices that aren't user-visible
+                        if device_name == "Unknown Device" && !device_id.starts_with("USB_DRIVE_") {
+                            // Skip devices we can't identify and aren't storage devices
+                            known.insert(device_id.clone());
+                            continue;
+                        }
+                        
                         info!("USB device inserted: {} ({})", device_id, device_name);
                         known.insert(device_id.clone());
+                        
+                        // Cache the device name for later retrieval on removal
+                        {
+                            let mut name_cache = device_name_cache.lock().await;
+                            name_cache.insert(device_id.clone(), device_name.clone());
+                        }
                         
                         // Get drive letters for this device
                         let device_drives: Vec<String> = drive_device_map.iter()
@@ -250,10 +277,17 @@ async fn start_windows_monitoring(
                 // Detect removed devices
                 let removed: Vec<String> = known.difference(&current_devices).cloned().collect();
                 for device_id in removed {
-                    // Try to get friendly name before removal
-                    let device_name = device_details.get(&device_id)
-                        .cloned()
-                        .unwrap_or_else(|| "Unknown Device".to_string());
+                    // Use cached name from insertion (since device is now gone from Windows)
+                    let device_name = {
+                        let mut name_cache = device_name_cache.lock().await;
+                        name_cache.remove(&device_id).unwrap_or_else(|| "Unknown Device".to_string())
+                    };
+                    
+                    // Skip removal events for devices we never logged an insertion for
+                    if device_name == "Unknown Device" {
+                        known.remove(&device_id);
+                        continue;
+                    }
                     
                     info!("USB device removed: {} ({})", device_id, device_name);
                     known.remove(&device_id);
@@ -446,12 +480,24 @@ async fn get_usb_device_details() -> Result<std::collections::HashMap<String, St
                         let volume_name = item.get("VolumeName").and_then(|v| v.as_str()).unwrap_or("");
                         let key = format!("USB_DRIVE_{}", device_id.replace(":", ""));
                         let name = if volume_name.is_empty() {
-                            format!("USB Drive {}", device_id)
+                            format!("USB Mass Storage Device ({})", device_id)
                         } else {
                             format!("{} ({})", volume_name, device_id)
                         };
                         device_map.insert(key, name);
                     }
+                }
+            } else if let Some(obj) = json_value.as_object() {
+                // Single drive case (not an array)
+                if let Some(device_id) = obj.get("DeviceID").and_then(|v| v.as_str()) {
+                    let volume_name = obj.get("VolumeName").and_then(|v| v.as_str()).unwrap_or("");
+                    let key = format!("USB_DRIVE_{}", device_id.replace(":", ""));
+                    let name = if volume_name.is_empty() {
+                        format!("USB Mass Storage Device ({})", device_id)
+                    } else {
+                        format!("{} ({})", volume_name, device_id)
+                    };
+                    device_map.insert(key, name);
                 }
             }
         }

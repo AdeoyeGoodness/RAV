@@ -9,7 +9,18 @@ use crate::sync::SyncManager;
 use crate::monitoring;
 use crate::storage;
 
-pub async fn run_agent(config: Config, shutdown_signal: impl Future<Output = ()>) -> Result<()> {
+pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output = ()>) -> Result<()> {
+    // Ensure HW Fingerprint is valid BEFORE anything else
+    let current_fp = config.agent.hardware_fingerprint.clone().unwrap_or_default();
+    if config.agent.hardware_fingerprint.is_none() || current_fp == "unknown" || current_fp.starts_with("unknown") || current_fp.is_empty() {
+         let fp = generate_hardware_fingerprint();
+         info!("Generated Hardware Fingerprint: {}", fp);
+         config.agent.hardware_fingerprint = Some(fp);
+         if let Err(e) = config.save() {
+             error!("Failed to persist fingerprint: {}", e);
+         }
+    }
+
     // 4. Initialize Dependency (SyncManager)
     let config_arc = Arc::new(config);
     encryption::initialize(&config_arc)?;

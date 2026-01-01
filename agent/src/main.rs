@@ -104,8 +104,9 @@ fn main() -> Result<()> {
         let mut config = Config::load()?;
         let mut dirty = false;
 
-        // Ensure HW Fingerprint is set
-        if config.agent.hardware_fingerprint.is_none() {
+        // Ensure HW Fingerprint is valid
+        let current_fp = config.agent.hardware_fingerprint.clone().unwrap_or_default();
+        if config.agent.hardware_fingerprint.is_none() || current_fp == "unknown" || current_fp.starts_with("unknown") || current_fp.is_empty() {
              let fp = generate_hardware_fingerprint();
              info!("Generated Hardware Fingerprint: {}", fp);
              config.agent.hardware_fingerprint = Some(fp);
