@@ -146,8 +146,7 @@ async fn start_windows_monitoring(
 #[cfg(windows)]
 async fn capture_windows_screenshot(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     use screenshots::Screen;
-    use image::{DynamicImage, ImageOutputFormat, RgbImage, ImageBuffer};
-    use std::io::Cursor;
+
 
     // Get all screens
     let screens = Screen::all()?;
@@ -283,10 +282,56 @@ async fn start_macos_monitoring(
 
 #[cfg(target_os = "linux")]
 async fn start_linux_monitoring(
-    config: Arc<Config>,
-    sync_manager: Arc<SyncManager>,
+    _config: Arc<Config>,
+    _sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
     info!("Linux screenshot monitoring not yet implemented");
     Ok(())
+}
+
+pub async fn run_helper(interval_secs: u64) -> Result<()> {
+    #[cfg(windows)]
+    {
+        run_windows_helper(interval_secs).await
+    }
+    #[cfg(not(windows))]
+    {
+        info!("Screenshot helper not supported on this OS");
+        tokio::time::sleep(Duration::from_secs(interval_secs)).await;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+async fn run_windows_helper(interval_secs: u64) -> Result<()> {
+    use screenshots::Screen;
+    use std::time::Instant;
+
+    let duration = Duration::from_secs(interval_secs);
+    let mut interval_timer = interval(duration);
+
+    info!("Screenshot Helper started (Interval: {}s)", interval_secs);
+
+    loop {
+        interval_timer.tick().await;
+        let start = Instant::now();
+
+        // Simple capture to stdout test (or just keep alive for now)
+        // In a real implementation, this would encode and print to stdout
+        match Screen::all() {
+            Ok(screens) => {
+                if !screens.is_empty() {
+                    let screen = &screens[0];
+                    match screen.capture() {
+                        Ok(image) => {
+                            info!("Helper: Captured {}x{} in {:?}", image.width(), image.height(), start.elapsed());
+                        }
+                        Err(e) => error!("Helper: Capture failed: {}", e),
+                    }
+                }
+            }
+            Err(e) => error!("Helper: Failed to list screens: {}", e),
+        }
+    }
 }
 

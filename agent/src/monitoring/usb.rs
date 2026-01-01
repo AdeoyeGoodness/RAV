@@ -61,7 +61,7 @@ async fn start_windows_monitoring(
     match detect_usb_devices().await {
         Ok(initial_devices) => {
             let mut known = known_devices.lock().await;
-            let device_details = get_usb_device_details().await.unwrap_or_default();
+            let _device_details = get_usb_device_details().await.unwrap_or_default();
             let initial_usb_drives = get_usb_drive_letters().await.unwrap_or_default();
             let initial_drive_map = map_drives_to_devices(&initial_usb_drives).await.unwrap_or_default();
             

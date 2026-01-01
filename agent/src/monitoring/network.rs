@@ -38,7 +38,7 @@ pub async fn start_monitoring(
 }
 
 async fn monitor_connections(
-    config: Arc<Config>,
+    _config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
     let mut previous_connections: std::collections::HashSet<String> = std::collections::HashSet::new();
