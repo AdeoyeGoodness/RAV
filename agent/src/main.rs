@@ -13,7 +13,7 @@ pub mod storage;
 
 use config::Config;
 use sync::SyncManager;
-// use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
+use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
 
 fn main() -> Result<()> {
     // 1. CLI Argument Parsing (Fast, no side effects)
@@ -103,6 +103,14 @@ fn main() -> Result<()> {
 
         let mut config = Config::load()?;
         let mut dirty = false;
+
+        // Ensure HW Fingerprint is set
+        if config.agent.hardware_fingerprint.is_none() {
+             let fp = generate_hardware_fingerprint();
+             info!("Generated Hardware Fingerprint: {}", fp);
+             config.agent.hardware_fingerprint = Some(fp);
+             dirty = true;
+        }
 
         // Update URL
         if let Some(url) = cli_server {
