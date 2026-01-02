@@ -58,6 +58,7 @@ pub struct CreateAgent {
     pub hardware_fingerprint: String,
     pub enrollment_token: String,
     pub hostname: Option<String>,
+    pub os_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -234,6 +234,8 @@ pub async fn enroll_agent(
         Some(payload.agent_id.clone()),
         serde_json::json!({ 
             "hostname": payload.hostname,
+            "os_version": payload.os_version,
+            "enrollment_token": payload.enrollment_token, // Log which token was used
             "fingerprint": payload.hardware_fingerprint 
         }),
         None, // IP TODO: Extract from headers if possible (needs request parts)

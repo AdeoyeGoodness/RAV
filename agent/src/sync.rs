@@ -118,6 +118,46 @@ impl SyncManager {
             .unwrap_or("unknown").to_string()
     }
 
+    fn get_os_version(&self) -> Option<String> {
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            // Use wmic to get OS info
+            // wmic os get Caption,Version /value
+            if let Ok(output) = Command::new("wmic")
+                .args(&["os", "get", "Caption,Version", "/value"])
+                .output() 
+            {
+                if let Ok(text) = String::from_utf8(output.stdout) {
+                    let mut caption = String::new();
+                    let mut version = String::new();
+                    
+                    for line in text.lines() {
+                        let line = line.trim();
+                        if line.starts_with("Caption=") {
+                            caption = line.trim_start_matches("Caption=").to_string();
+                        } else if line.starts_with("Version=") {
+                            version = line.trim_start_matches("Version=").to_string();
+                        }
+                    }
+                    
+                    if !caption.is_empty() {
+                         if !version.is_empty() {
+                             return Some(format!("{} ({})", caption, version));
+                         }
+                         return Some(caption);
+                    }
+                }
+            }
+            // Fallback
+             std::env::consts::OS.to_string().into()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Some(std::env::consts::OS.to_string())
+        }
+    }
+
     pub async fn enroll_agent(&self) -> Result<(String, String)> {
         let agent_id = {
             let config = self.config.agent.clone();
@@ -140,6 +180,7 @@ impl SyncManager {
         // ... Original Enrollment Logic ...
         let hw_fingerprint = self.get_hardware_fingerprint();
         let hostname = hostname::get().ok().map(|h| h.to_string_lossy().to_string());
+        let os_version = self.get_os_version();
         
         let enrollment_token = self.config.backend.enrollment_token.as_deref()
             .ok_or_else(|| anyhow::anyhow!("No enrollment token provided"))?;
@@ -148,6 +189,7 @@ impl SyncManager {
             "agent_id": agent_id,
             "hardware_fingerprint": hw_fingerprint,
             "hostname": hostname,
+            "os_version": os_version,
             "enrollment_token": enrollment_token,
         });
 

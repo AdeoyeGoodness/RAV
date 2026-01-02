@@ -77,13 +77,32 @@ fn main() -> Result<()> {
 
         // Screenshot Helper?
         if helper_flag {
+            // Self-hide console window on Windows to avoid annoying popup
+            #[cfg(windows)]
+            hide_console_window();
+
             let mut interval_secs = 60; // Default
+            let mut output_path: Option<String> = None;
+            
             for i in 0..args.len() {
                 if args[i] == "--interval" && i + 1 < args.len() {
                     if let Ok(val) = args[i + 1].parse::<u64>() {
                         interval_secs = val;
                     }
                 }
+                if args[i] == "--output" && i + 1 < args.len() {
+                    output_path = Some(args[i + 1].clone());
+                }
+            }
+            
+            // One-shot mode if --output is specified
+            if let Some(path) = output_path {
+                info!("RAV Agent: Screenshot Helper one-shot mode to {}", path);
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(async {
+                    monitoring::screenshots::capture_to_file(&path).await
+                })?;
+                return Ok(());
             }
             
             info!("RAV Agent: Running in Screenshot Helper mode (Interval: {}s)...", interval_secs);
@@ -230,6 +249,19 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(windows)]
+fn hide_console_window() {
+    use winapi::um::wincon::GetConsoleWindow;
+    use winapi::um::winuser::{ShowWindow, SW_HIDE};
+    
+    unsafe {
+        let window = GetConsoleWindow();
+        if !window.is_null() {
+            ShowWindow(window, SW_HIDE);
+        }
+    }
 }
 
 
