@@ -48,11 +48,12 @@ export function NarrativeTimeline() {
     const [loading, setLoading] = useState(true)
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
     const [filterAgent, setFilterAgent] = useState<string>('')
+    const [viewMode, setViewMode] = useState<'all' | 'auth' | 'system'>('all')
 
     useEffect(() => {
         fetchData()
         getAgents().then(setAgents).catch(console.error)
-    }, [filterAgent, user]) // Added user to dependency array
+    }, [filterAgent, user])
 
     const fetchData = async () => {
         if (!user) return;
@@ -83,7 +84,7 @@ export function NarrativeTimeline() {
     // Normalization and Grouping Logic
     const timelineGroups = useMemo(() => {
         // 1. Normalize all items
-        const allItems: TimelineItem[] = [
+        let allItems: TimelineItem[] = [
             ...auditLogs.map(a => ({
                 id: a.id,
                 timestamp: new Date(a.timestamp),
@@ -104,6 +105,19 @@ export function NarrativeTimeline() {
                 raw: t
             }))
         ]
+
+        // Filter based on View Mode
+        if (viewMode === 'auth') {
+            allItems = allItems.filter(i => {
+                const action = i.action.toUpperCase();
+                return action.includes('LOGIN') || action.includes('LOGOUT') || action.includes('AUTH');
+            });
+        } else if (viewMode === 'system') {
+            allItems = allItems.filter(i => {
+                const action = i.action.toUpperCase();
+                return !(action.includes('LOGIN') || action.includes('LOGOUT') || action.includes('AUTH'));
+            });
+        }
 
         // 2. Sort by time DESC
         allItems.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
@@ -156,7 +170,7 @@ export function NarrativeTimeline() {
         })
 
         return groups
-    }, [auditLogs, telemetry])
+    }, [auditLogs, telemetry, viewMode])
 
     const toggleGroup = (groupId: string) => {
         const newSet = new Set(expandedGroups)
@@ -190,6 +204,28 @@ export function NarrativeTimeline() {
                     <div>
                         <h2 className="text-sm font-black text-white tracking-widest uppercase">Forensic Stream</h2>
                     </div>
+                </div>
+
+                {/* Filter Tabs - Centered */}
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 p-1 bg-black/40 rounded-xl border border-white/5 backdrop-blur-md">
+                    {[
+                        { id: 'all', label: 'All Events' },
+                        { id: 'auth', label: 'Auth Sessions' },
+                        { id: 'system', label: 'System Activity' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setViewMode(tab.id as any)}
+                            className={`
+                                px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all duration-300
+                                ${viewMode === tab.id
+                                    ? 'bg-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.4)]'
+                                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
+                            `}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="flex items-center gap-3 relative z-[100]">
