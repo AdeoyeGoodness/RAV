@@ -1,6 +1,6 @@
 'use client'
 
-import { User } from 'lucide-react'
+import { User, ChevronDown, ChevronRight, Info, Lock } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export function UserInsights() {
