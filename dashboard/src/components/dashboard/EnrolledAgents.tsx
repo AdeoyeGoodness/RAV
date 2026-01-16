@@ -14,17 +14,17 @@ export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
             <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-bold text-slate-200">Enrolled Agents</h3>
                 <div className="flex items-center gap-2">
-                     <div className="relative">
+                    <div className="relative">
                         <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                        <input 
-                            type="text" 
-                            placeholder="Search agents..." 
+                        <input
+                            type="text"
+                            placeholder="Search agents..."
                             className="bg-[#0A0A0F] border border-white/5 rounded-lg py-1.5 pl-9 pr-4 text-xs text-slate-300 placeholder:text-slate-600 focus:border-cyan-500/40 outline-none w-48"
                         />
-                     </div>
-                     <button className="p-1.5 bg-[#0A0A0F] border border-white/5 rounded-lg text-slate-400 hover:text-white transition-colors">
+                    </div>
+                    <button className="p-1.5 bg-[#0A0A0F] border border-white/5 rounded-lg text-slate-400 hover:text-white transition-colors">
                         <Filter className="w-3.5 h-3.5" />
-                     </button>
+                    </button>
                 </div>
             </div>
 
@@ -51,21 +51,21 @@ export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
                                     </div>
                                 </td>
                                 <td className="py-4">
-                                     <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2">
                                         <div className="w-3.5 h-3.5 flex items-center justify-center">
-                                             {/* Simple Windows Icon simulation */}
-                                             <div className="grid grid-cols-2 gap-0.5">
-                                                 <div className="w-1.5 h-1.5 bg-blue-400" />
-                                                 <div className="w-1.5 h-1.5 bg-blue-400" />
-                                                 <div className="w-1.5 h-1.5 bg-blue-400" />
-                                                 <div className="w-1.5 h-1.5 bg-blue-400" />
-                                             </div>
+                                            {/* Simple Windows Icon simulation */}
+                                            <div className="grid grid-cols-2 gap-0.5">
+                                                <div className="w-1.5 h-1.5 bg-blue-400" />
+                                                <div className="w-1.5 h-1.5 bg-blue-400" />
+                                                <div className="w-1.5 h-1.5 bg-blue-400" />
+                                                <div className="w-1.5 h-1.5 bg-blue-400" />
+                                            </div>
                                         </div>
                                         <span className="text-xs text-slate-400">Windows</span>
                                     </div>
                                 </td>
                                 <td className="py-4 text-xs text-slate-400 font-mono">
-                                    {formatDistanceToNow(new Date(agent.last_heartbeat), { addSuffix: true })}
+                                    {formatDistanceToNow(new Date(agent.last_seen), { addSuffix: true })}
                                 </td>
                                 <td className="py-4 text-xs text-slate-500 italic">Des Workstation</td>
                                 <td className="py-4 pr-2 text-right">
@@ -78,11 +78,11 @@ export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
                     </tbody>
                 </table>
             </div>
-             <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex items-center justify-between">
                 <button className="text-[10px] font-bold text-slate-400 hover:text-cyan-400 uppercase tracking-widest flex items-center gap-1 transition-colors">
                     More All Agents
                 </button>
-                 <button className="px-3 py-1.5 bg-[#0A0A0F] border border-white/5 hover:border-white/10 rounded-lg text-xs font-medium text-slate-300 transition-colors">
+                <button className="px-3 py-1.5 bg-[#0A0A0F] border border-white/5 hover:border-white/10 rounded-lg text-xs font-medium text-slate-300 transition-colors">
                     View All Agents
                 </button>
             </div>
