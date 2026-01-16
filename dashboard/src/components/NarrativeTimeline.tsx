@@ -251,136 +251,164 @@ export function NarrativeTimeline() {
                 </div>
             </div>
 
-            {/* The Continuous Thread */}
-            <div className="relative pl-12">
-                {/* The Master Line - Solid & Clean */}
-                <div className="absolute left-[47px] top-4 bottom-4 w-[1px] bg-white/5" />
-
-                <div className="space-y-0 relative">
-                    {loading && auditLogs.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-20 space-y-4">
-                            <div className="w-10 h-10 border border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+            {viewMode === 'system' ? (
+                <div className="space-y-4 px-6">
+                    {loading && telemetry.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <div className="w-10 h-10 border border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin" />
                         </div>
-                    ) : timelineGroups.map((group, gIdx) => (
-                        <div key={group.id} className="relative group/item animate-in fade-in slide-in-from-bottom-2 duration-500">
-                            {/* Dot Container */}
-                            <div className="absolute -left-[53px] top-6 w-11 flex justify-center z-20">
-                                <div className={`
+                    ) : (
+                        timelineGroups.flatMap(group => group.items).map((item) => (
+                            <div key={item.id} className="bg-[#0A0A0B] rounded-xl border border-white/5 overflow-hidden group hover:border-cyan-500/20 transition-all">
+                                <div className="px-5 py-3 border-b border-white/5 bg-white/[0.01] flex items-center gap-4">
+                                    <span className="text-xs font-mono font-bold text-cyan-400">{format(item.timestamp, 'HH:mm:ss')}</span>
+                                    <span className="text-xs font-bold text-slate-200">{item.action}</span>
+                                </div>
+                                <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                    {Object.entries(item.metadata).map(([key, value]) => (
+                                        value !== null && typeof value !== 'object' && (
+                                            <div key={key} className="flex flex-col gap-1.5">
+                                                <span className="text-[10px] font-black text-[#64748b] uppercase tracking-[0.2em]">{key.replace(/_/g, ' ')}</span>
+                                                <span className="text-xs font-medium text-slate-300 font-mono truncate select-all">{String(value)}</span>
+                                            </div>
+                                        )
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            ) : (
+                <div className="relative pl-12">
+                    {/* The Master Line - Solid & Clean */}
+                    <div className="absolute left-[47px] top-4 bottom-4 w-[1px] bg-white/5" />
+
+                    <div className="space-y-0 relative">
+                        {loading && auditLogs.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+                                <div className="w-10 h-10 border border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+                            </div>
+                        ) : timelineGroups.map((group, gIdx) => (
+                            <div key={group.id} className="relative group/item animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                {/* Dot Container */}
+                                <div className="absolute -left-[53px] top-6 w-11 flex justify-center z-20">
+                                    <div className={`
                                     w-2 h-2 rounded-full border border-slate-950 transition-all duration-500
                                     ${group.groupType === 'audit'
-                                        ? 'bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.6)]'
-                                        : 'bg-slate-800 group-hover/item:bg-cyan-500 group-hover/item:shadow-[0_0_8px_rgba(34,211,238,0.4)]'}
+                                            ? 'bg-purple-500 shadow-[0_0_12px_rgba(168,85,247,0.6)]'
+                                            : 'bg-slate-800 group-hover/item:bg-cyan-500 group-hover/item:shadow-[0_0_8px_rgba(34,211,238,0.4)]'}
                                 `} />
-                            </div>
-
-                            {/* Date Separator - Vertical Anchor - Indented Slightly */}
-                            {(gIdx === 0 || !isSameDay(group.startTime, timelineGroups[gIdx - 1].startTime)) && (
-                                <div className="absolute -left-[108px] top-5 text-[9px] font-black text-slate-700 uppercase tracking-[0.3em] origin-right transform -rotate-90">
-                                    {format(group.startTime, 'MMM dd')}
                                 </div>
-                            )}
 
-                            {/* Main Event Content */}
-                            <div className={`
+                                {/* Date Separator - Vertical Anchor - Indented Slightly */}
+                                {(gIdx === 0 || !isSameDay(group.startTime, timelineGroups[gIdx - 1].startTime)) && (
+                                    <div className="absolute -left-[108px] top-5 text-[9px] font-black text-slate-700 uppercase tracking-[0.3em] origin-right transform -rotate-90">
+                                        {format(group.startTime, 'MMM dd')}
+                                    </div>
+                                )}
+
+                                {/* Main Event Content */}
+                                <div className={`
                                 py-4 pr-4 transition-all duration-300 border-l border-transparent hover:border-purple-500/20 hover:bg-white/[0.01] rounded-r-3xl
                                 ${expandedGroups.has(group.id) ? 'bg-white/[0.02]' : ''}
                             `}>
-                                <div
-                                    className="flex items-start justify-between cursor-pointer"
-                                    onClick={() => toggleGroup(group.id)}
-                                >
-                                    <div className="flex gap-6 items-center w-full">
-                                        <div className="flex flex-col items-center justify-center w-12 shrink-0">
-                                            <span className="text-[10px] font-black font-mono text-slate-600 tracking-tighter">
-                                                {format(group.startTime, 'HH:mm')}
-                                            </span>
-                                            {group.items.length > 1 && !expandedGroups.has(group.id) && (
-                                                <div className="mt-1 flex gap-0.5">
-                                                    {[1, 2, 3].map(i => <div key={i} className="w-0.5 h-0.5 rounded-full bg-slate-800" />)}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="space-y-1 w-full">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-1.5 rounded-lg border backdrop-blur-md transition-colors
-                                                    ${group.groupType === 'audit'
-                                                        ? 'bg-purple-500/10 border-purple-500/20 text-purple-400'
-                                                        : 'bg-slate-900 border-white/5 text-slate-500 group-hover/item:text-cyan-400 group-hover/item:border-cyan-500/20'}
-                                                `}>
-                                                    {getEventIcon(group.items[0])}
-                                                </div>
-                                                <h3 className={`text-xs font-bold tracking-tight transition-colors flex-1
-                                                    ${group.groupType === 'audit' ? 'text-purple-100' : 'text-slate-400 group-hover/item:text-slate-200'}
-                                                `}>
-                                                    {group.summary}
-                                                </h3>
-                                                {group.groupType === 'audit' && (
-                                                    <span className="text-[8px] font-black text-purple-500 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-widest shrink-0">
-                                                        Authority
-                                                    </span>
-                                                )}
-                                                {group.items.length > 1 && (
-                                                    <div className="flex items-center gap-2 pr-4 shrink-0">
-                                                        <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest transition-colors group-hover/item:text-slate-500">
-                                                            {group.items.length} EVENTS
-                                                        </span>
-                                                        <div className={`transition-transform duration-300 ${expandedGroups.has(group.id) ? 'rotate-180 text-purple-500' : 'text-slate-700'}`}>
-                                                            <ChevronDown className="w-3.5 h-3.5" />
-                                                        </div>
+                                    <div
+                                        className="flex items-start justify-between cursor-pointer"
+                                        onClick={() => toggleGroup(group.id)}
+                                    >
+                                        <div className="flex gap-6 items-center w-full">
+                                            <div className="flex flex-col items-center justify-center w-12 shrink-0">
+                                                <span className="text-[10px] font-black font-mono text-slate-600 tracking-tighter">
+                                                    {format(group.startTime, 'HH:mm')}
+                                                </span>
+                                                {group.items.length > 1 && !expandedGroups.has(group.id) && (
+                                                    <div className="mt-1 flex gap-0.5">
+                                                        {[1, 2, 3].map(i => <div key={i} className="w-0.5 h-0.5 rounded-full bg-slate-800" />)}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* PREVIEW for System/Telemetry Events (Single Item) - Mimic the "Card" look immediately */}
-                                            {group.groupType !== 'audit' && group.items.length === 1 && (
-                                                <div className="mt-3 grid grid-cols-3 gap-4 p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative overflow-hidden group/card max-w-4xl">
-                                                    {/* Subtle Scanline Effect */}
-                                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.01] to-transparent bg-[length:200%_100%] animate-shimmer pointer-events-none" />
-
-                                                    {/* Render Metadata Keys directly */}
-                                                    {Object.entries(group.items[0].metadata).slice(0, 6).map(([key, value]) => (
-                                                        value !== null && typeof value !== 'object' && (
-                                                            <div key={key} className="flex flex-col gap-1">
-                                                                <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
-                                                                <span className="text-[11px] font-bold text-slate-300 font-mono truncate select-all">{String(value)}</span>
+                                            <div className="space-y-1 w-full">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`p-1.5 rounded-lg border backdrop-blur-md transition-colors
+                                                    ${group.groupType === 'audit'
+                                                            ? 'bg-purple-500/10 border-purple-500/20 text-purple-400'
+                                                            : 'bg-slate-900 border-white/5 text-slate-500 group-hover/item:text-cyan-400 group-hover/item:border-cyan-500/20'}
+                                                `}>
+                                                        {getEventIcon(group.items[0])}
+                                                    </div>
+                                                    <h3 className={`text-xs font-bold tracking-tight transition-colors flex-1
+                                                    ${group.groupType === 'audit' ? 'text-purple-100' : 'text-slate-400 group-hover/item:text-slate-200'}
+                                                `}>
+                                                        {group.summary}
+                                                    </h3>
+                                                    {group.groupType === 'audit' && (
+                                                        <span className="text-[8px] font-black text-purple-500 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-widest shrink-0">
+                                                            Authority
+                                                        </span>
+                                                    )}
+                                                    {group.items.length > 1 && (
+                                                        <div className="flex items-center gap-2 pr-4 shrink-0">
+                                                            <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest transition-colors group-hover/item:text-slate-500">
+                                                                {group.items.length} EVENTS
+                                                            </span>
+                                                            <div className={`transition-transform duration-300 ${expandedGroups.has(group.id) ? 'rotate-180 text-purple-500' : 'text-slate-700'}`}>
+                                                                <ChevronDown className="w-3.5 h-3.5" />
                                                             </div>
-                                                        )
-                                                    ))}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+
+                                                {/* PREVIEW for System/Telemetry Events (Single Item) - Mimic the "Card" look immediately */}
+                                                {group.groupType !== 'audit' && group.items.length === 1 && (
+                                                    <div className="mt-3 grid grid-cols-3 gap-4 p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative overflow-hidden group/card max-w-4xl">
+                                                        {/* Subtle Scanline Effect */}
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.01] to-transparent bg-[length:200%_100%] animate-shimmer pointer-events-none" />
+
+                                                        {/* Render Metadata Keys directly */}
+                                                        {Object.entries(group.items[0].metadata).slice(0, 6).map(([key, value]) => (
+                                                            value !== null && typeof value !== 'object' && (
+                                                                <div key={key} className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
+                                                                    <span className="text-[11px] font-bold text-slate-300 font-mono truncate select-all">{String(value)}</span>
+                                                                </div>
+                                                            )
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Expanded Detail Flow for Groups */}
-                                {(expandedGroups.has(group.id) && group.items.length > 1) && (
-                                    <div className="mt-2 ml-[52px] space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                        {group.items.map((item, iIdx) => (
-                                            <div key={item.id} className="p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative">
-                                                <div className="flex items-center gap-3 mb-3">
-                                                    <span className="text-[10px] font-mono text-slate-500">{format(item.timestamp, 'HH:mm:ss')}</span>
-                                                    <span className="text-xs font-bold text-slate-300">{item.action}</span>
+                                    {/* Expanded Detail Flow for Groups */}
+                                    {(expandedGroups.has(group.id) && group.items.length > 1) && (
+                                        <div className="mt-2 ml-[52px] space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            {group.items.map((item, iIdx) => (
+                                                <div key={item.id} className="p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative">
+                                                    <div className="flex items-center gap-3 mb-3">
+                                                        <span className="text-[10px] font-mono text-slate-500">{format(item.timestamp, 'HH:mm:ss')}</span>
+                                                        <span className="text-xs font-bold text-slate-300">{item.action}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-4">
+                                                        {Object.entries(item.metadata).map(([key, value]) => (
+                                                            value !== null && typeof value !== 'object' && (
+                                                                <div key={key} className="flex flex-col gap-1">
+                                                                    <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
+                                                                    <span className="text-[11px] font-bold text-slate-300 font-mono truncate">{String(value)}</span>
+                                                                </div>
+                                                            )
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-3 gap-4">
-                                                    {Object.entries(item.metadata).map(([key, value]) => (
-                                                        value !== null && typeof value !== 'object' && (
-                                                            <div key={key} className="flex flex-col gap-1">
-                                                                <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
-                                                                <span className="text-[11px] font-bold text-slate-300 font-mono truncate">{String(value)}</span>
-                                                            </div>
-                                                        )
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     )
 }
