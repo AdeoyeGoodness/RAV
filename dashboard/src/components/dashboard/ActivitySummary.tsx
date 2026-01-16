@@ -4,7 +4,6 @@ import { Globe, Cpu, Chrome, FileCode } from 'lucide-react'
 
 export function ActivitySummary() {
     return (
-    return (
         <div className="bg-[#131524]/80 backdrop-blur-xl border border-white/[0.08] rounded-3xl p-8 relative overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-3">

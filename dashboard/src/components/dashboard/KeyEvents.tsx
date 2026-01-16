@@ -55,27 +55,52 @@ export function KeyEvents() {
     ];
 
     return (
-                        </div >
-                    </div >
+        <div className="bg-[#131524]/80 backdrop-blur-xl border border-white/[0.08] rounded-3xl p-6 h-full relative overflow-hidden shadow-2xl">
+            <h3 className="text-base font-bold text-white mb-6 flex items-center gap-2">
+                Key Events
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            </h3>
 
-        {/* Item 4 */ }
-        < div className = "relative" >
-                        <div className="absolute -left-[29px] top-1 w-3 h-3 rounded-full bg-slate-500 border-2 border-[#12121A]" />
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-200">Games are running which...</span>
+            <div className="space-y-4">
+                {events.map((event, i) => (
+                    <div key={i} className="group relative pl-4 pb-4 border-l border-white/10 last:border-0 last:pb-0">
+                        <div className={`absolute left-[-5px] top-0 w-2.5 h-2.5 rounded-full ring-4 ring-[#131524] ${event.severity === 'critical' ? 'bg-red-500' :
+                                event.severity === 'warning' ? 'bg-amber-500' : 'bg-blue-500'
+                            }`} />
+
+                        <div className="bg-[#0A0B14]/50 hover:bg-[#1A1C30] p-3 rounded-xl border border-white/5 transition-all group-hover:border-white/10 group-hover:translate-x-1">
+                            <div className="flex items-center justify-between mb-1">
+                                <span className={`text-xs font-bold uppercase tracking-wider ${event.severity === 'critical' ? 'text-red-400' :
+                                        event.severity === 'warning' ? 'text-amber-400' : 'text-blue-400'
+                                    }`}>
+                                    {event.title}
+                                </span>
+                                {event.severity === 'critical' && (
+                                    <span className="text-[9px] font-bold bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded border border-red-500/20">DETECTED</span>
+                                )}
                             </div>
-                             <div className="text-[10px] text-slate-500 font-mono">
-                                1 hour ago • Brics vec • <span className="bg-white/5 px-1 rounded text-slate-400">PROC_START</span>
+                            <p className="text-[11px] text-slate-400 font-medium mb-1.5 line-clamp-2">
+                                {event.desc}
+                            </p>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                                <span>{event.time}</span>
+                                <span>•</span>
+                                <span className="bg-white/5 px-1.5 rounded text-slate-400">{event.agent}</span>
+                                {event.user && (
+                                    <>
+                                        <span>•</span>
+                                        <span className="bg-white/5 px-1.5 rounded text-slate-400 max-w-[80px] truncate">{event.user}</span>
+                                    </>
+                                )}
                             </div>
                         </div>
-                    </div >
-                </div >
-            </div >
+                    </div>
+                ))}
+            </div>
 
-        <button className="w-full mt-6 py-2 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-600/20 rounded-lg text-xs font-bold text-blue-400 transition-colors uppercase tracking-wide">
-            View Full Activity
-        </button>
-        </div >
+            <button className="w-full mt-6 py-3 rounded-xl bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 text-xs font-bold text-blue-400 uppercase tracking-widest transition-all">
+                View Full Activity
+            </button>
+        </div>
     )
 }
