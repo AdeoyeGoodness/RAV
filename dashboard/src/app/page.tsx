@@ -61,45 +61,49 @@ export default function DashboardPage() {
     )
   }
 
-  return (
-    <div className="flex h-screen bg-[#05050A] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden ml-64 relative">
-        <Header />
+  <div className="flex h-screen bg-[#020408] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+    {/* Global Ambient Background Effects */}
+    <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
+    <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
+    <div className="absolute top-[20%] right-[30%] w-[30%] h-[30%] bg-cyan-500/10 blur-[120px] rounded-full pointer-events-none mix-blend-screen" />
 
-        <main className="flex-1 overflow-auto p-8 space-y-6 mt-20 relative z-10 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
-          {/* Top Row: Stats Overview */}
-          <div className="animate-in fade-in slide-in-from-top-4 duration-500">
-            <StatsRow stats={{
-              agents: agents.length,
-              events24h: eventStats.total,
-              warnings: eventStats.warnings,
-              uniqueIps: eventStats.uniqueIps,
-              screenshots: eventStats.screenshots
-            }} />
-          </div>
+    <Sidebar />
+    <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
+      <Header />
 
-          {/* Middle Row: Activity & Alerts */}
-          <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-6 duration-700 delay-100">
-            <div className="h-full">
-              <ActivitySummary />
-            </div>
-            <div className="h-full">
-              <KeyEvents />
-            </div>
-          </div>
+      <main className="flex-1 overflow-auto p-8 space-y-6 mt-20 relative z-10 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
+        {/* Top Row: Stats Overview */}
+        <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+          <StatsRow stats={{
+            agents: agents.length,
+            events24h: eventStats.total,
+            warnings: eventStats.warnings,
+            uniqueIps: eventStats.uniqueIps,
+            screenshots: eventStats.screenshots
+          }} />
+        </div>
 
-          {/* Bottom Row: Agents & Insights */}
-          <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-8 duration-700 delay-200 pb-8">
-            <div className="h-full min-h-[400px]">
-              <EnrolledAgents agents={agents} />
-            </div>
-            <div className="h-full">
-              <UserInsights />
-            </div>
+        {/* Middle Row: Activity & Alerts */}
+        <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-6 duration-700 delay-100">
+          <div className="h-full">
+            <ActivitySummary />
           </div>
-        </main>
-      </div>
+          <div className="h-full">
+            <KeyEvents />
+          </div>
+        </div>
+
+        {/* Bottom Row: Agents & Insights */}
+        <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-8 duration-700 delay-200 pb-8">
+          <div className="h-full min-h-[400px]">
+            <EnrolledAgents agents={agents} />
+          </div>
+          <div className="h-full">
+            <UserInsights />
+          </div>
+        </div>
+      </main>
     </div>
+  </div>
   )
 }
