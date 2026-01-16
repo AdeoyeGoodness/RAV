@@ -75,6 +75,42 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
         }
     }
 
+    // Export to CSV
+    const exportToCSV = () => {
+        if (events.length === 0) return
+
+        // CSV headers
+        const headers = ['Timestamp', 'Agent ID', 'Hostname', 'Event Type', 'Category', 'Severity', 'Metadata']
+
+        // Map events to CSV rows
+        const rows = events.map(event => {
+            const agent = agents.find(a => a.agent_id === event.agent_id)
+            return [
+                event.timestamp,
+                event.agent_id,
+                agent?.hostname || 'Unknown',
+                event.event_type,
+                event.category,
+                event.severity,
+                JSON.stringify(event.metadata || {})
+            ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(',')
+        })
+
+        // Combine headers and rows
+        const csv = [headers.join(','), ...rows].join('\n')
+
+        // Create and trigger download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.setAttribute('href', url)
+        link.setAttribute('download', `telemetry_export_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`)
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+    }
+
     // Pagination
     const totalPages = Math.ceil(events.length / eventsPerPage)
     const paginatedEvents = useMemo(() => {
@@ -299,7 +335,11 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 </div>
 
                 {/* Export */}
-                <button className="px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-sm flex items-center gap-2">
+                <button
+                    onClick={exportToCSV}
+                    disabled={events.length === 0}
+                    className="px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <Download className="w-4 h-4" />
                     Export
                 </button>
@@ -467,8 +507,8 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                                     key={idx}
                                     onClick={() => setCurrentPage(page)}
                                     className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${currentPage === page
-                                            ? 'bg-blue-600 text-white'
-                                            : 'hover:bg-white/5 text-slate-400'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'hover:bg-white/5 text-slate-400'
                                         }`}
                                 >
                                     {page}
