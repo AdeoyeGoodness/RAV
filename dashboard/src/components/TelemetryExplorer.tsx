@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getEvents, getAgents, Event, Agent } from '@/lib/api'
-import { format, isToday, isYesterday, parseISO } from 'date-fns'
+import { format, isToday, isYesterday, parseISO, subHours, subDays } from 'date-fns'
 import {
     Monitor,
     ChevronDown,
     ChevronRight,
     ChevronLeft,
     Download,
-    Search,
     Globe,
     Cpu,
     FileText,
@@ -20,8 +19,9 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
     const [agents, setAgents] = useState<Agent[]>([])
     const [loading, setLoading] = useState(true)
     const [expandedRow, setExpandedRow] = useState<string | null>(null)
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
     const [currentPage, setCurrentPage] = useState(1)
-    const eventsPerPage = 50
+    const eventsPerPage = 30
 
     // Filters
     const [filters, setFilters] = useState({
@@ -47,9 +47,27 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             if (filters.category) cleanFilters.category = filters.category
             if (filters.severity) cleanFilters.severity = filters.severity
 
+            // Time range filtering
+            const now = new Date()
+            switch (filters.timeRange) {
+                case '1h':
+                    cleanFilters.start_time = subHours(now, 1).toISOString()
+                    break
+                case '24h':
+                    cleanFilters.start_time = subHours(now, 24).toISOString()
+                    break
+                case '7d':
+                    cleanFilters.start_time = subDays(now, 7).toISOString()
+                    break
+                case '30d':
+                    cleanFilters.start_time = subDays(now, 30).toISOString()
+                    break
+            }
+
             const data = await getEvents(cleanFilters)
             setEvents(data)
             setCurrentPage(1)
+            setCollapsedGroups(new Set()) // Reset collapsed state on new fetch
         } catch (error) {
             console.error('Failed to fetch telemetry', error)
         } finally {
@@ -57,11 +75,19 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
         }
     }
 
-    // Group events by date
+    // Pagination
+    const totalPages = Math.ceil(events.length / eventsPerPage)
+    const paginatedEvents = useMemo(() => {
+        const start = (currentPage - 1) * eventsPerPage
+        const end = start + eventsPerPage
+        return events.slice(start, end)
+    }, [events, currentPage])
+
+    // Group paginated events by date
     const groupedEvents = useMemo(() => {
         const groups: { [key: string]: Event[] } = {}
 
-        events.forEach(event => {
+        paginatedEvents.forEach(event => {
             const date = parseISO(event.timestamp)
             let dateKey: string
 
@@ -78,11 +104,20 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
         })
 
         return groups
-    }, [events])
+    }, [paginatedEvents])
 
-    // Pagination
-    const totalPages = Math.ceil(events.length / eventsPerPage)
-    const paginatedEvents = events.slice((currentPage - 1) * eventsPerPage, currentPage * eventsPerPage)
+    // Toggle group collapse
+    const toggleGroup = (groupName: string) => {
+        setCollapsedGroups(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(groupName)) {
+                newSet.delete(groupName)
+            } else {
+                newSet.add(groupName)
+            }
+            return newSet
+        })
+    }
 
     // Get selected agent hostname
     const selectedAgent = agents.find(a => a.agent_id === filters.agent_id)
@@ -111,19 +146,15 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
     const getEventDescription = (event: Event) => {
         const meta = event.metadata || {}
 
-        // Build description based on event type
         if (event.event_type === 'NETWORK_CONNECTION') {
             return (
                 <span className="flex items-center gap-2 flex-wrap">
                     <span className="text-slate-400">Network connection</span>
                     {meta.remote_ip && <span className="text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded text-[10px]">{meta.remote_ip}</span>}
                     {meta.process_name && (
-                        <>
-                            <span className="text-slate-600">⎯</span>
-                            <span className="text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1">
-                                <span>📦</span> {meta.process_name}
-                            </span>
-                        </>
+                        <span className="text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded text-[10px]">
+                            📦 {meta.process_name}
+                        </span>
                     )}
                 </span>
             )
@@ -148,7 +179,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             )
         }
 
-        if (event.event_type === 'BROWSER_HISTORY') {
+        if (event.event_type?.includes('BROWSER')) {
             return (
                 <span className="flex items-center gap-2 flex-wrap">
                     <span className="text-indigo-400">🌐</span>
@@ -162,10 +193,8 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             return (
                 <span className="flex items-center gap-2">
                     <span className="text-purple-400">⬢</span>
-                    <span className="text-slate-300">Sensitive File Transfer</span>
-                    {meta.file_path && (
-                        <span className="bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded text-[9px] font-bold">DETECTED</span>
-                    )}
+                    <span className="text-slate-300">File activity</span>
+                    {meta.file_path && <span className="text-slate-500 truncate max-w-[150px]">{meta.file_path}</span>}
                 </span>
             )
         }
@@ -175,17 +204,28 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 <span className="flex items-center gap-2 flex-wrap">
                     <span className="text-emerald-400">◇</span>
                     <span className="text-slate-300">{meta.process_name || 'Process activity'}</span>
-                    {meta.command_line && (
-                        <span className="text-slate-500 text-[10px] truncate max-w-[200px]">{meta.command_line}</span>
-                    )}
                 </span>
             )
         }
 
-        // Default
-        return (
-            <span className="text-slate-400">{event.event_type?.replace(/_/g, ' ').toLowerCase()}</span>
-        )
+        return <span className="text-slate-400">{event.event_type?.replace(/_/g, ' ').toLowerCase()}</span>
+    }
+
+    // Generate page numbers for display
+    const getPageNumbers = () => {
+        const pages: (number | string)[] = []
+        if (totalPages <= 5) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i)
+        } else {
+            if (currentPage <= 3) {
+                pages.push(1, 2, 3, '...', totalPages)
+            } else if (currentPage >= totalPages - 2) {
+                pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages)
+            } else {
+                pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages)
+            }
+        }
+        return pages
     }
 
     return (
@@ -195,7 +235,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 {/* Agent Select */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pl-9 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-52 appearance-none"
+                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pl-9 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-52 appearance-none cursor-pointer"
                         value={filters.agent_id}
                         onChange={(e) => setFilters({ ...filters, agent_id: e.target.value })}
                     >
@@ -213,7 +253,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 {/* Time Range */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none"
+                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none cursor-pointer"
                         value={filters.timeRange}
                         onChange={(e) => setFilters({ ...filters, timeRange: e.target.value })}
                     >
@@ -228,11 +268,11 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 {/* Category */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-40 appearance-none"
+                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-44 appearance-none cursor-pointer"
                         value={filters.category}
                         onChange={(e) => setFilters({ ...filters, category: e.target.value })}
                     >
-                        <option value="">Category: All Activity</option>
+                        <option value="">Category: All</option>
                         <option value="system">System</option>
                         <option value="process">Process</option>
                         <option value="network">Network</option>
@@ -245,7 +285,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 {/* Severity */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none"
+                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none cursor-pointer"
                         value={filters.severity}
                         onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
                     >
@@ -279,10 +319,13 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 <span className="text-slate-500">Showing:</span>
                 <span className="text-slate-300">{agentDisplayName}</span>
                 <span className="text-slate-600">|</span>
-                <span className="text-slate-300">{filters.timeRange === '24h' ? 'Last 24 Hours' : filters.timeRange}</span>
+                <span className="text-slate-300">
+                    {filters.timeRange === '1h' ? 'Last Hour' :
+                        filters.timeRange === '24h' ? 'Last 24 Hours' :
+                            filters.timeRange === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
+                </span>
                 <span className="text-slate-600">|</span>
                 <span className="text-slate-300">Categories: {filters.category || 'All Activity'}</span>
-                <ChevronDown className="w-4 h-4 text-slate-500" />
             </div>
 
             {/* Events Table */}
@@ -318,18 +361,27 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                         ) : (
                             Object.entries(groupedEvents).map(([dateGroup, groupEvents]) => (
                                 <>
-                                    {/* Date Group Header */}
-                                    <tr key={`header-${dateGroup}`} className="bg-[#0A0B14]/50">
-                                        <td colSpan={7} className="px-4 py-2">
-                                            <span className="text-xs font-bold text-slate-400">{dateGroup}</span>
-                                            {dateGroup !== 'Today' && dateGroup !== 'Yesterday' && (
-                                                <span className="text-xs text-slate-600 ml-4">{format(parseISO(groupEvents[0].timestamp), 'yyyy')}</span>
-                                            )}
+                                    {/* Collapsible Date Group Header */}
+                                    <tr
+                                        key={`header-${dateGroup}`}
+                                        className="bg-[#0A0B14]/70 cursor-pointer hover:bg-[#0A0B14] transition-colors"
+                                        onClick={() => toggleGroup(dateGroup)}
+                                    >
+                                        <td colSpan={7} className="px-4 py-2.5">
+                                            <div className="flex items-center gap-2">
+                                                {collapsedGroups.has(dateGroup) ? (
+                                                    <ChevronRight className="w-4 h-4 text-slate-500" />
+                                                ) : (
+                                                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                                                )}
+                                                <span className="text-xs font-bold text-slate-300">{dateGroup}</span>
+                                                <span className="text-xs text-slate-600">({groupEvents.length} events)</span>
+                                            </div>
                                         </td>
                                     </tr>
 
-                                    {/* Events in this group */}
-                                    {groupEvents.slice(0, 10).map((event) => (
+                                    {/* Events in this group - only show if not collapsed */}
+                                    {!collapsedGroups.has(dateGroup) && groupEvents.map((event) => (
                                         <>
                                             <tr
                                                 key={event.id}
@@ -399,50 +451,43 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">{events.length} Events</span>
 
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                        disabled={currentPage === 1}
-                        className="p-2 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronLeft className="w-4 h-4" />
-                    </button>
-
-                    {[1, 2, 3].slice(0, totalPages).map(page => (
+                {totalPages > 1 && (
+                    <div className="flex items-center gap-1">
                         <button
-                            key={page}
-                            onClick={() => setCurrentPage(page)}
-                            className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${currentPage === page
-                                    ? 'bg-blue-600 text-white'
-                                    : 'hover:bg-white/5 text-slate-400'
-                                }`}
+                            onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                            disabled={currentPage === 1}
+                            className="p-2 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
-                            {page}
+                            <ChevronLeft className="w-4 h-4" />
                         </button>
-                    ))}
 
-                    {totalPages > 3 && (
-                        <>
-                            <span className="text-slate-600 px-1">...</span>
-                            <button
-                                onClick={() => setCurrentPage(totalPages)}
-                                className="w-8 h-8 rounded-lg text-xs font-medium hover:bg-white/5 text-slate-400 transition-colors"
-                            >
-                                {totalPages}
-                            </button>
-                        </>
-                    )}
+                        {getPageNumbers().map((page, idx) => (
+                            typeof page === 'number' ? (
+                                <button
+                                    key={idx}
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${currentPage === page
+                                            ? 'bg-blue-600 text-white'
+                                            : 'hover:bg-white/5 text-slate-400'
+                                        }`}
+                                >
+                                    {page}
+                                </button>
+                            ) : (
+                                <span key={idx} className="text-slate-600 px-1">...</span>
+                            )
+                        ))}
 
-                    <button
-                        onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                        disabled={currentPage === totalPages}
-                        className="p-2 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
-
-                    <span className="text-slate-400 ml-2">Next →</span>
-                </div>
+                        <button
+                            onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-2 rounded-lg hover:bg-white/5 text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                        >
+                            <span className="text-xs">Next</span>
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     )
