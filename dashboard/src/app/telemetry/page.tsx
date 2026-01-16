@@ -3,7 +3,6 @@
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
-import { Activity } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function TelemetryPage() {
@@ -11,37 +10,33 @@ export default function TelemetryPage() {
 
     if (isLoading || !user) {
         return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+            <div className="min-h-screen bg-[#020408] flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
-                    <p className="text-cyan-500/80 font-mono text-sm tracking-widest animate-pulse">ESTABLISHING SECURE LINK...</p>
                 </div>
             </div>
         )
     }
+
     return (
-        <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-cyan-500/30">
+        <div className="flex h-screen bg-[#020408] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+            {/* Global Ambient Background Effects */}
+            <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
+            <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
+
             <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden ml-64">
+            <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
                 <Header />
-                <main className="flex-1 overflow-auto p-6 space-y-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-600 bg-clip-text text-transparent flex items-center gap-2">
-                                <Activity className="w-6 h-6 text-cyan-500" />
-                                Telemetry Explorer
-                            </h1>
-                            <p className="text-slate-400 text-sm mt-1">
-                                Real-time observation of platform events, process activity, and network signals.
-                            </p>
-                        </div>
+                <main className="flex-1 overflow-auto p-8 space-y-6 mt-20">
+                    {/* Page Header */}
+                    <div>
+                        <h1 className="text-2xl font-bold text-white">Telemetry Explorer</h1>
+                        <p className="text-slate-400 text-sm mt-1">
+                            Explore events across your organization
+                        </p>
                     </div>
 
-                    <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 backdrop-blur-md shadow-2xl shadow-black/50 overflow-hidden relative">
-                        {/* Glossy overlay effect */}
-                        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
-                        <TelemetryExplorer />
-                    </div>
+                    <TelemetryExplorer />
                 </main>
             </div>
         </div>
