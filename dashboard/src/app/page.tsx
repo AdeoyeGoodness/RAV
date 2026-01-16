@@ -14,11 +14,22 @@ import { useAuth } from '@/contexts/AuthContext'
 export default function DashboardPage() {
   const { user, isLoading } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
+  const [allEvents, setAllEvents] = useState<any[]>([])
   const [eventStats, setEventStats] = useState({
     total: 0,
     uniqueIps: 0,
     warnings: 0,
-    screenshots: 0
+    screenshots: 0,
+    // Category counts for ActivitySummary
+    networkCount: 0,
+    processCount: 0,
+    fileCount: 0,
+    browserCount: 0,
+    // Severity breakdown for StatsRow
+    criticalCount: 0,
+    highCount: 0,
+    mediumCount: 0,
+    lowCount: 0
   })
 
   useEffect(() => {
@@ -31,17 +42,35 @@ export default function DashboardPage() {
         ])
 
         setAgents(agentsData)
+        setAllEvents(eventsData)
 
-        // Calculate basic stats for the top cards
-        const warnings = eventsData.filter(e => e.severity === 'medium' || e.severity === 'high' || e.severity === 'critical').length
+        // Calculate stats
+        const criticalCount = eventsData.filter(e => e.severity === 'critical').length
+        const highCount = eventsData.filter(e => e.severity === 'high').length
+        const mediumCount = eventsData.filter(e => e.severity === 'medium').length
+        const lowCount = eventsData.filter(e => e.severity === 'low').length
+
+        const networkCount = eventsData.filter(e => e.category === 'network').length
+        const processCount = eventsData.filter(e => e.category === 'process').length
+        const fileCount = eventsData.filter(e => e.category === 'file').length
+        const browserCount = eventsData.filter(e => e.event_type?.includes('BROWSER') || e.event_type?.includes('URL')).length
+
         const uniqueIps = new Set(eventsData.map(e => e.metadata?.remote_ip).filter(Boolean)).size
         const screenshots = eventsData.filter(e => e.event_type === 'SCREENSHOT_TAKEN').length
 
         setEventStats({
           total: eventsData.length,
           uniqueIps,
-          warnings,
-          screenshots
+          warnings: mediumCount + highCount,
+          screenshots,
+          networkCount,
+          processCount,
+          fileCount,
+          browserCount,
+          criticalCount,
+          highCount,
+          mediumCount,
+          lowCount
         })
 
       } catch (e) {
@@ -80,17 +109,26 @@ export default function DashboardPage() {
               events24h: eventStats.total,
               warnings: eventStats.warnings,
               uniqueIps: eventStats.uniqueIps,
-              screenshots: eventStats.screenshots
+              screenshots: eventStats.screenshots,
+              criticalCount: eventStats.criticalCount,
+              highCount: eventStats.highCount,
+              mediumCount: eventStats.mediumCount,
+              lowCount: eventStats.lowCount
             }} />
           </div>
 
           {/* Middle Row: Activity & Alerts */}
           <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-6 duration-700 delay-100">
             <div className="h-full">
-              <ActivitySummary />
+              <ActivitySummary stats={{
+                networkCount: eventStats.networkCount,
+                processCount: eventStats.processCount,
+                fileCount: eventStats.fileCount,
+                browserCount: eventStats.browserCount
+              }} />
             </div>
             <div className="h-full max-h-[420px]">
-              <KeyEvents />
+              <KeyEvents events={allEvents.filter(e => e.severity === 'critical' || e.severity === 'high').slice(0, 6)} />
             </div>
           </div>
 
