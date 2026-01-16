@@ -89,14 +89,14 @@ export default function DashboardPage() {
             <div className="h-full">
               <ActivitySummary />
             </div>
-            <div className="h-full">
+            <div className="h-full max-h-[420px]">
               <KeyEvents />
             </div>
           </div>
 
           {/* Bottom Row: Agents & Insights */}
           <div className="grid grid-cols-1 xl:grid-cols-[2.5fr_1fr] gap-6 animate-in fade-in slide-in-from-top-8 duration-700 delay-200 pb-8">
-            <div className="h-full min-h-[400px]">
+            <div className="h-full">
               <EnrolledAgents agents={agents} />
             </div>
             <div className="h-full">
