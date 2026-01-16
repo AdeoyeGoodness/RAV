@@ -280,16 +280,16 @@ export function NarrativeTimeline() {
                                 </div>
                             )}
 
-                            {/* Main Event Content - NO CARDS, just horizontal rows */}
+                            {/* Main Event Content */}
                             <div className={`
                                 py-4 pr-4 transition-all duration-300 border-l border-transparent hover:border-purple-500/20 hover:bg-white/[0.01] rounded-r-3xl
                                 ${expandedGroups.has(group.id) ? 'bg-white/[0.02]' : ''}
                             `}>
                                 <div
                                     className="flex items-start justify-between cursor-pointer"
-                                    onClick={() => group.items.length > 1 && toggleGroup(group.id)}
+                                    onClick={() => toggleGroup(group.id)}
                                 >
-                                    <div className="flex gap-6 items-center">
+                                    <div className="flex gap-6 items-center w-full">
                                         <div className="flex flex-col items-center justify-center w-12 shrink-0">
                                             <span className="text-[10px] font-black font-mono text-slate-600 tracking-tighter">
                                                 {format(group.startTime, 'HH:mm')}
@@ -301,7 +301,7 @@ export function NarrativeTimeline() {
                                             )}
                                         </div>
 
-                                        <div className="space-y-1">
+                                        <div className="space-y-1 w-full">
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-1.5 rounded-lg border backdrop-blur-md transition-colors
                                                     ${group.groupType === 'audit'
@@ -310,74 +310,67 @@ export function NarrativeTimeline() {
                                                 `}>
                                                     {getEventIcon(group.items[0])}
                                                 </div>
-                                                <h3 className={`text-xs font-bold tracking-tight transition-colors
+                                                <h3 className={`text-xs font-bold tracking-tight transition-colors flex-1
                                                     ${group.groupType === 'audit' ? 'text-purple-100' : 'text-slate-400 group-hover/item:text-slate-200'}
                                                 `}>
                                                     {group.summary}
                                                 </h3>
                                                 {group.groupType === 'audit' && (
-                                                    <span className="text-[8px] font-black text-purple-500 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-widest">
+                                                    <span className="text-[8px] font-black text-purple-500 bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded-full uppercase tracking-widest shrink-0">
                                                         Authority
                                                     </span>
                                                 )}
+                                                {group.items.length > 1 && (
+                                                    <div className="flex items-center gap-2 pr-4 shrink-0">
+                                                        <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest transition-colors group-hover/item:text-slate-500">
+                                                            {group.items.length} EVENTS
+                                                        </span>
+                                                        <div className={`transition-transform duration-300 ${expandedGroups.has(group.id) ? 'rotate-180 text-purple-500' : 'text-slate-700'}`}>
+                                                            <ChevronDown className="w-3.5 h-3.5" />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
+
+                                            {/* PREVIEW for System/Telemetry Events (Single Item) - Mimic the "Card" look immediately */}
+                                            {group.groupType !== 'audit' && group.items.length === 1 && (
+                                                <div className="mt-3 grid grid-cols-3 gap-4 p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative overflow-hidden group/card max-w-4xl">
+                                                    {/* Subtle Scanline Effect */}
+                                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.01] to-transparent bg-[length:200%_100%] animate-shimmer pointer-events-none" />
+
+                                                    {/* Render Metadata Keys directly */}
+                                                    {Object.entries(group.items[0].metadata).slice(0, 6).map(([key, value]) => (
+                                                        value !== null && typeof value !== 'object' && (
+                                                            <div key={key} className="flex flex-col gap-1">
+                                                                <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
+                                                                <span className="text-[11px] font-bold text-slate-300 font-mono truncate select-all">{String(value)}</span>
+                                                            </div>
+                                                        )
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-
-                                    {group.items.length > 1 && (
-                                        <div className="flex items-center gap-3 pr-4">
-                                            <span className="text-[9px] font-bold text-slate-700 uppercase tracking-widest transition-colors group-hover/item:text-slate-500">
-                                                {group.items.length} Interactions
-                                            </span>
-                                            <div className={`transition-transform duration-300 ${expandedGroups.has(group.id) ? 'rotate-180 text-purple-500' : 'text-slate-700'}`}>
-                                                <ChevronDown className="w-3.5 h-3.5" />
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
 
-                                {/* Expanded Detail Flow */}
-                                {(expandedGroups.has(group.id) || group.items.length === 1) && (
-                                    <div className="mt-2 ml-[104px] space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 border-l border-white/5 pl-6 pb-2">
+                                {/* Expanded Detail Flow for Groups */}
+                                {(expandedGroups.has(group.id) && group.items.length > 1) && (
+                                    <div className="mt-2 ml-[52px] space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                         {group.items.map((item, iIdx) => (
-                                            <div key={item.id} className="group/detail relative">
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-[9px] font-bold font-mono text-slate-500 bg-black/40 px-1.5 py-0.5 rounded">
-                                                                {format(item.timestamp, 'HH:mm:ss')}
-                                                            </span>
-                                                            <span className="text-[11px] font-bold text-slate-300 tracking-tight">{item.action}</span>
-                                                            {item.severity === 'critical' && (
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-                                                            )}
-                                                        </div>
-                                                        <span className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">
-                                                            {item.category || 'System'}
-                                                        </span>
-                                                    </div>
-
-                                                    {/* Clean Metadata Layout - Integrated into the thread */}
-                                                    {(expandedGroups.has(group.id)) && (
-                                                        <div className="mt-1 transition-all">
-                                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-2 p-3 bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
-                                                                {Object.entries(item.metadata).map(([key, value]) => (
-                                                                    value !== null && typeof value !== 'object' && (
-                                                                        <div key={key} className="flex flex-col gap-0.5">
-                                                                            <span className="text-[7px] font-black text-slate-600 uppercase tracking-[0.2em]">{key.replace(/_/g, ' ')}</span>
-                                                                            <span className="text-[10px] font-bold text-slate-400 font-mono truncate" title={String(value)}>{String(value)}</span>
-                                                                        </div>
-                                                                    )
-                                                                ))}
-                                                                {item.actor && (
-                                                                    <div className="flex flex-col gap-0.5">
-                                                                        <span className="text-[7px] font-black text-purple-600/60 uppercase tracking-[0.2em]">ACTOR SOURCE</span>
-                                                                        <span className="text-[10px] font-black text-purple-400 font-mono truncate">{item.actor}</span>
-                                                                    </div>
-                                                                )}
+                                            <div key={item.id} className="p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative">
+                                                <div className="flex items-center gap-3 mb-3">
+                                                    <span className="text-[10px] font-mono text-slate-500">{format(item.timestamp, 'HH:mm:ss')}</span>
+                                                    <span className="text-xs font-bold text-slate-300">{item.action}</span>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-4">
+                                                    {Object.entries(item.metadata).map(([key, value]) => (
+                                                        value !== null && typeof value !== 'object' && (
+                                                            <div key={key} className="flex flex-col gap-1">
+                                                                <span className="text-[9px] font-black text-[#475569] uppercase tracking-[0.15em]">{key.replace(/_/g, ' ')}</span>
+                                                                <span className="text-[11px] font-bold text-slate-300 font-mono truncate">{String(value)}</span>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        )
+                                                    ))}
                                                 </div>
                                             </div>
                                         ))}
