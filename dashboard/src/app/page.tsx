@@ -33,7 +33,7 @@ export default function DashboardPage() {
         setAgents(agentsData)
 
         // Calculate basic stats for the top cards
-        const warnings = eventsData.filter(e => e.severity === 'warning' || e.severity === 'critical').length
+        const warnings = eventsData.filter(e => e.severity === 'medium' || e.severity === 'high' || e.severity === 'critical').length
         const uniqueIps = new Set(eventsData.map(e => e.metadata?.remote_ip).filter(Boolean)).size
         const screenshots = eventsData.filter(e => e.event_type === 'SCREENSHOT_TAKEN').length
 
