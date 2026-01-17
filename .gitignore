@@ -125,3 +125,6 @@ screenshots/
 # Lock files (optional - you may want to commit these)
 # package-lock.json
 # yarn.lock
+!agent/.cargo/config.toml
+
+!agent/.cargo/config.toml
