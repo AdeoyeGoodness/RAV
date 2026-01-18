@@ -101,6 +101,13 @@
             <File Id="ExtUtilsJs" Source="..\extension\dist\utils.js" />
             <File Id="ExtUtilsMap" Source="..\extension\dist\utils.js.map" />
             
+            <!-- Native Messaging Host registration -->
+            <!-- Chrome -->
+            <File Id="NativeHostManifestChrome" Source="native-messaging-host.json" Name="com.rav.agent.json" />
+            <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\NativeMessagingHosts\com.rav.agent" Name="" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
+            <!-- Edge -->
+            <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Name="" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
+            
             <!-- Enterprise Policy: Force Install Unpacked Extension via Registry -->
             <!-- Chrome -->
             <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\Extensions\lkgbkgaglogjopokmbcedcdlcajldhkk" Name="path" Value="[INSTALLFOLDER]Extension" Type="string" />

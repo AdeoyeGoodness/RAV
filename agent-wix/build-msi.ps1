@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 # Paths
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $AgentDir = Join-Path $ProjectRoot "agent"
+$ExtensionDir = Join-Path $ProjectRoot "extension"
 $WixDir = $PSScriptRoot
 $OutputDir = Join-Path $WixDir "output"
 
@@ -16,8 +17,28 @@ Write-Host "  RAV Agent - Universal MSI Builder    " -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Step 1: Build the Rust agent
-Write-Host "[1/3] Building RAV Agent (release)..." -ForegroundColor Yellow
+# Step 1: Build the Browser Extension
+Write-Host "[1/4] Building Browser Extension..." -ForegroundColor Yellow
+Push-Location $ExtensionDir
+if (!(Test-Path "node_modules")) {
+    Write-Host "Installing extension dependencies..." -ForegroundColor Yellow
+    npm install
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: npm install failed!" -ForegroundColor Red
+        exit 1
+    }
+}
+npm run build
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Extension build failed!" -ForegroundColor Red
+    exit 1
+}
+Pop-Location
+Write-Host "OK: Extension compiled successfully" -ForegroundColor Green
+
+# Step 2: Build the Rust agent
+Write-Host ""
+Write-Host "[2/4] Building RAV Agent (release)..." -ForegroundColor Yellow
 Push-Location $AgentDir
 cargo build --release
 if ($LASTEXITCODE -ne 0) {
@@ -27,14 +48,14 @@ if ($LASTEXITCODE -ne 0) {
 Pop-Location
 Write-Host "OK: Agent compiled successfully" -ForegroundColor Green
 
-# Step 2: Create output directory
+# Step 3: Create output directory
 if (!(Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir | Out-Null
 }
 
-# Step 3: Build MSI
+# Step 4: Build MSI
 Write-Host ""
-Write-Host "[2/3] Building universal MSI installer..." -ForegroundColor Yellow
+Write-Host "[3/4] Building universal MSI installer..." -ForegroundColor Yellow
 $AgentExePath = Join-Path $AgentDir "target\release"
 
 Push-Location $WixDir

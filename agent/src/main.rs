@@ -21,6 +21,7 @@ fn main() -> Result<()> {
     let mut install_flag = false;
     let mut uninstall_flag = false;
     let mut helper_flag = false;
+    let mut native_host_flag = false;
     let mut cli_token = None;
     let mut cli_server = None;
 
@@ -43,6 +44,9 @@ fn main() -> Result<()> {
         }
         if args[i] == "--screenshot-helper" {
             helper_flag = true;
+        }
+        if args[i] == "--native-host" {
+            native_host_flag = true;
         }
     }
 
@@ -71,9 +75,21 @@ fn main() -> Result<()> {
         info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
     }
 
-    // 3. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper)
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag {
+    // 3. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost)
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag {
         info!("RAV Agent: Processing CLI commands...");
+
+        // Native Messaging Host?
+        if native_host_flag {
+            info!("RAV Agent: Running in Native Messaging Host mode...");
+            let config = Arc::new(Config::load()?);
+            encryption::initialize(&config)?;
+            let storage = Arc::new(storage::StorageManager::new(config.agent.data_dir.clone())?);
+            let sync_manager = Arc::new(SyncManager::new(config.clone(), storage)?);
+            
+            monitoring::native_host::run_native_host(config, sync_manager)?;
+            return Ok(());
+        }
 
         // Screenshot Helper?
         if helper_flag {

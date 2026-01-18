@@ -9,12 +9,10 @@
         "history",
         "downloads",
         "storage",
-        "alarms"
+        "alarms",
+        "nativeMessaging"
     ],
-    "host_permissions": [
-        "http://127.0.0.1:8089/*",
-        "http://localhost:8089/*"
-    ],
+    "host_permissions": [],
     "background": {
         "service_worker": "background.js",
         "type": "module"

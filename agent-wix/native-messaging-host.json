@@ -1,0 +1,9 @@
+{
+    "name": "com.rav.agent",
+    "description": "RAV Agent Native Messaging Host",
+    "path": "C:\\Program Files\\RAV Agent\\rav-agent.exe",
+    "type": "stdio",
+    "allowed_origins": [
+        "chrome-extension://lkgbkgaglogjopokmbcedcdlcajldhkk/"
+    ]
+}

@@ -121,59 +121,67 @@ export class AgentClient {
     }
 
     /**
-     * Send payload to the local agent
+     * Send payload to the local agent via Native Messaging
      */
     private async sendToAgent(payload: AgentPayload): Promise<AgentResponse> {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('Connection timeout - agent may not be running'));
+            }, 5000); // 5 second timeout
 
-        try {
-            const response = await fetch(this.config.agent_url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-RAV-Extension': EXTENSION_VERSION
-                },
-                body: JSON.stringify(payload),
-                signal: controller.signal
-            });
+            try {
+                chrome.runtime.sendNativeMessage(
+                    'com.rav.agent',
+                    payload,
+                    (response) => {
+                        clearTimeout(timeoutId);
 
-            clearTimeout(timeoutId);
+                        // Check for native messaging errors
+                        if (chrome.runtime.lastError) {
+                            reject(new Error(chrome.runtime.lastError.message));
+                            return;
+                        }
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        if (!response) {
+                            reject(new Error('No response from native host'));
+                            return;
+                        }
+
+                        resolve(response as AgentResponse);
+                    }
+                );
+            } catch (error) {
+                clearTimeout(timeoutId);
+                reject(error);
             }
-
-            return await response.json() as AgentResponse;
-        } catch (error) {
-            clearTimeout(timeoutId);
-
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw new Error('Connection timeout - agent may not be running');
-            }
-
-            throw error;
-        }
+        });
     }
 
     /**
-     * Check if agent is reachable
+     * Check if agent is reachable via Native Messaging
      */
     async ping(): Promise<boolean> {
-        try {
-            const response = await fetch(this.config.agent_url.replace('/events', '/ping'), {
-                method: 'GET',
-                headers: {
-                    'X-RAV-Extension': EXTENSION_VERSION
-                }
-            });
+        return new Promise((resolve) => {
+            try {
+                chrome.runtime.sendNativeMessage(
+                    'com.rav.agent',
+                    { type: 'ping' },
+                    (response) => {
+                        if (chrome.runtime.lastError) {
+                            this.isConnected = false;
+                            resolve(false);
+                            return;
+                        }
 
-            this.isConnected = response.ok;
-            return response.ok;
-        } catch {
-            this.isConnected = false;
-            return false;
-        }
+                        this.isConnected = response && response.status === 'ok';
+                        resolve(this.isConnected);
+                    }
+                );
+            } catch {
+                this.isConnected = false;
+                resolve(false);
+            }
+        });
     }
 
     /**
