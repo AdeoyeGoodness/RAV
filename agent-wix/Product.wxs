@@ -32,6 +32,7 @@
     <!-- Optional Reboot: Show checkbox on exit dialog -->
     <!-- When checked, Windows Installer will prompt for reboot -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Restart now to enable all monitoring features (recommended)" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" /> <!-- Checked by default -->
     
     <InstallExecuteSequence>
         <ScheduleReboot After="InstallFinalize" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
@@ -110,9 +111,14 @@
             <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
             
             <!-- Enterprise Policy: Force Install Unpacked Extension via Registry -->
+            <!-- Note: For unpacked extensions, we use the "path" key. -->
             <!-- Chrome -->
-            <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\Extensions\lkgbkgaglogjopokmbcedcdlcajldhkk" Name="path" Value="[INSTALLFOLDER]Extension" Type="string" />
+            <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" Name="1" Value="lkgbkgaglogjopokmbcedcdlcajldhkk;[INSTALLFOLDER]Extension" Type="string" />
             <!-- Edge -->
+            <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="lkgbkgaglogjopokmbcedcdlcajldhkk;[INSTALLFOLDER]Extension" Type="string" />
+            
+            <!-- Legacy fallback keys (sometimes needed for older versions or specific environments) -->
+            <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\Extensions\lkgbkgaglogjopokmbcedcdlcajldhkk" Name="path" Value="[INSTALLFOLDER]Extension" Type="string" />
             <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\Extensions\lkgbkgaglogjopokmbcedcdlcajldhkk" Name="path" Value="[INSTALLFOLDER]Extension" Type="string" />
           </Component>
           

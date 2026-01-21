@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 use anyhow::Result;
 use std::sync::Arc;
 // use tokio::signal;
@@ -75,7 +76,14 @@ fn main() -> Result<()> {
         info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
     }
 
-    // 3. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost)
+    // 3. Dynamic Console Attachment: If we have CLI flags, try to attach to parent console
+    // so the user actually sees the output in their terminal.
+    #[cfg(windows)]
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || native_host_flag {
+        attach_console();
+    }
+
+    // 4. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost)
     if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag {
         info!("RAV Agent: Processing CLI commands...");
 
@@ -93,10 +101,8 @@ fn main() -> Result<()> {
 
         // Screenshot Helper?
         if helper_flag {
-            // Self-hide console window on Windows to avoid annoying popup
-            #[cfg(windows)]
-            hide_console_window();
-
+            // No longer need manual hide_console_window() because of #![windows_subsystem = "windows"]
+            
             let mut interval_secs = 60; // Default
             let mut output_path: Option<String> = None;
             
@@ -268,15 +274,11 @@ fn main() -> Result<()> {
 }
 
 #[cfg(windows)]
-fn hide_console_window() {
-    use winapi::um::wincon::GetConsoleWindow;
-    use winapi::um::winuser::{ShowWindow, SW_HIDE};
-    
+fn attach_console() {
+    use winapi::um::wincon::{AttachConsole, ATTACH_PARENT_PROCESS};
     unsafe {
-        let window = GetConsoleWindow();
-        if !window.is_null() {
-            ShowWindow(window, SW_HIDE);
-        }
+        // Attach to the console of the parent process (cmd/powershell)
+        AttachConsole(ATTACH_PARENT_PROCESS);
     }
 }
 
