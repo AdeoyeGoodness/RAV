@@ -100,8 +100,9 @@
           <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna" Type="string" />
           
           <!-- Edge -->
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna;https://clients2.google.com/service/update2/crx" Type="string" />
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna" Type="string" />
+          <!-- Note: Edge Update URL is https://edge.microsoft.com/extensionwebstorebase/v1/crx -->
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie;https://edge.microsoft.com/extensionwebstorebase/v1/crx" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie" Type="string" />
         </Component>
       </Directory>
     </StandardDirectory>

@@ -4,6 +4,7 @@
     "path": "rav-native-host.bat",
     "type": "stdio",
     "allowed_origins": [
-        "chrome-extension://dlkdbjmoohiplloecfgblbggpijbomna/"
+        "chrome-extension://dlkdbjmoohiplloecfgblbggpijbomna/",
+        "chrome-extension://epjnmnocdpicilcklecnmkmdjdegnaie/"
     ]
 }

@@ -1,326 +1,341 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAV Browser Monitor - Privacy Policy</title>
+    <title>Privacy Policy - RAV Security</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #0f172a;
-            --secondary: #334155;
-            --accent: #2563eb;
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --text: #1e293b;
-            --text-light: #64748b;
-            --border: #e2e8f0;
+            --bg-body: #f7f9fc;
+            --bg-card: #ffffff;
+            --text-main: #1a202c;
+            --text-secondary: #4a5568;
+            --text-tertiary: #718096;
+            --primary: #2b6cb0;
+            --border-light: #e2e8f0;
+            --accent-bg: #ebf8ff;
+            --accent-text: #2c5282;
+            --danger-bg: #fff5f5;
+            --danger-text: #c53030;
         }
 
-        /* Typography fix */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
             line-height: 1.6;
-            color: var(--text);
-            background-color: var(--bg);
-            min-height: 100vh;
-            padding: 60px 20px;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .container {
+        /* Top Navigation Bar */
+        .navbar {
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-light);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .nav-content {
             max-width: 800px;
             margin: 0 auto;
-            background: var(--card-bg);
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            border: 1px solid var(--border);
-            padding: 60px 80px;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            font-weight: 700;
+            font-size: 1.125rem;
+            color: #1a202c;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .logo svg { width: 24px; height: 24px; color: var(--primary); }
+
+        /* Main Content */
+        .wrapper {
+            max-width: 800px;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
+        }
+
+        header {
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        .category-label {
+            display: inline-block;
+            background: var(--accent-bg);
+            color: var(--accent-text);
+            padding: 4px 12px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 1rem;
         }
 
         h1 {
-            font-size: 2.25rem;
+            font-size: 2.5rem;
+            font-weight: 800;
             letter-spacing: -0.025em;
-            color: var(--primary);
-            margin-bottom: 0.5rem;
-            font-weight: 700;
+            color: #1a202c;
+            margin-bottom: 1rem;
+            line-height: 1.2;
         }
 
-        .subtitle {
-            color: var(--text-light);
-            font-size: 0.875rem;
-            padding-bottom: 2rem;
-            margin-bottom: 3rem;
-            border-bottom: 1px solid var(--border);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 500;
+        .meta {
+            color: var(--text-tertiary);
+            font-size: 0.95rem;
+        }
+
+        /* Document Card */
+        .doc-content {
+            background: #ffffff;
+            padding: 3rem 4rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+            border: 1px solid var(--border-light);
         }
 
         h2 {
             font-size: 1.5rem;
-            color: var(--primary);
-            margin: 3rem 0 1.5rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
+            font-weight: 700;
+            color: #2d3748;
+            margin-top: 3rem;
+            margin-bottom: 1.25rem;
+            letter-spacing: -0.015em;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #edf2f7;
         }
-
+        
         h3 {
             font-size: 1.125rem;
-            color: var(--secondary);
-            margin: 2rem 0 1rem;
             font-weight: 600;
+            color: #2d3748;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
         }
 
         p {
             margin-bottom: 1.25rem;
-            color: var(--text);
+            color: var(--text-secondary);
+            font-size: 1rem;
         }
 
         ul {
-            margin: 0 0 1.5rem 1.5rem;
+            margin-bottom: 1.5rem;
+            padding-left: 1.5rem;
         }
 
         li {
             margin-bottom: 0.5rem;
-            color: var(--text);
+            color: var(--text-secondary);
         }
 
+        /* Table Styles */
+        .table-container {
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 2rem 0;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin: 2rem 0;
             font-size: 0.95rem;
         }
-
         th {
-            background: #f1f5f9;
-            text-align: left;
-            padding: 12px 16px;
+            background: #f7fafc;
+            color: #4a5568;
             font-weight: 600;
-            color: var(--secondary);
-            border: 1px solid var(--border);
+            text-align: left;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border-light);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
         }
-
         td {
-            padding: 12px 16px;
-            border: 1px solid var(--border);
-            color: var(--text);
+            padding: 16px 20px;
+            border-bottom: 1px solid #edf2f7;
+            color: #4a5568;
         }
+        tr:last-child td { border-bottom: none; }
 
-        .important {
-            background: #fffbeb;
-            border: 1px solid #fcd34d;
-            color: #92400e;
+        /* Callout Box */
+        .callout {
+            background-color: var(--danger-bg);
+            border-left: 4px solid var(--danger-text);
             padding: 1.5rem;
-            border-radius: 6px;
+            border-radius: 4px;
             margin: 2rem 0;
-            font-size: 0.95rem;
+            color: #742a2a;
         }
+        .callout strong { display: block; margin-bottom: 0.5rem; color: #9b2c2c; }
 
-        .important strong {
-            color: #b45309;
-        }
-
-        .contact {
-            background: #f8fafc;
-            padding: 2rem;
-            border-radius: 6px;
-            border: 1px solid var(--border);
+        /* Footer */
+        footer {
             margin-top: 4rem;
-        }
-
-        .contact h2 {
-            margin-top: 0;
-            font-size: 1.25rem;
-        }
-
-        .footer {
-            margin-top: 4rem;
-            padding-top: 2rem;
-            border-top: 1px solid var(--border);
-            font-size: 0.8rem;
-            color: var(--text-light);
             text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
+            border-top: 1px solid var(--border-light);
+            padding-top: 2rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .contact-box {
+            background: #f8fafc;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+            padding: 2rem;
+            margin-top: 3rem;
+        }
+        .contact-box h3 { margin-top: 0; }
+        
+        @media (max-width: 768px) {
+            .doc-content { padding: 2rem; }
+            h1 { font-size: 2rem; }
         }
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <h1>🔒 RAV Browser Monitor</h1>
-        <p class="subtitle"><strong>Privacy Policy</strong> · Last Updated: January 22, 2026</p>
 
-        <h2>Introduction</h2>
-        <p>RAV Browser Monitor ("the Extension") is an enterprise browser monitoring extension developed by RAV Security
-            ("we," "us," or "our"). This Privacy Policy explains how we collect, use, and protect information when you
-            use our Extension.</p>
+    <nav class="navbar">
+        <div class="nav-content">
+            <a href="#" class="logo">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5zm0 11h-2v-2h2v2zm0-4h-2V7h2v2z"/></svg>
+                RAV Security
+            </a>
+            <span style="font-size: 0.875rem; color: var(--text-tertiary);">Enterprise Documentation</span>
+        </div>
+    </nav>
 
-        <div class="important">
-            <strong>Important:</strong> This Extension is designed exclusively for enterprise deployment by IT
-            administrators. It is not intended for individual consumer use.
+    <div class="wrapper">
+        <header>
+            <span class="category-label">Legal & Compliance</span>
+            <h1>Privacy Policy</h1>
+            <div class="meta">
+                Effective Date: January 22, 2026 • Product: RAV Browser Monitor
+            </div>
+        </header>
+
+        <div class="doc-content">
+            <p><strong>RAV Browser Monitor</strong> ("the Extension") is an enterprise-grade security tool developed by <strong>RAV Security</strong>. This Privacy Policy outlines our transparent approach to data collection, processing, and security.</p>
+            
+            <div class="callout">
+                <strong>Enterprise Use Only</strong>
+                This Extension is designed exclusively for managed enterprise environments. It is deployed and configured by IT administrators and is not intended for consumer use.
+            </div>
+
+            <h2>1. Data Collection Scope</h2>
+            <p>The Extension operates under strict data minimization principles. We collect only what is necessary for security monitoring and compliance:</p>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data Category</th>
+                            <th>Specific Data Points</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Browsing Activity</strong></td>
+                            <td>URLs visited, page titles, timestamps, and visit duration.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tab State</strong></td>
+                            <td>Active tab URL, window focus status, and open tab counts.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>File Transfers</strong></td>
+                            <td>File names, source URLs, file sizes, and completion status of downloads.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Device Telemetry</strong></td>
+                            <td>Browser version, extension version, and connectivity health status.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h2>2. Data Processing & Security</h2>
+            <p>All collected data is processed locally on the endpoint before being securely transmitted.</p>
+            
+            <h3>Secure Transmission</h3>
+            <p>Data is transmitted via Chrome's <strong>Native Messaging</strong> protocol to the local RAV Agent. From there, it is encrypted using <strong>TLS 1.2+</strong> and sent directly to your organization's dedicated backend instance.</p>
+            
+            <h3>Data Ownership</h3>
+            <p>RAV Security acts as a data processor. Your organization (the employer) is the data controller and retains full ownership of all collected logs.</p>
+
+            <h2>3. Purpose of Processing</h2>
+            <p>The data collected serves specific enterprise security objectives:</p>
+            <ul>
+                <li><strong>Threat Detection:</strong> Identifying access to known malicious domains or phishing sites.</li>
+                <li><strong>Data Loss Prevention (DLP):</strong> Monitoring file downloads to prevent unauthorized exfiltration of sensitive IP.</li>
+                <li><strong>Incident Response:</strong> providing forensic audit trails during security investigations.</li>
+                <li><strong>Regulatory Compliance:</strong> Ensuring adherence to industry standards (SOC2, HIPAA, ISO 27001).</li>
+            </ul>
+
+            <h2>4. Permission Transparency</h2>
+            <p>The Extension requests the minimum set of permissions required to function:</p>
+            
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Permission</th>
+                            <th>Justification</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>tabs</code></td>
+                            <td>Required to monitor active tab URL changes for real-time visibility.</td>
+                        </tr>
+                        <tr>
+                            <td><code>history</code></td>
+                            <td>Required to build a timeline of user navigation for forensic auditing.</td>
+                        </tr>
+                        <tr>
+                            <td><code>downloads</code></td>
+                            <td>Required to log file download events for DLP analysis.</td>
+                        </tr>
+                        <tr>
+                            <td><code>nativeMessaging</code></td>
+                            <td>Required for secure, sandbox-compliant communication with the host agent.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="contact-box">
+                <h3>Contact & Inquiries</h3>
+                <p>For privacy-related questions, please refer to your organization's internal IT policy first.</p>
+                <p style="margin-bottom: 0;"><strong>RAV Security Privacy Team</strong><br>
+                <a href="mailto:privacy@ravsecurity.com" style="color: var(--primary); text-decoration: none;">privacy@ravsecurity.com</a></p>
+            </div>
         </div>
 
-        <h2>Information We Collect</h2>
-        <p>The Extension collects the following types of information:</p>
-
-        <h3>1. Browsing History</h3>
-        <ul>
-            <li>URLs of websites visited</li>
-            <li>Page titles</li>
-            <li>Visit timestamps</li>
-            <li>Visit frequency</li>
-        </ul>
-
-        <h3>2. Active Tabs</h3>
-        <ul>
-            <li>Currently open tab URLs</li>
-            <li>Tab titles</li>
-            <li>Tab state (active/inactive)</li>
-        </ul>
-
-        <h3>3. Downloads</h3>
-        <ul>
-            <li>Downloaded file names</li>
-            <li>Download URLs</li>
-            <li>File sizes</li>
-            <li>Download timestamps</li>
-            <li>Download status (completed, interrupted, etc.)</li>
-        </ul>
-
-        <h3>4. Technical Information</h3>
-        <ul>
-            <li>Browser type and version</li>
-            <li>Extension version</li>
-            <li>Connection status</li>
-        </ul>
-
-        <h2>How We Collect Information</h2>
-        <p>All data is collected through official Chrome/Edge browser APIs:</p>
-        <ul>
-            <li><code>chrome.history</code> API for browsing history</li>
-            <li><code>chrome.tabs</code> API for active tab information</li>
-            <li><code>chrome.downloads</code> API for download activity</li>
-        </ul>
-        <p>Data is transmitted securely via Chrome's Native Messaging protocol to a locally installed endpoint agent,
-            which then syncs with your organization's designated backend server over encrypted HTTPS connections.</p>
-
-        <h2>How We Use Information</h2>
-        <p>The collected information is used exclusively for:</p>
-        <ul>
-            <li><strong>Enterprise Security Monitoring</strong> - Detecting potential security threats and policy
-                violations</li>
-            <li><strong>Compliance Auditing</strong> - Meeting regulatory and internal compliance requirements</li>
-            <li><strong>IT Asset Management</strong> - Understanding software usage patterns</li>
-            <li><strong>Insider Threat Detection</strong> - Identifying unusual or risky behavior patterns</li>
-            <li><strong>Incident Investigation</strong> - Supporting forensic analysis when security incidents occur
-            </li>
-        </ul>
-
-        <h2>Data Sharing</h2>
-        <p>We do <strong>NOT</strong>:</p>
-        <ul>
-            <li>Sell your data to third parties</li>
-            <li>Share data with advertisers</li>
-            <li>Use data for marketing purposes</li>
-            <li>Share data outside your organization</li>
-        </ul>
-        <p>Data is shared <strong>ONLY</strong> with:</p>
-        <ul>
-            <li>Your organization's IT/Security administrators</li>
-            <li>Your organization's designated RAV platform instance</li>
-            <li>Law enforcement when legally required</li>
-        </ul>
-
-        <h2>Data Storage and Security</h2>
-        <ul>
-            <li>All data transmission uses TLS 1.2+ encryption</li>
-            <li>Data is stored on your organization's designated servers</li>
-            <li>Access is restricted to authorized administrators only</li>
-            <li>Data retention is controlled by your organization's policies</li>
-        </ul>
-
-        <h2>Enterprise Deployment</h2>
-        <p>This Extension is deployed and managed by your organization's IT department. By using devices managed by your
-            organization, you acknowledge that:</p>
-        <ul>
-            <li>Your employer has authorized monitoring of work-related browser activity</li>
-            <li>Your IT administrator controls the Extension's installation and configuration</li>
-            <li>Data collected is owned by your organization</li>
-            <li>Your organization's acceptable use policies apply</li>
-        </ul>
-
-        <h2>Your Rights</h2>
-        <p>Depending on your jurisdiction, you may have rights regarding your personal data. Please contact your
-            organization's IT department or Data Protection Officer for:</p>
-        <ul>
-            <li>Access to your collected data</li>
-            <li>Correction of inaccurate data</li>
-            <li>Deletion requests (subject to retention requirements)</li>
-            <li>Information about data processing</li>
-        </ul>
-
-        <h2>Children's Privacy</h2>
-        <p>This Extension is not intended for use by individuals under 18 years of age. It is designed for enterprise
-            workplace environments only.</p>
-
-        <h2>Changes to This Policy</h2>
-        <p>We may update this Privacy Policy periodically. Changes will be reflected in the "Last Updated" date above.
-            Continued use of the Extension after changes constitutes acceptance of the updated policy.</p>
-
-        <h2>Permissions Justification</h2>
-        <table>
-            <tr>
-                <th>Permission</th>
-                <th>Purpose</th>
-            </tr>
-            <tr>
-                <td><code>tabs</code></td>
-                <td>Monitor active browser tabs for security visibility</td>
-            </tr>
-            <tr>
-                <td><code>history</code></td>
-                <td>Collect browsing history for compliance and threat detection</td>
-            </tr>
-            <tr>
-                <td><code>downloads</code></td>
-                <td>Track file downloads to detect data exfiltration</td>
-            </tr>
-            <tr>
-                <td><code>storage</code></td>
-                <td>Store extension configuration locally</td>
-            </tr>
-            <tr>
-                <td><code>alarms</code></td>
-                <td>Schedule periodic data collection intervals</td>
-            </tr>
-            <tr>
-                <td><code>nativeMessaging</code></td>
-                <td>Securely communicate with the local RAV agent</td>
-            </tr>
-        </table>
-
-        <div class="contact">
-            <h2 style="margin-top: 0;">Contact Information</h2>
-            <p>For questions about this Privacy Policy or data practices:</p>
-            <p><strong>RAV Security</strong><br>
-                Email: privacy@ravsecurity.com<br>
-                Website: https://ravsecurity.com/privacy</p>
-            <p>For organization-specific data inquiries, contact your IT administrator.</p>
-        </div>
-
-        <p class="footer">This Extension is intended for lawful enterprise monitoring purposes only. Organizations
-            deploying this Extension are responsible for ensuring compliance with applicable privacy laws and providing
-            appropriate notice to end users.</p>
+        <footer>
+            &copy; 2026 RAV Security. All rights reserved. <br>
+            Use of this software is subject to the RAV Enterprise Master Service Agreement.
+        </footer>
     </div>
-</body>
 
+</body>
 </html>
