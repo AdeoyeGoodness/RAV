@@ -184,124 +184,118 @@ export default function AdminPage() {
 
     if (isLoading || !user || user.role !== 'super_admin') {
         return (
-            <div className="min-h-screen bg-black flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
-                    <p className="text-cyan-500/80 font-mono text-sm tracking-widest animate-pulse">TERMINAL ACCESS RESTRICTED: VERIFYING...</p>
+            <div className="min-h-screen bg-[#05050A] flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-10 h-10 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
+                    <p className="text-xs text-slate-600 font-mono">Verifying access...</p>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <div className="flex h-screen bg-[#050510] text-slate-300 font-sans selection:bg-sky-500/20 overflow-hidden relative">
+            <div className="absolute top-[-20%] left-[-10%] w-[40%] h-[40%] bg-sky-900/10 blur-[180px] rounded-full pointer-events-none" />
+            <div className="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] bg-violet-900/8 blur-[180px] rounded-full pointer-events-none" />
             <Sidebar />
-            <div className="flex-1 ml-64">
+            <div className="flex-1 ml-64 relative z-10">
                 <Header />
-                <main className="pt-20 p-8 overflow-y-auto h-full">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="flex justify-between items-center mb-8">
+                <main className="pt-20 p-6 overflow-y-auto h-full scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
+                    <div className="max-w-7xl mx-auto space-y-6">
+                        <div className="flex justify-between items-center mb-6">
                             <div>
-                                <h1 className="text-3xl font-bold mb-2 transition-colors" style={{ color: 'var(--text-primary)' }}>Organization Management</h1>
-                                <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Global oversight of all enterprise tenants and licenses</p>
+                                <h1 className="text-2xl font-bold mb-1 text-slate-200 tracking-tight">Organization Management</h1>
+                                <p className="text-sm text-slate-500">Global oversight of all enterprise tenants and licenses</p>
                             </div>
                             <button
                                 onClick={() => setIsModalOpen(true)}
-                                className="flex items-center px-4 py-2 rounded-lg font-semibold text-white cyber-glow transition-all transform hover:scale-105"
-                                style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                                className="flex items-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_20px_rgba(2,132,199,0.2)] hover:shadow-[0_0_25px_rgba(2,132,199,0.3)] border border-sky-500/50"
                             >
-                                <Plus className="w-5 h-5 mr-2" />
+                                <Plus className="w-4 h-4 mr-2" />
                                 New Organization
                             </button>
                         </div>
 
                         {/* Stats Overview */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                                <div className="flex items-center space-x-4">
-                                    <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-500">
-                                        <Building2 className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Total Orgs</p>
-                                        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{organizations.length}</p>
-                                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
+                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
+                                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400">
+                                    <Building2 className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Total Orgs</p>
+                                    <p className="text-2xl font-bold text-slate-200">{organizations.length}</p>
                                 </div>
                             </div>
-                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                                <div className="flex items-center space-x-4">
-                                    <div className="p-3 rounded-xl bg-purple-500/10 text-purple-500">
-                                        <ShieldCheck className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Active Tokens</p>
-                                        <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{organizations.filter(o => o.status === 'active').length}</p>
-                                    </div>
+                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
+                                <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-400">
+                                    <ShieldCheck className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Active Tokens</p>
+                                    <p className="text-2xl font-bold text-slate-200">{organizations.filter(o => o.status === 'active').length}</p>
                                 </div>
                             </div>
-                            <div className="p-6 rounded-2xl border backdrop-blur-sm transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                                <div className="flex items-center space-x-4">
-                                    <div className="p-3 rounded-xl bg-yellow-500/10 text-yellow-500">
-                                        <Activity className="w-6 h-6" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>Platform Status</p>
-                                        <p className="text-2xl font-bold text-green-500">Operational</p>
-                                    </div>
+                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
+                                    <Activity className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Platform Status</p>
+                                    <p className="text-lg font-bold text-emerald-500">Operational</p>
                                 </div>
                             </div>
                         </div>
 
                         {/* List */}
-                        <div className="rounded-2xl border overflow-hidden transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                            <div className="p-4 border-b flex items-center" style={{ borderColor: 'var(--border-color)' }}>
-                                <Search className="w-5 h-5 mr-3" style={{ color: 'var(--text-tertiary)' }} />
+                        <div className="rounded-2xl border border-white/[0.06] overflow-hidden transition-all bg-[#0C0E1C]/90 shadow-xl">
+                            <div className="p-4 flex items-center border-b border-white/[0.04]">
+                                <Search className="w-4 h-4 mr-3 text-slate-500" />
                                 <input
                                     type="text"
                                     placeholder="Filter by name or token..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="bg-transparent border-none focus:outline-none w-full text-sm"
-                                    style={{ color: 'var(--text-primary)' }}
+                                    className="bg-transparent border-none outline-none w-full text-sm text-slate-200 placeholder:text-slate-600"
                                 />
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="text-left text-xs uppercase tracking-wider" style={{ backgroundColor: 'rgba(255,255,255,0.02)', color: 'var(--text-tertiary)' }}>
-                                            <th className="px-6 py-4">Organization Name</th>
-                                            <th className="px-6 py-4">Quota</th>
-                                            <th className="px-6 py-4">Expiry</th>
-                                            <th className="px-6 py-4">Created At</th>
-                                            <th className="px-6 py-4">Status</th>
-                                            <th className="px-6 py-4">Actions</th>
+                                <table className="w-full text-left">
+                                    <thead className="bg-[#080A14]/40 border-b border-white/[0.04]">
+                                        <tr>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Organization Name</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Quota</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Expiry</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Created At</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y border-t" style={{ borderColor: 'var(--border-color)' }}>
+                                    <tbody className="divide-y divide-white/[0.04]">
                                         {loading ? (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center">
-                                                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-500" />
-                                                    <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading organizations...</p>
+                                                <td colSpan={6} className="px-6 py-12 text-center">
+                                                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-500" />
+                                                    <p className="text-xs text-slate-500">Loading organizations...</p>
                                                 </td>
                                             </tr>
                                         ) : filteredOrgs.map(org => (
-                                            <tr key={org.id} className="hover:bg-white/5 transition-colors">
+                                            <tr key={org.id} className="hover:bg-white/[0.02] transition-colors group">
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center">
-                                                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center mr-3 font-bold text-xs" style={{ color: 'var(--accent-cyan)' }}>
+                                                        <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center mr-3 font-semibold text-xs text-sky-400">
                                                             {org.name.charAt(0)}
                                                         </div>
-                                                        <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{org.name}</span>
+                                                        <span className="font-medium text-sm text-slate-200">{org.name}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                <td className="px-6 py-4 text-[11px] text-slate-400">
                                                     {org.max_agents} Agents
                                                 </td>
-                                                <td className="px-6 py-4 text-xs font-mono" style={{ color: org.token_expiry && new Date(org.token_expiry) < new Date() ? 'var(--accent-red)' : 'var(--text-secondary)' }}>
+                                                <td className={`px-6 py-4 text-[11px] font-mono ${org.token_expiry && new Date(org.token_expiry) < new Date() ? 'text-rose-400' : 'text-slate-400'}`}>
                                                     {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
                                                 </td>
-                                                <td className="px-6 py-4 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                                                <td className="px-6 py-4 text-[11px] font-mono text-slate-400">
                                                     {new Date(org.created_at_ms).toLocaleString('en-NG', {
                                                         timeZone: 'Africa/Lagos',
                                                         year: 'numeric',
@@ -309,55 +303,48 @@ export default function AdminPage() {
                                                         day: 'numeric',
                                                         hour: '2-digit',
                                                         minute: '2-digit',
-                                                        second: '2-digit'
                                                     })}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                                    <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
                                                         {org.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center space-x-2">
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end space-x-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
                                                         <button
                                                             onClick={() => { setSelectedOrg(org); setIsAdminModalOpen(true); }}
-                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
-                                                            style={{ backgroundColor: 'rgba(0, 217, 255, 0.1)', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-sky-500/10 hover:border-sky-500/20 text-slate-400 hover:text-sky-400 transition-colors"
                                                             title="Onboard Organization Admin"
                                                         >
-                                                            <UserPlus className="w-4 h-4" />
+                                                            <UserPlus className="w-3.5 h-3.5" />
                                                         </button>
-                                                        {/* Context Switching Removed for Security */}
                                                         <button
                                                             onClick={() => toggleStatus(org.id, org.status)}
-                                                            className="text-xs px-3 py-2 rounded-lg border transition-all hover:bg-white/10"
-                                                            style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                                            className="text-[11px] px-2.5 py-1.5 rounded-lg border border-white/[0.06] hover:bg-white/[0.03] text-slate-400 hover:text-slate-300 transition-colors"
                                                         >
                                                             {org.status === 'active' ? 'Pause' : 'Activate'}
                                                         </button>
                                                         <button
                                                             onClick={() => copyToClipboard(org.enrollment_token, org.id)}
-                                                            className="p-2 rounded-lg border transition-all hover:opacity-70"
-                                                            style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-white/[0.03] text-slate-400 hover:text-slate-300 transition-colors"
                                                             title="Copy Enrollment Token"
                                                         >
-                                                            {copiedTokenIds.has(org.id) ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                                                            {copiedTokenIds.has(org.id) ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                                                         </button>
                                                         <button
                                                             onClick={() => handleDelete(org)}
-                                                            className="p-2 rounded-lg border transition-all hover:bg-red-500/20 hover:border-red-500"
-                                                            style={{ backgroundColor: 'rgba(255, 0, 0, 0.05)', borderColor: 'var(--border-color)', color: 'var(--accent-red)' }}
+                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
                                                             title="Delete Organization"
                                                         >
-                                                            <Trash2 className="w-4 h-4" />
+                                                            <Trash2 className="w-3.5 h-3.5" />
                                                         </button>
                                                         <button
                                                             onClick={() => handleRestore(org)}
-                                                            className="p-2 rounded-lg border transition-all hover:bg-green-500/20 hover:border-green-500"
-                                                            style={{ backgroundColor: 'rgba(0, 255, 0, 0.05)', borderColor: 'var(--border-color)', color: 'var(--accent-green)' }}
+                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-400 hover:text-emerald-400 transition-colors"
                                                             title="Restore Deleted Data"
                                                         >
-                                                            <Undo2 className="w-4 h-4 text-green-500" />
+                                                            <Undo2 className="w-3.5 h-3.5" />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -374,82 +361,77 @@ export default function AdminPage() {
             {/* Create Org Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                        <h2 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>Register New Organization</h2>
+                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-white/[0.06] p-8 shadow-2xl">
+                        <h2 className="text-xl font-bold mb-6 text-slate-200">Register New Organization</h2>
                         <form onSubmit={handleCreate} className="space-y-4">
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Organization Name</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Organization Name</label>
                                 <input
                                     type="text"
                                     required
                                     value={newOrg.name}
                                     onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Enrollment Token</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Enrollment Token</label>
                                 <div className="relative flex items-center">
-                                    <Key className="absolute left-3 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <Key className="absolute left-3 w-4 h-4 text-slate-500" />
                                     <input
                                         type="text"
                                         required
                                         value={newOrg.enrollment_token}
                                         onChange={(e) => setNewOrg({ ...newOrg, enrollment_token: e.target.value })}
-                                        className="w-full pl-10 pr-12 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm font-mono"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        className="w-full pl-10 pr-12 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm font-mono text-slate-200"
                                     />
                                     <button
                                         type="button"
                                         onClick={generateToken}
-                                        className="absolute right-3 p-1 rounded-lg hover:bg-white/10 transition-colors"
+                                        className="absolute right-3 p-1 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-sky-400 transition-colors"
                                         title="Regenerate Token"
                                     >
-                                        <Activity className="w-4 h-4 text-cyan-500" />
+                                        <Activity className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <p className="text-[10px] mt-1 text-gray-500">Auto-generated secure token for agent enrollment.</p>
+                                <p className="text-[10px] mt-1.5 text-slate-600">Auto-generated secure token for agent enrollment.</p>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Max Agents</label>
+                                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Max Agents</label>
                                     <input
                                         type="number"
                                         value={newOrg.max_agents}
                                         onChange={(e) => setNewOrg({ ...newOrg, max_agents: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Expiry</label>
+                                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Expiry</label>
                                     <input
                                         type="date"
                                         required
                                         min={new Date().toISOString().split('T')[0]}
                                         value={newOrg.token_expiry}
                                         onChange={(e) => setNewOrg({ ...newOrg, token_expiry: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        style={{ colorScheme: 'dark' }}
+                                        className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     />
                                 </div>
                             </div>
-                            <div className="flex space-x-3 mt-8">
+                            <div className="flex space-x-3 mt-8 pt-2">
                                 <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5"
-                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                    className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-3 rounded-xl font-bold text-white cyber-glow transition-all"
-                                    style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                                    className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50"
                                 >
-                                    Create
+                                    Create Organization
                                 </button>
                             </div>
                         </form>
@@ -460,67 +442,62 @@ export default function AdminPage() {
             {/* Create Admin Modal */}
             {isAdminModalOpen && selectedOrg && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl transition-all" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-white/[0.06] p-8 shadow-2xl">
                         <div className="mb-6">
-                            <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Onboard Tenant Admin</h2>
-                            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>Set up the primary administrator for <span className="text-white font-semibold">{selectedOrg.name}</span></p>
+                            <h2 className="text-xl font-bold text-slate-200">Onboard Tenant Admin</h2>
+                            <p className="text-xs mt-1 text-slate-500">Set up the primary administrator for <span className="text-slate-300 font-semibold">{selectedOrg.name}</span></p>
                         </div>
                         <form onSubmit={handleCreateAdmin} className="space-y-4">
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Full Name</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Full Name</label>
                                 <div className="relative">
-                                    <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
                                     <input
                                         type="text"
                                         required
                                         value={newAdmin.full_name}
                                         onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Email Address</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Email Address</label>
                                 <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
                                     <input
                                         type="email"
                                         required
                                         value={newAdmin.email}
                                         onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Initial Password</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Initial Password</label>
                                 <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
                                     <input
                                         type="password"
                                         required
                                         value={newAdmin.password}
                                         onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border bg-black/20 focus:outline-none transition-all text-sm"
-                                        style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     />
                                 </div>
                             </div>
-                            <div className="flex space-x-3 mt-8">
+                            <div className="flex space-x-3 mt-8 pt-2">
                                 <button
                                     type="button"
                                     onClick={() => setIsAdminModalOpen(false)}
-                                    className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5"
-                                    style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}
+                                    className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 py-3 rounded-xl font-bold text-white cyber-glow transition-all"
-                                    style={{ background: 'linear-gradient(to right, var(--accent-cyan), var(--accent-purple))' }}
+                                    className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50"
                                 >
                                     Create Account
                                 </button>
@@ -529,38 +506,33 @@ export default function AdminPage() {
                     </div>
                 </div>
             )}
+            
             {/* Delete Confirmation Modal */}
             {deleteModal.isOpen && deleteModal.org && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
-                    <div className="w-full max-w-md rounded-2xl border p-8 shadow-2xl relative overflow-hidden" style={{ backgroundColor: '#0F1629', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-
-                        {/* Red Glow Effect */}
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-red-900" />
+                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-rose-500/30 p-8 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-rose-800" />
 
                         <div className="mb-6 text-center">
-                            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4 border border-red-500/20">
-                                <Trash2 className="w-8 h-8 text-red-500" />
+                            <div className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center mx-auto mb-4 border border-rose-500/20">
+                                <Trash2 className="w-6 h-6 text-rose-500" />
                             </div>
-                            <h2 className="text-xl font-bold text-white mb-2">Delete Organization?</h2>
-                            <p className="text-sm text-gray-400">
-                                This action is <span className="text-red-400 font-semibold">irreversible</span>.
-                                It will permanently destroy <strong>{deleteModal.org.name}</strong> and all associated agents, users, and events.
+                            <h2 className="text-lg font-bold text-slate-200 mb-2">Delete Organization?</h2>
+                            <p className="text-xs text-slate-400">
+                                This action is <span className="text-rose-400 font-semibold">irreversible</span>.
+                                It will permanently destroy <strong className="text-slate-300">{deleteModal.org.name}</strong> and all associated agents, users, and events.
                             </p>
                         </div>
 
                         <div className="mb-6">
-                            <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-gray-500">
-                                Type <span className="text-white select-all">{deleteModal.org.name}</span> to confirm
+                            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500 text-center">
+                                Type <span className="text-slate-300 select-all font-mono bg-white/[0.04] px-1 py-0.5 rounded mx-1">{deleteModal.org.name}</span> to confirm
                             </label>
                             <input
                                 type="text"
                                 value={deleteModal.inputValue}
                                 onChange={(e) => setDeleteModal(prev => ({ ...prev, inputValue: e.target.value }))}
-                                className="w-full px-4 py-3 rounded-xl border bg-black/40 focus:outline-none transition-all text-sm font-mono text-center"
-                                style={{
-                                    borderColor: deleteModal.inputValue === deleteModal.org.name ? 'var(--accent-red)' : 'var(--border-color)',
-                                    color: 'var(--text-primary)'
-                                }}
+                                className={`w-full px-4 py-3 rounded-xl border bg-[#05050A] focus:outline-none transition-all text-sm font-mono text-center text-slate-200 ${deleteModal.inputValue === deleteModal.org.name ? 'border-rose-500/50' : 'border-white/[0.06]'}`}
                                 placeholder={deleteModal.org.name}
                                 autoFocus
                             />
@@ -569,17 +541,16 @@ export default function AdminPage() {
                         <div className="flex space-x-3">
                             <button
                                 onClick={() => setDeleteModal({ isOpen: false, org: null, inputValue: '' })}
-                                className="flex-1 py-3 rounded-xl font-semibold border transition-all hover:bg-white/5 text-gray-400 hover:text-white"
-                                style={{ borderColor: 'var(--border-color)' }}
+                                className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={confirmDelete}
                                 disabled={deleteModal.inputValue !== deleteModal.org.name}
-                                className={`flex-1 py-3 rounded-xl font-bold text-white transition-all shadow-lg ${deleteModal.inputValue === deleteModal.org.name
-                                    ? 'bg-gradient-to-r from-red-600 to-red-800 hover:shadow-red-900/40 transform hover:scale-[1.02]'
-                                    : 'bg-gray-800 cursor-not-allowed opacity-50'
+                                className={`flex-1 py-3 rounded-xl font-semibold text-white transition-all ${deleteModal.inputValue === deleteModal.org.name
+                                    ? 'bg-rose-600 hover:bg-rose-500 shadow-[0_0_15px_rgba(225,29,72,0.3)] border border-rose-500/50'
+                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/[0.02]'
                                     }`}
                             >
                                 Delete Forever
