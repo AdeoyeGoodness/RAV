@@ -1,6 +1,7 @@
 'use client'
 
-import { Activity, Shield, AlertTriangle, ScreenShare } from 'lucide-react'
+import { Activity, Shield, AlertTriangle, Monitor } from 'lucide-react'
+import Link from 'next/link'
 
 interface StatsRowProps {
     stats: {
@@ -20,127 +21,131 @@ export function StatsRow({ stats }: StatsRowProps) {
     const totalAlerts = stats.criticalCount + stats.highCount + stats.mediumCount + stats.lowCount
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {/* Active Endpoints */}
-            <div className="bg-[#131524]/80 backdrop-blur-xl rounded-3xl p-6 border border-white/[0.08] shadow-2xl relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="bg-[#0C0E1C]/90 backdrop-blur-xl rounded-2xl p-5 border border-white/[0.06] shadow-xl relative overflow-hidden group hover:border-white/[0.1] transition-all">
                 <div className="relative z-10 flex flex-col h-full justify-between">
                     <div>
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="text-4xl font-black text-white tracking-tighter drop-shadow-lg">{stats.agents}</div>
-                            <span className="text-sm text-slate-400 font-medium tracking-wide">Active Endpoints</span>
+                        <div className="flex items-baseline gap-2.5 mb-1">
+                            <div className="text-3xl font-bold text-white tracking-tight tabular-nums">{stats.agents}</div>
+                            <span className="text-xs text-slate-500 font-medium">Active Endpoints</span>
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between mt-6">
-                        <div className="px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
-                            <ScreenShare className="w-4 h-4 text-cyan-400" />
-                            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                                {stats.agents > 0 ? 'All Healthy' : 'No Agents'}
+                    <div className="flex items-center justify-between mt-5">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-1.5 h-1.5 rounded-full ${stats.agents > 0 ? 'bg-emerald-500' : 'bg-slate-600'}`} />
+                            <span className="text-[11px] font-medium text-slate-500">
+                                {stats.agents > 0 ? 'Reporting' : 'Awaiting deployment'}
                             </span>
                         </div>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-white/5">
-                        <button className="text-xs font-bold text-slate-400 hover:text-white transition-colors uppercase tracking-widest flex items-center gap-2 group/btn">
-                            View Details
-                            <span className="group-hover/btn:translate-x-1 transition-transform">→</span>
-                        </button>
+                    <div className="mt-4 pt-3 border-t border-white/[0.04]">
+                        <Link href="/devices" className="text-[11px] font-medium text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1.5">
+                            <Monitor className="w-3 h-3" />
+                            <span>View endpoints</span>
+                        </Link>
                     </div>
                 </div>
             </div>
 
             {/* Events Last 24h */}
-            <div className="bg-[#131524]/80 backdrop-blur-xl rounded-3xl p-6 border border-white/[0.08] shadow-2xl relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="bg-[#0C0E1C]/90 backdrop-blur-xl rounded-2xl p-5 border border-white/[0.06] shadow-xl relative overflow-hidden group hover:border-white/[0.1] transition-all">
                 <div className="relative z-10 flex flex-col h-full">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="text-3xl font-black text-white tracking-tight">{stats.events24h}</div>
+                    <div className="flex items-baseline gap-2.5 mb-4">
+                        <div className="text-3xl font-bold text-white tracking-tight tabular-nums">{stats.events24h}</div>
                         <div className="flex flex-col">
-                            <span className="text-sm text-slate-200 font-bold">Events</span>
-                            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Last 24h</span>
+                            <span className="text-xs text-slate-400 font-medium">Events</span>
+                            <span className="text-[9px] text-slate-600 uppercase tracking-wider font-mono">24h window</span>
                         </div>
                     </div>
 
-                    <div className="space-y-3 flex-1">
-                        <div className="flex items-center gap-2 text-xs">
-                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-500" />
-                            <span className="text-slate-300 font-medium">{stats.warnings} Warnings</span>
+                    <div className="space-y-2.5 flex-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-500">Warnings</span>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.warnings}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs">
-                            <Activity className="w-3.5 h-3.5 text-purple-400" />
-                            <span className="text-slate-300 font-medium">{stats.uniqueIps} Unique IPs</span>
+                        <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-500">Unique IPs</span>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.uniqueIps}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs">
-                            <ScreenShare className="w-3.5 h-3.5 text-slate-400" />
-                            <span className="text-slate-300 font-medium">{stats.screenshots} Screenshots</span>
+                        <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-slate-500">Screenshots</span>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.screenshots}</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Investigations - Shows critical events */}
-            <div className="bg-[#131524]/80 backdrop-blur-xl rounded-3xl p-6 border border-white/[0.08] shadow-2xl relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            {/* Investigations */}
+            <div className="bg-[#0C0E1C]/90 backdrop-blur-xl rounded-2xl p-5 border border-white/[0.06] shadow-xl relative overflow-hidden group hover:border-white/[0.1] transition-all">
                 <div className="relative z-10">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="text-3xl font-black text-white tracking-tight">{stats.criticalCount + stats.highCount}</div>
-                        <span className="text-sm text-slate-200 font-bold">Investigations</span>
+                    <div className="flex items-baseline gap-2.5 mb-5">
+                        <div className="text-3xl font-bold text-white tracking-tight tabular-nums">{stats.criticalCount + stats.highCount}</div>
+                        <span className="text-xs text-slate-400 font-medium">Investigations</span>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {stats.criticalCount > 0 && (
-                            <div className="flex items-start gap-3 group/item">
-                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-slate-200">{stats.criticalCount} Critical Events</span>
-                                        <span className="text-[9px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded uppercase">Needs Review</span>
-                                    </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                    <span className="text-[11px] text-slate-400">{stats.criticalCount} Critical</span>
                                 </div>
+                                <span className="text-[9px] font-medium bg-rose-500/8 text-rose-400 border border-rose-500/15 px-1.5 py-0.5 rounded">REVIEW</span>
                             </div>
                         )}
 
                         {stats.highCount > 0 && (
-                            <div className="flex items-start gap-3 group/item">
-                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-slate-200">{stats.highCount} High Priority</span>
-                                        <span className="text-[9px] font-black bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded uppercase">Pending</span>
-                                    </div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    <span className="text-[11px] text-slate-400">{stats.highCount} High Priority</span>
                                 </div>
+                                <span className="text-[9px] font-medium bg-amber-500/8 text-amber-400 border border-amber-500/15 px-1.5 py-0.5 rounded">PENDING</span>
                             </div>
                         )}
 
                         {stats.criticalCount === 0 && stats.highCount === 0 && (
-                            <div className="text-sm text-slate-500 italic">No investigations pending</div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-700" />
+                                <span className="text-[11px] text-slate-600">No active investigations</span>
+                            </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            {/* Pending Alerts - Severity Breakdown */}
-            <div className="bg-[#131524]/80 backdrop-blur-xl rounded-3xl p-6 border border-white/[0.08] shadow-2xl relative overflow-hidden group">
-                <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            {/* Severity Breakdown */}
+            <div className="bg-[#0C0E1C]/90 backdrop-blur-xl rounded-2xl p-5 border border-white/[0.06] shadow-xl relative overflow-hidden group hover:border-white/[0.1] transition-all">
                 <div className="relative z-10 flex flex-col h-full">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="text-3xl font-black text-white tracking-tight">{totalAlerts}</div>
-                        <span className="text-sm text-slate-200 font-bold">Pending Alerts</span>
+                    <div className="flex items-baseline gap-2.5 mb-4">
+                        <div className="text-3xl font-bold text-white tracking-tight tabular-nums">{totalAlerts}</div>
+                        <span className="text-xs text-slate-400 font-medium">Pending Alerts</span>
                     </div>
 
-                    <div className="space-y-3 flex-1 pt-2">
-                        <div className="flex items-center gap-3">
-                            <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                            <span className="text-xs font-bold text-slate-300">{stats.criticalCount} CRITICAL</span>
+                    <div className="space-y-2.5 flex-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                <span className="text-slate-500">Critical</span>
+                            </div>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.criticalCount}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
-                            <span className="text-xs font-bold text-slate-300">{stats.highCount + stats.mediumCount} WARNING</span>
+                        <div className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                <span className="text-slate-500">Warning</span>
+                            </div>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.highCount + stats.mediumCount}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                            <span className="text-xs font-bold text-slate-300">{stats.lowCount} INFO</span>
+                        <div className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                                <span className="text-slate-500">Info</span>
+                            </div>
+                            <span className="text-slate-400 font-mono tabular-nums">{stats.lowCount}</span>
                         </div>
                     </div>
                 </div>

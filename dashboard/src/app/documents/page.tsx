@@ -252,10 +252,10 @@ IMPORTANT NOTES:
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
-          <p className="text-slate-400 font-medium animate-pulse">Accessing Secure Vault...</p>
+      <div className="min-h-screen bg-[#05050A] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
+          <p className="text-xs text-slate-600 font-mono">Loading documents...</p>
         </div>
       </div>
     )
@@ -363,9 +363,16 @@ IMPORTANT NOTES:
                   </h2>
                   <div className="space-y-2 max-h-[600px] overflow-y-auto">
                     {loading ? (
-                      <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading documents...</p>
+                      <div className="flex items-center gap-2 py-2">
+                        <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-500 rounded-full animate-spin"></div>
+                        <p className="text-xs text-slate-500">Loading...</p>
+                      </div>
                     ) : documents.length === 0 ? (
-                      <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>No documents tracked yet</p>
+                      <div className="py-6 text-center">
+                        <FileText className="w-8 h-8 mx-auto mb-2 text-slate-700" />
+                        <p className="text-xs text-slate-500 mb-1">No documents tracked</p>
+                        <p className="text-[10px] text-slate-700">USB file transfers will appear here when detected by the agent</p>
+                      </div>
                     ) : (
                       documents.map((doc) => (
                         <button
@@ -658,11 +665,13 @@ IMPORTANT NOTES:
                     </div>
                   </div>
                 ) : (
-                  <div className="border rounded-2xl p-12 text-center transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                    <FileText className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.2)' }} />
-                    <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>No document selected</p>
-                    <p className="text-sm transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }}>
-                      Select a document from the list to view details
+                  <div className="border rounded-2xl p-10 text-center transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                    <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-slate-800/50 border border-white/[0.04] flex items-center justify-center">
+                      <FileText className="w-6 h-6 text-slate-600" />
+                    </div>
+                    <p className="text-sm font-medium mb-1 text-slate-400">No document selected</p>
+                    <p className="text-xs text-slate-600">
+                      Select a tracked file from the sidebar to view transfer details, metadata, and download options
                     </p>
                   </div>
                 )}
