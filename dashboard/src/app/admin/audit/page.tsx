@@ -22,34 +22,34 @@ export default function AuditPage() {
 
     if (isLoading || !user || user.role !== 'super_admin') {
         return (
-            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+            <div className="min-h-screen bg-[#050510] flex items-center justify-center">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin"></div>
-                    <p className="text-slate-500 text-sm animate-pulse tracking-widest">VERIFYING CLEARANCE...</p>
+                    <div className="w-12 h-12 border-4 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
+                    <p className="text-slate-500 text-sm animate-pulse tracking-widest font-semibold">VERIFYING CLEARANCE...</p>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex h-screen bg-slate-950 text-slate-200 font-sans selection:bg-purple-500/30">
+        <div className="flex h-screen bg-[#050510] text-slate-200 font-sans selection:bg-sky-500/30">
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
-                <main className="flex-1 overflow-auto p-6 space-y-6">
+                <main className="flex-1 overflow-auto p-8 space-y-6">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
-                                <Shield className="w-6 h-6 text-purple-500" />
+                            <h1 className="text-2xl font-bold tracking-tight text-slate-200 flex items-center gap-2">
+                                <Shield className="w-6 h-6 text-sky-500" />
                                 Audit Ledger
                             </h1>
-                            <p className="text-slate-400 text-sm mt-1">
+                            <p className="text-slate-500 text-sm mt-1">
                                 Immutable record of all authority actions across the platform.
                             </p>
                         </div>
                     </div>
 
-                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 backdrop-blur-sm">
+                    <div className="bg-[#0C0E1C] border border-white/[0.06] rounded-xl p-6 shadow-sm">
                         <AuditLogTable />
                     </div>
                 </main>
@@ -57,3 +57,4 @@ export default function AuditPage() {
         </div>
     )
 }
+
