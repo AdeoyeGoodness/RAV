@@ -353,19 +353,64 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 </button>
             </div>
 
-            {/* Results Summary */}
-            <div className="flex items-center gap-2 text-sm">
-                <span className="text-white font-bold">Telemetry Results</span>
-                <span className="text-slate-500">Showing:</span>
-                <span className="text-slate-300">{agentDisplayName}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-slate-300">
-                    {filters.timeRange === '1h' ? 'Last Hour' :
-                        filters.timeRange === '24h' ? 'Last 24 Hours' :
-                            filters.timeRange === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
-                </span>
-                <span className="text-slate-600">|</span>
-                <span className="text-slate-300">Categories: {filters.category || 'All Activity'}</span>
+            {/* Results Summary & Insights */}
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="text-white font-bold">Telemetry Results</span>
+                    <span className="text-slate-500">Showing:</span>
+                    <span className="text-slate-300">{agentDisplayName}</span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-slate-300">
+                        {filters.timeRange === '1h' ? 'Last Hour' :
+                            filters.timeRange === '24h' ? 'Last 24 Hours' :
+                                filters.timeRange === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
+                    </span>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-slate-300">Categories: {filters.category || 'All Activity'}</span>
+                </div>
+
+                {/* Network Insights Summary — Only shown when category is network */}
+                {filters.category === 'network' && !loading && events.length > 0 && (
+                    <div className="bg-[#131524]/40 border border-cyan-500/10 rounded-2xl p-5 mb-2 animate-in fade-in slide-in-from-top-4 duration-500">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Globe className="w-5 h-5 text-cyan-400" />
+                            <h3 className="text-sm font-bold text-white uppercase tracking-widest italic">Connection Insights (Top Destinations)</h3>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            {Object.entries(
+                                events.reduce((acc: any, ev) => {
+                                    const ip = ev.metadata?.remote_ip;
+                                    if (!ip) return acc;
+                                    if (!acc[ip]) acc[ip] = { count: 0, agents: new Set() };
+                                    acc[ip].count++;
+                                    acc[ip].agents.add(ev.agent_id);
+                                    return acc;
+                                }, {})
+                            )
+                            .sort((a: any, b: any) => b[1].count - a[1].count)
+                            .slice(0, 8)
+                            .map(([ip, data]: [string, any]) => (
+                                <div key={ip} className="bg-[#0A0B14]/60 border border-white/5 rounded-xl p-3.5 hover:border-cyan-500/20 transition-all group">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="font-mono text-sm text-cyan-300 font-bold tracking-tight">{ip}</span>
+                                        <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded uppercase">
+                                            {data.count} Hits
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Monitor className="w-3 h-3 text-slate-600" />
+                                        <span className="text-[10px] text-slate-500 font-medium truncate">
+                                            {Array.from(data.agents).map((id: any) => 
+                                                agents.find(a => a.agent_id === id)?.hostname || id.substring(0, 8)
+                                            ).join(', ')}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Events Table */}

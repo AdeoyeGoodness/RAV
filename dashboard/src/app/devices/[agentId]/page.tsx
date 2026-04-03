@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe } from 'lucide-react'
 import { getAgents, getEvents, deleteAgentEvents } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -251,44 +251,88 @@ export default function DeviceDetailsPage() {
               </div>
             </div>
 
-            {/* Device Info Card */}
-            <div className="border rounded-xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-              <h2 className="text-xl font-semibold mb-4 transition-colors" style={{ color: 'var(--text-primary)' }}>Device Information</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center space-x-3">
-                  <HardDrive className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                  <div>
-                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hardware Fingerprint</p>
-                    <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hardware_fingerprint}</p>
+            {/* Device Info Card & Network Summary */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-6">
+              <div className="border rounded-xl p-6 transition-colors h-full" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                <h2 className="text-xl font-bold mb-5 transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                  <Monitor className="w-5 h-5 text-cyan-500" />
+                  Hardware Identity
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex items-center space-x-3">
+                    <HardDrive className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Fingerprint</p>
+                      <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hardware_fingerprint}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hostname</p>
+                      <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                     <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                     <div>
+                       <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Reporting</p>
+                       <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
+                     </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Footprint</p>
+                      <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length} Events</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                  <div>
-                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>System Hostname</p>
-                    <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
-                  </div>
+              </div>
+
+              {/* Individual Device Network Insights */}
+              <div className="border rounded-xl p-6 transition-colors h-full" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-xl font-bold transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                    <Globe className="w-5 h-5 text-cyan-400" />
+                    Network Pulse
+                  </h2>
+                  <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded">LIVE</span>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                  <div>
-                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Seen</p>
-                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                  <div>
-                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Registered</p>
-                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.created_at).toLocaleString()}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                  <div>
-                    <p className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Events</p>
-                    <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length}</p>
-                  </div>
+
+                <div className="space-y-4">
+                  {(() => {
+                    const netEvents = events.filter(e => e.event_type === 'NETWORK_CONNECTION' || e.metadata?.remote_ip);
+                    const uniqueIps = Array.from(new Set(netEvents.map(e => e.metadata?.remote_ip).filter(Boolean)));
+                    const topIps = Object.entries(
+                      netEvents.reduce((acc: any, ev) => {
+                        const ip = ev.metadata?.remote_ip;
+                        if (ip) acc[ip] = (acc[ip] || 0) + 1;
+                        return acc;
+                      }, {})
+                    ).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-lg border border-white/[0.05]">
+                          <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Unique Connections</span>
+                          <span className="text-lg font-bold text-white tabular-nums">{uniqueIps.length}</span>
+                        </div>
+                        
+                        <div className="space-y-2.5">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Most Active Destinations</p>
+                          {topIps.length > 0 ? topIps.map(([ip, count]) => (
+                            <div key={ip} className="flex items-center justify-between group">
+                              <span className="text-xs font-mono text-cyan-400/80 hover:text-cyan-400 transition-colors cursor-default">{ip}</span>
+                              <span className="text-[10px] font-bold text-slate-600 bg-white/[0.02] px-1.5 py-0.5 rounded">{count} events</span>
+                            </div>
+                          )) : (
+                            <p className="text-xs text-slate-600 italic">No network traffic observed in current logs.</p>
+                          )}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               </div>
             </div>

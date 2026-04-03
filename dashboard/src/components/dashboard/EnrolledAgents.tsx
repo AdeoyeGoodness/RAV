@@ -1,7 +1,6 @@
 'use client'
 
 import { Search, Monitor, MoreHorizontal, Filter, Plus, Server } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
 import { Agent } from '@/lib/api'
 import Link from 'next/link'
 
@@ -11,19 +10,31 @@ interface EnrolledAgentsProps {
 
 export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
     const getStatusColor = (agent: Agent) => {
-        const lastSeen = new Date(agent.last_seen)
-        const diffMinutes = (Date.now() - lastSeen.getTime()) / 60000
+        const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
+        const diffMinutes = msSinceLastSeen / 60000
         if (diffMinutes < 5) return 'bg-emerald-500'
         if (diffMinutes < 30) return 'bg-amber-500'
         return 'bg-slate-600'
     }
 
     const getStatusLabel = (agent: Agent) => {
-        const lastSeen = new Date(agent.last_seen)
-        const diffMinutes = (Date.now() - lastSeen.getTime()) / 60000
+        const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
+        const diffMinutes = msSinceLastSeen / 60000
         if (diffMinutes < 5) return 'Online'
         if (diffMinutes < 30) return 'Idle'
         return 'Offline'
+    }
+
+    const formatLastSeenServer = (agent: Agent) => {
+        const diffMs = agent.server_time_ms - agent.last_seen_ms;
+        const diffMins = Math.floor(diffMs / 60000)
+        const diffHours = Math.floor(diffMs / 3600000)
+        const diffDays = Math.floor(diffMs / 86400000)
+
+        if (diffMins < 1) return 'Just now'
+        if (diffMins < 60) return `${diffMins}m ago`
+        if (diffHours < 24) return `${diffHours}h ago`
+        return `${diffDays}d ago`
     }
 
     return (
@@ -58,11 +69,11 @@ export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-white/[0.04]">
-                                <th className="pb-3 pt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider pl-2">Endpoint</th>
-                                <th className="pb-3 pt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Hostname</th>
-                                <th className="pb-3 pt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Platform</th>
-                                <th className="pb-3 pt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                                <th className="pb-3 pt-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Last Seen</th>
+                                <th className="pb-3 pt-1 text-xs font-bold text-slate-600 uppercase tracking-widest pl-2">Endpoint</th>
+                                <th className="pb-3 pt-1 text-xs font-bold text-slate-600 uppercase tracking-widest">Hostname</th>
+                                <th className="pb-3 pt-1 text-xs font-bold text-slate-600 uppercase tracking-widest">Platform</th>
+                                <th className="pb-3 pt-1 text-xs font-bold text-slate-600 uppercase tracking-widest">Status</th>
+                                <th className="pb-3 pt-1 text-xs font-bold text-slate-600 uppercase tracking-widest">Last Seen</th>
                                 <th className="pb-3 pt-1"></th>
                             </tr>
                         </thead>
@@ -70,32 +81,32 @@ export function EnrolledAgents({ agents }: EnrolledAgentsProps) {
                             {agents.map((agent) => (
                                 <tr key={agent.id} className="group border-b border-white/[0.03] hover:bg-white/[0.015] transition-colors">
                                     <td className="py-3.5 pl-2">
-                                        <span className="font-mono text-[11px] text-slate-500 group-hover:text-slate-300 transition-colors">
+                                        <span className="font-mono text-xs text-slate-500 group-hover:text-slate-300 transition-colors">
                                             {agent.agent_id.substring(0, 10)}
                                         </span>
                                     </td>
                                     <td className="py-3.5">
                                         <div className="flex items-center gap-2.5">
-                                            <Monitor className="w-3.5 h-3.5 text-slate-600" />
-                                            <span className="text-xs font-medium text-slate-300">{agent.hostname || 'Unknown'}</span>
+                                            <Monitor className="w-4 h-4 text-slate-600" />
+                                            <span className="text-sm font-semibold text-slate-300">{agent.hostname || 'Unknown'}</span>
                                         </div>
                                     </td>
                                     <td className="py-3.5">
-                                        <span className="text-[11px] text-slate-500 bg-white/[0.03] px-2 py-0.5 rounded border border-white/[0.04]">Windows</span>
+                                        <span className="text-xs text-slate-500 bg-white/[0.03] px-2 py-0.5 rounded border border-white/[0.04]">Windows</span>
                                     </td>
                                     <td className="py-3.5">
                                         <div className="flex items-center gap-1.5">
                                             <div className={`w-1.5 h-1.5 rounded-full ${getStatusColor(agent)}`} />
-                                            <span className="text-[11px] text-slate-400">{getStatusLabel(agent)}</span>
+                                            <span className="text-sm text-slate-400">{getStatusLabel(agent)}</span>
                                         </div>
                                     </td>
-                                    <td className="py-3.5 text-[11px] text-slate-500 font-mono">
-                                        {formatDistanceToNow(new Date(agent.last_seen), { addSuffix: true })}
+                                    <td className="py-3.5 text-xs text-slate-500 font-mono">
+                                        {formatLastSeenServer(agent)}
                                     </td>
                                     <td className="py-3.5 pr-2 text-right">
                                         <Link href={`/devices/${agent.agent_id}`}>
                                             <button className="p-1.5 rounded-lg hover:bg-white/[0.06] text-slate-600 hover:text-slate-300 transition-colors">
-                                                <MoreHorizontal className="w-3.5 h-3.5" />
+                                                <MoreHorizontal className="w-4 h-4" />
                                             </button>
                                         </Link>
                                     </td>

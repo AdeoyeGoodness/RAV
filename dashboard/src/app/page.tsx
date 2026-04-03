@@ -36,9 +36,10 @@ export default function DashboardPage() {
     const fetchData = async () => {
       if (!user) return;
       try {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
         const [agentsData, eventsData] = await Promise.all([
           getAgents(),
-          getEvents({ limit: 500 }) // Fetch enough to calculate basic stats
+          getEvents({ start_time: twentyFourHoursAgo, limit: 10000 }) // Fetch 24h of data
         ])
 
         setAgents(agentsData)
@@ -53,10 +54,10 @@ export default function DashboardPage() {
         const networkCount = eventsData.filter(e => e.category === 'network').length
         const processCount = eventsData.filter(e => e.category === 'process').length
         const fileCount = eventsData.filter(e => e.category === 'file').length
-        const browserCount = eventsData.filter(e => e.event_type?.includes('BROWSER') || e.event_type?.includes('URL')).length
+        const browserCount = eventsData.filter(e => e.event_type?.includes('BROWSER') || e.event_type?.includes('URL') || e.event_type?.includes('browser')).length
 
         const uniqueIps = new Set(eventsData.map(e => e.metadata?.remote_ip).filter(Boolean)).size
-        const screenshots = eventsData.filter(e => e.event_type === 'SCREENSHOT_TAKEN').length
+        const screenshots = eventsData.filter(e => e.event_type === 'screenshot_captured').length
 
         setEventStats({
           total: eventsData.length,
