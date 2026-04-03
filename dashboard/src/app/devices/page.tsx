@@ -48,8 +48,8 @@ export default function DevicesPage() {
   }
 
   const getAgentStatus = (agent: Agent) => {
-    // Golden Rule: Use epoch milliseconds for logic
-    const msSinceLastSeen = Date.now() - agent.last_seen_ms;
+    // 🛡️ [Drift-Proof Status] Compare server-provided time, NOT local PC time
+    const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
     const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
 
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
@@ -58,8 +58,8 @@ export default function DevicesPage() {
   }
 
   const formatLastSeen = (agent: Agent) => {
-    // Use epoch ms for calculation
-    const diffMs = Date.now() - agent.last_seen_ms;
+    // 🛡️ [Drift-Proof Time Ago] Use server time as the reference 'now'
+    const diffMs = agent.server_time_ms - agent.last_seen_ms;
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)

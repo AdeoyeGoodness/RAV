@@ -83,6 +83,7 @@ export interface Agent {
   hostname: string | null
   last_seen: string
   last_seen_ms: number
+  server_time_ms: number // For drift-proof status
   token_expiry: string | null
   created_at: string
   updated_at: string

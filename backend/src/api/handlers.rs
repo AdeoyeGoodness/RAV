@@ -338,6 +338,7 @@ pub async fn list_agents(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    let now = Utc::now();
     let result: Vec<serde_json::Value> = agents
         .into_iter()
         .map(|row| {
@@ -350,6 +351,7 @@ pub async fn list_agents(
                 "hostname": row.get::<Option<String>, _>("hostname"),
                 "last_seen": last_seen,
                 "last_seen_ms": last_seen.timestamp_millis(),
+                "server_time_ms": now.timestamp_millis(), // Add this for clock-sync
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
             })
