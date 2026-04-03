@@ -18,6 +18,8 @@ interface Agent {
   hardware_fingerprint: string
   hostname: string | null
   last_seen: string
+  last_seen_ms: number
+  server_time_ms: number
   created_at: string
   updated_at: string
 }
@@ -135,9 +137,8 @@ export default function DeviceDetailsPage() {
   }
 
   const getAgentStatus = (agent: Agent) => {
-    const lastSeen = new Date(agent.last_seen)
-    const now = new Date()
-    const minutesSinceLastSeen = (now.getTime() - lastSeen.getTime()) / 1000 / 60
+    const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
+    const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
 
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
     if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
@@ -150,6 +151,17 @@ export default function DeviceDetailsPage() {
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
           <p className="text-cyan-500 font-medium animate-pulse font-mono tracking-widest text-xs">ENCRYPTING CONNECTION TO NODE {agentId}...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading && !agent) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+          <p className="text-cyan-500 font-medium animate-pulse font-mono tracking-widest text-xs">SYNCHRONIZING WITH NODE {agentId}...</p>
         </div>
       </div>
     )
