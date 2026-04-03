@@ -254,39 +254,67 @@ export default function DeviceDetailsPage() {
             {/* Device Info Card & Network Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-6">
               <div className="border rounded-xl p-6 transition-colors h-full" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                <h2 className="text-xl font-bold mb-5 transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+                <h2 className="text-xl font-bold mb-6 transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                   <Monitor className="w-5 h-5 text-cyan-500" />
                   Hardware Identity
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="flex items-center space-x-3">
-                    <HardDrive className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Fingerprint</p>
-                      <p className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hardware_fingerprint}</p>
+                <div className="space-y-6">
+                  {/* Fingerprint gets its own row to prevent overlap */}
+                  <div className="p-4 bg-white/[0.02] rounded-lg border border-white/[0.05]">
+                    <div className="flex items-center space-x-3 mb-2">
+                       <HardDrive className="w-4 h-4 text-slate-500" />
+                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Hardware Fingerprint</p>
+                    </div>
+                    <p className="text-xs font-mono text-cyan-400/70 break-all leading-relaxed">{agent.hardware_fingerprint}</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="flex items-center space-x-3">
+                      <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hostname</p>
+                        <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                       <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                       <div>
+                         <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Reporting</p>
+                         <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
+                       </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Footprint</p>
+                        <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length} Events</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hostname</p>
-                      <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                     <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                     <div>
-                       <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Reporting</p>
-                       <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
-                     </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Footprint</p>
-                      <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length} Events</p>
-                    </div>
-                  </div>
+                  
+                  {(() => {
+                    const wifiEvent = events.find(e => e.event_type === 'wifi_status');
+                    if (wifiEvent) {
+                      return (
+                        <div className="p-4 bg-cyan-500/5 rounded-xl border border-cyan-500/10 flex items-center gap-4">
+                          <div className="bg-cyan-500/10 p-2.5 rounded-lg border border-cyan-500/20">
+                            <Globe className="w-5 h-5 text-cyan-400" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-500 mb-0.5">Network Context</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-white tracking-tight">{wifiEvent.metadata?.ssid || 'Wired/Other'}</span>
+                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
+                                <Activity className="w-2.5 h-2.5 text-cyan-400" />
+                                <span className="text-[9px] font-bold text-cyan-300 uppercase">{wifiEvent.metadata?.signal || '100%'} Strength</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
 
@@ -302,32 +330,50 @@ export default function DeviceDetailsPage() {
 
                 <div className="space-y-4">
                   {(() => {
-                    const netEvents = events.filter(e => e.event_type === 'NETWORK_CONNECTION' || e.metadata?.remote_ip);
+                    const noiseIps = ['127.0.0.1', '0.0.0.0', '::1', 'localhost'];
+                    const netEvents = events.filter(e => (e.event_type === 'NETWORK_CONNECTION' || e.metadata?.remote_ip) && !noiseIps.includes(e.metadata?.remote_ip));
                     const uniqueIps = Array.from(new Set(netEvents.map(e => e.metadata?.remote_ip).filter(Boolean)));
-                    const topIps = Object.entries(
-                      netEvents.reduce((acc: Record<string, number>, ev) => {
-                        const ip = ev.metadata?.remote_ip;
-                        if (ip) acc[ip] = (acc[ip] || 0) + 1;
-                        return acc;
-                      }, {} as Record<string, number>)
-                    ).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
+                    
+                    // Group by IP and track most common process
+                    const ipStats = netEvents.reduce((acc: any, ev) => {
+                      const ip = ev.metadata?.remote_ip;
+                      if (!ip) return acc;
+                      if (!acc[ip]) acc[ip] = { count: 0, processes: {} };
+                      acc[ip].count++;
+                      const proc = ev.metadata?.process_name || 'unknown';
+                      acc[ip].processes[proc] = (acc[ip].processes[proc] || 0) + 1;
+                      return acc;
+                    }, {});
+
+                    const topIps = Object.entries(ipStats)
+                      .sort((a: any, b: any) => b[1].count - a[1].count)
+                      .slice(0, 6);
 
                     return (
                       <>
-                        <div className="flex items-center justify-between bg-white/[0.02] p-3 rounded-lg border border-white/[0.05]">
-                          <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Unique Connections</span>
-                          <span className="text-lg font-bold text-white tabular-nums">{uniqueIps.length}</span>
+                        <div className="flex items-center justify-between bg-white/[0.02] p-4 rounded-lg border border-white/[0.05]">
+                          <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Unique Destinations</span>
+                          <span className="text-xl font-bold text-white tabular-nums">{uniqueIps.length}</span>
                         </div>
                         
-                        <div className="space-y-2.5">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Most Active Destinations</p>
-                          {topIps.length > 0 ? topIps.map(([ip, count]) => (
-                            <div key={ip} className="flex items-center justify-between group">
-                              <span className="text-xs font-mono text-cyan-400/80 hover:text-cyan-400 transition-colors cursor-default">{ip}</span>
-                              <span className="text-[10px] font-bold text-slate-600 bg-white/[0.02] px-1.5 py-0.5 rounded">{count} events</span>
-                            </div>
-                          )) : (
-                            <p className="text-xs text-slate-600 italic">No network traffic observed in current logs.</p>
+                        <div className="space-y-3">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Most Active External Connections</p>
+                          {topIps.length > 0 ? topIps.map(([ip, data]: [string, any]) => {
+                            const topProc = Object.entries(data.processes).sort((a: any, b: any) => b[1] - a[1])[0]?.[0];
+                            return (
+                              <div key={ip} className="flex flex-col space-y-1 group bg-white/[0.01] p-2 rounded-md hover:bg-white/[0.03] transition-colors">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-mono text-cyan-400 font-bold">{ip}</span>
+                                  <span className="text-[10px] font-mono text-slate-600">{data.count} hits</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1 h-1 rounded-full bg-cyan-500/40" />
+                                  <span className="text-[10px] text-slate-500 truncate max-w-[150px] italic">via {topProc}</span>
+                                </div>
+                              </div>
+                            )
+                          }) : (
+                            <p className="text-xs text-slate-600 italic py-4">No external network traffic observed.</p>
                           )}
                         </div>
                       </>

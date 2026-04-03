@@ -19,26 +19,99 @@ pub async fn start_monitoring(
 
     info!("Starting network monitoring");
 
-    let mut interval = interval(Duration::from_secs(10));
+    let sync_c = sync_manager.clone();
+    tokio::spawn(async move {
+        if let Err(e) = monitor_connections(sync_c).await {
+            error!("Connection monitoring error: {}", e);
+        }
+    });
 
-    loop {
-        interval.tick().await;
+    let sync_w = sync_manager.clone();
+    tokio::spawn(async move {
+        loop {
+            if let Err(e) = monitor_wifi_status(sync_w.clone()).await {
+                error!("WiFi monitoring error: {}", e);
+            }
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    });
 
-        if config.monitoring.network.track_connections {
-            if let Err(e) = monitor_connections(config.clone(), sync_manager.clone()).await {
-                error!("Connection monitoring error: {}", e);
+    Ok(())
+}
+
+async fn monitor_wifi_status(sync_manager: Arc<SyncManager>) -> Result<()> {
+    static mut LAST_SSID: Option<String> = None;
+    
+    if let Ok(wifi) = get_wifi_info().await {
+        let should_send = unsafe {
+            match &LAST_SSID {
+                Some(last) => last != &wifi.ssid,
+                None => true,
+            }
+        };
+
+        if should_send {
+            let (agent_id, _) = sync_manager.get_identity().await;
+            let event = Event {
+                event_type: "wifi_status".to_string(),
+                timestamp: Utc::now(),
+                agent_id,
+                metadata: json!({
+                    "ssid": wifi.ssid,
+                    "signal": wifi.signal,
+                    "interface": wifi.interface,
+                }),
+            };
+            sync_manager.queue_event(event);
+            unsafe { LAST_SSID = Some(wifi.ssid); }
+        }
+    }
+    Ok(())
+}
+
+struct WifiInfo {
+    ssid: String,
+    signal: String,
+    interface: String,
+}
+
+async fn get_wifi_info() -> Result<WifiInfo> {
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        let output = Command::new("netsh")
+            .args(&["wlan", "show", "interfaces"])
+            .output()?;
+        let out_str = String::from_utf8_lossy(&output.stdout);
+        
+        let mut ssid = "Disconnected".to_string();
+        let mut signal = "0%".to_string();
+        let mut interface = "unknown".to_string();
+
+        for line in out_str.lines() {
+            let line = line.trim();
+            if line.starts_with("SSID") {
+                ssid = line.split(':').nth(1).unwrap_or("unknown").trim().to_string();
+            } else if line.starts_with("Signal") {
+                signal = line.split(':').nth(1).unwrap_or("0%").trim().to_string();
+            } else if line.starts_with("Name") {
+                interface = line.split(':').nth(1).unwrap_or("unknown").trim().to_string();
             }
         }
+        Ok(WifiInfo { ssid, signal, interface })
+    }
 
-        if config.monitoring.network.track_dns {
-            // DNS monitoring would be implemented here
-            // This requires platform-specific implementations
-        }
+    #[cfg(not(windows))]
+    {
+        Ok(WifiInfo { 
+            ssid: "Wired/Other".to_string(), 
+            signal: "100%".to_string(), 
+            interface: "eth0".to_string() 
+        })
     }
 }
 
 async fn monitor_connections(
-    _config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
     let mut previous_connections: std::collections::HashSet<String> = std::collections::HashSet::new();
