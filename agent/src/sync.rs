@@ -165,16 +165,21 @@ impl SyncManager {
         };
 
         let existing_org_id = self.config.agent.organization_id.clone();
+        let has_token = self.config.backend.enrollment_token.is_some();
         
         if let Some(org_id) = existing_org_id {
-            // Updating internal state
-            {
-                let mut id_guard = self.identity.write().await;
-                id_guard.organization_id = Some(org_id.clone());
-                id_guard.agent_id = Some(agent_id.clone());
+            if !has_token {
+                // Updating internal state
+                {
+                    let mut id_guard = self.identity.write().await;
+                    id_guard.organization_id = Some(org_id.clone());
+                    id_guard.agent_id = Some(agent_id.clone());
+                }
+                info!("Resuming session for Organization: {}", org_id);
+                return Ok((agent_id, org_id));
+            } else {
+                info!("Found both Organization ID and Enrollment Token. Forcing re-enrollment to backend...");
             }
-            info!("Resuming session for Organization: {}", org_id);
-            return Ok((agent_id, org_id));
         }
 
         // ... Original Enrollment Logic ...
