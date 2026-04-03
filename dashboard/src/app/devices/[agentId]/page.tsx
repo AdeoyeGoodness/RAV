@@ -305,11 +305,11 @@ export default function DeviceDetailsPage() {
                     const netEvents = events.filter(e => e.event_type === 'NETWORK_CONNECTION' || e.metadata?.remote_ip);
                     const uniqueIps = Array.from(new Set(netEvents.map(e => e.metadata?.remote_ip).filter(Boolean)));
                     const topIps = Object.entries(
-                      netEvents.reduce((acc: any, ev) => {
+                      netEvents.reduce((acc: Record<string, number>, ev) => {
                         const ip = ev.metadata?.remote_ip;
                         if (ip) acc[ip] = (acc[ip] || 0) + 1;
                         return acc;
-                      }, {})
+                      }, {} as Record<string, number>)
                     ).sort((a: any, b: any) => b[1] - a[1]).slice(0, 3);
 
                     return (
