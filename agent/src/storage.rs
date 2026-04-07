@@ -53,7 +53,40 @@ impl StorageManager {
             [],
         )?;
 
+        // State table for persistence (Item 6.2)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS state (
+                k TEXT PRIMARY KEY,
+                v TEXT NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )",
+            [],
+        ).context("Failed to create state table")?;
+
         Ok(())
+    }
+
+    pub fn save_state(&self, key: &str, value: &serde_json::Value) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let val_str = serde_json::to_string(value)?;
+        conn.execute(
+            "INSERT INTO state (k, v) VALUES (?1, ?2) 
+             ON CONFLICT(k) DO UPDATE SET v=?2, updated_at=CURRENT_TIMESTAMP",
+            params![key, val_str],
+        )?;
+        Ok(())
+    }
+
+    pub fn load_state(&self, key: &str) -> Result<Option<serde_json::Value>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT v FROM state WHERE k = ?")?;
+        let mut rows = stmt.query([key])?;
+        if let Some(row) = rows.next()? {
+            let v: String = row.get(0)?;
+            Ok(Some(serde_json::from_str(&v)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn save_event(&self, event: &Event) -> Result<()> {

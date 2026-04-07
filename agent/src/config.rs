@@ -9,6 +9,67 @@ pub struct Config {
     pub agent: AgentConfig,
     pub encryption: EncryptionConfig,
     pub monitoring: MonitoringConfig,
+    #[serde(default)]
+    pub stealth: StealthConfig,
+    #[serde(default)]
+    pub persistence: PersistenceConfig,
+    #[serde(default)]
+    pub performance: PerformanceConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StealthConfig {
+    pub enabled: bool,
+    pub hide_files: bool,
+    pub service_name: String,
+    pub service_display_name: String,
+    pub process_name: Option<String>,
+    pub tamper_detection: bool,
+}
+
+impl Default for StealthConfig {
+    fn default() -> Self {
+        StealthConfig {
+            enabled: true,
+            hide_files: true,
+            service_name: "RAV-Agent".to_string(),
+            service_display_name: "RAV Enterprise Monitor".to_string(),
+            process_name: None,
+            tamper_detection: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceConfig {
+    pub cpu_limit_percent: u8,
+    pub max_memory_mb: u64,
+    pub io_priority: String, // "low", "normal"
+}
+
+impl Default for PerformanceConfig {
+    fn default() -> Self {
+        PerformanceConfig {
+            cpu_limit_percent: 5, // Default low impact
+            max_memory_mb: 128,
+            io_priority: "low".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistenceConfig {
+    pub save_interval_minutes: u64,
+    pub state_dir: PathBuf,
+}
+
+impl Default for PersistenceConfig {
+    fn default() -> Self {
+        PersistenceConfig {
+            save_interval_minutes: 5,
+            state_dir: PathBuf::from("state"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +191,12 @@ impl Config {
                     format: "jpeg".to_string(),
                 },
             },
+            stealth: StealthConfig::default(),
+            persistence: PersistenceConfig {
+                save_interval_minutes: 30, // Default to 30 mins for safety
+                state_dir: Self::get_default_data_dir()?.join("state"),
+            },
+            performance: PerformanceConfig::default(),
         };
 
         Ok(config)

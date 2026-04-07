@@ -568,4 +568,210 @@ pub async fn restore_agent_events(
         "restored_count": result.rows_affected()
     })))
 }
+#[derive(Debug, Deserialize)]
+pub struct DownloadQuery {
+    pub password: Option<String>,
+}
 
+pub async fn list_agent_archives(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<Vec<crate::db::models::Archive>>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let archives = state.archive_service.list_archives(&agent_id, target_org_id).await
+        .map_err(|e| {
+            tracing::error!("Failed to list archives: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(archives))
+}
+
+pub async fn download_archive(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(archive_id): Path<Uuid>,
+    Query(params): Query<DownloadQuery>,
+) -> Result<Response<Body>, StatusCode> {
+    let pool = state.db.pool();
+
+    // 1. Password Verification (Security layer)
+    let password = params.password.ok_or(StatusCode::UNAUTHORIZED)?;
+    let user_row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if !bcrypt::verify(&password, &user_row.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    // Verify ownership
+    let archive = sqlx::query!(
+        "SELECT filename FROM archives WHERE id = $1 AND organization_id = $2",
+        archive_id, target_org_id
+    )
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let archive_path = state.archive_service.storage_dir().join(&archive.filename);
+    let data = std::fs::read(&archive_path).map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // 2. ATOMIC DELETE (Burn after download)
+    let _ = std::fs::remove_file(&archive_path);
+    let _ = sqlx::query!("DELETE FROM archives WHERE id = $1", archive_id).execute(pool).await;
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", archive.filename))
+        .body(Body::from(data))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+}
+
+pub async fn trigger_agent_archive(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let archive = state.archive_service.archive_agent_week(&agent_id, target_org_id).await
+        .map_err(|e| {
+            tracing::error!("Manual archival failed for {}: {}", agent_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if let Some(_arch) = archive {
+        // Notify admins (Item 12.4 Enhancement: DB-Backed Alerts)
+        let _ = state.notification_service.notify_archive_ready(target_org_id, &agent_id, &state.encryption_service).await;
+
+        Ok(Json(serde_json::json!({
+            "status": "success",
+            "archive_id": _arch.id,
+            "filename": _arch.filename,
+            "events_archived": _arch.event_count
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
+            "status": "skipped",
+            "message": "No events older than 3 days found for this agent."
+        })))
+    }
+}
+
+pub async fn get_org_settings(
+    State(state): State<AppState>,
+    claims: Claims,
+) -> Result<Json<crate::db::models::OrganizationSettings>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    
+    let settings = sqlx::query_as!(
+        crate::db::models::OrganizationSettings,
+        "SELECT * FROM organization_settings WHERE organization_id = $1",
+        org_id
+    )
+    .fetch_optional(state.db.pool())
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    match settings {
+        Some(mut s) => {
+            // Mask the encrypted password for the frontend
+            s.smtp_password_encrypted = s.smtp_password_encrypted.map(|_| "********".to_string());
+            Ok(Json(s))
+        },
+        None => {
+            // Return empty settings
+            Ok(Json(crate::db::models::OrganizationSettings {
+                id: Uuid::nil(),
+                organization_id: org_id,
+                smtp_host: None,
+                smtp_port: None,
+                smtp_username: None,
+                smtp_password_encrypted: None,
+                smtp_from_email: None,
+                smtp_enabled: false,
+                updated_at: Utc::now(),
+            }))
+        }
+    }
+}
+
+pub async fn update_org_settings(
+    State(state): State<AppState>,
+    claims: Claims,
+    Json(payload): Json<crate::db::models::UpdateOrganizationSettings>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // 1. Mandatory Password Verification (Security layer)
+    let user_row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
+        .fetch_optional(state.db.pool())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if !bcrypt::verify(&payload.verify_password, &user_row.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // 2. Encrypt SMTP Password if provided
+    let enc_smtp_pass = if let Some(raw_pass) = payload.smtp_password {
+        Some(state.encryption_service.encrypt(&raw_pass).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+    } else {
+        None
+    };
+
+    // 3. UPSERT Settings
+    sqlx::query!(
+        r#"
+        INSERT INTO organization_settings (organization_id, smtp_host, smtp_port, smtp_username, smtp_password_encrypted, smtp_from_email, smtp_enabled, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (organization_id) DO UPDATE
+        SET smtp_host = COALESCE($2, organization_settings.smtp_host),
+            smtp_port = COALESCE($3, organization_settings.smtp_port),
+            smtp_username = COALESCE($4, organization_settings.smtp_username),
+            smtp_password_encrypted = COALESCE($5, organization_settings.smtp_password_encrypted),
+            smtp_from_email = COALESCE($6, organization_settings.smtp_from_email),
+            smtp_enabled = COALESCE($7, organization_settings.smtp_enabled),
+            updated_at = NOW()
+        "#,
+        org_id,
+        payload.smtp_host,
+        payload.smtp_port,
+        payload.smtp_username,
+        enc_smtp_pass,
+        payload.smtp_from_email,
+        payload.smtp_enabled
+    )
+    .execute(state.db.pool())
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update org settings: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({"status": "success"})))
+}

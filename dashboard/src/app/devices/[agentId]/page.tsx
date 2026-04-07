@@ -1,8 +1,9 @@
 'use client'
 
+import React from 'react'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe } from 'lucide-react'
+import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database } from 'lucide-react'
 import { getAgents, getEvents, deleteAgentEvents } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -330,41 +331,46 @@ export default function DeviceDetailsPage() {
 
                 <div className="space-y-4">
                   {(() => {
+                    interface IpStat {
+                      count: number;
+                      processes: Record<string, number>;
+                    }
+
                     const noiseIps = ['127.0.0.1', '0.0.0.0', '::1', 'localhost'];
                     const netEvents = events.filter(e => (e.event_type === 'NETWORK_CONNECTION' || e.metadata?.remote_ip) && !noiseIps.includes(e.metadata?.remote_ip));
-                    const uniqueIps = Array.from(new Set(netEvents.map(e => e.metadata?.remote_ip).filter(Boolean)));
                     
-                    // Group by IP and track most common process
-                    const ipStats = netEvents.reduce((acc: any, ev) => {
-                      const ip = ev.metadata?.remote_ip;
+                    const ipStats = netEvents.reduce((acc: Record<string, IpStat>, ev) => {
+                      const ip = ev.metadata?.remote_ip as string;
                       if (!ip) return acc;
                       if (!acc[ip]) acc[ip] = { count: 0, processes: {} };
                       acc[ip].count++;
-                      const proc = ev.metadata?.process_name || 'unknown';
+                      const proc = (ev.metadata?.process_name as string) || 'unknown';
                       acc[ip].processes[proc] = (acc[ip].processes[proc] || 0) + 1;
                       return acc;
                     }, {});
 
                     const topIps = Object.entries(ipStats)
-                      .sort((a: any, b: any) => b[1].count - a[1].count)
+                      .sort((a, b) => b[1].count - a[1].count)
                       .slice(0, 6);
+
+                    const uniqueIpsCount = Object.keys(ipStats).length;
 
                     return (
                       <>
                         <div className="flex items-center justify-between bg-white/[0.02] p-4 rounded-lg border border-white/[0.05]">
                           <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Unique Destinations</span>
-                          <span className="text-xl font-bold text-white tabular-nums">{uniqueIps.length}</span>
+                          <span className="text-xl font-bold text-white tabular-nums">{uniqueIpsCount}</span>
                         </div>
                         
                         <div className="space-y-3">
                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Most Active External Connections</p>
-                          {topIps.length > 0 ? topIps.map(([ip, data]: [string, any]) => {
+                          {topIps.length > 0 ? topIps.map(([ip, data]) => {
                             const topProc = Object.entries(data.processes).sort((a: any, b: any) => b[1] - a[1])[0]?.[0];
                             return (
                               <div key={ip} className="flex flex-col space-y-1 group bg-white/[0.01] p-2 rounded-md hover:bg-white/[0.03] transition-colors">
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-mono text-cyan-400 font-bold">{ip}</span>
-                                  <span className="text-[10px] font-mono text-slate-600">{data.count} hits</span>
+                                  <span className="text-[10px] font-mono text-slate-600 tabular-nums">{data.count} hits</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <div className="w-1 h-1 rounded-full bg-cyan-500/40" />
@@ -413,17 +419,149 @@ export default function DeviceDetailsPage() {
               onResetFilter={resetClearFilter}
             />
 
+            {/* Forensic Archives Section (Item 12) */}
+            <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>Weekly Forensic Vault</h2>
+                  <p className="text-sm text-slate-500 mt-1">Snapshot archives of historical telemetry (Auto-purged every 7 days)</p>
+                </div>
+                <button 
+                  onClick={async () => {
+                    if (confirm("Manually archive all data older than 7 days for this agent?")) {
+                      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/${agentId}/archive`, { method: 'POST' });
+                      window.location.reload();
+                    }
+                  }}
+                  className="px-4 py-2 bg-cyan-500/10 text-cyan-400 text-xs font-bold rounded-lg border border-cyan-500/20 hover:bg-cyan-500/20 transition-all uppercase tracking-wider"
+                >
+                  Trigger Manual Archive
+                </button>
+              </div>
+
+              <ArchivesList agentId={agentId as string} />
+            </div>
+
             {/* General Telemetry Section */}
             <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Full Event Observation Log</h2>
               </div>
-              <TelemetryExplorer initialAgentId={agentId} />
+              <TelemetryExplorer initialAgentId={agentId as string} />
             </div>
           </div>
         </main>
       </div>
     </div>
   )
+}
+
+function ArchivesList({ agentId }: { agentId: string }) {
+  const [archives, setArchives] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = React.useState(false);
+  const [selectedArchiveId, setSelectedArchiveId] = React.useState<string | null>(null);
+  const [password, setPassword] = React.useState("");
+
+  React.useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/${agentId}/archives`)
+      .then(res => res.json())
+      .then(data => {
+        setArchives(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [agentId]);
+
+  const initiateDownload = (id: string) => {
+    setSelectedArchiveId(id);
+    setPassword("");
+    setIsAuthModalOpen(true);
+  };
+
+  const handleDownload = () => {
+    if (!password) return;
+    const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/archives/${selectedArchiveId}/download?password=${encodeURIComponent(password)}`;
+    window.location.href = url;
+    setIsAuthModalOpen(false);
+    // Reload archives after a small delay since it burns after download
+    setTimeout(() => {
+      window.location.reload();
+    }, 2000);
+  };
+
+  if (loading) return <div className="text-xs text-slate-500 italic">Initializing archive index...</div>;
+  if (archives.length === 0) return <div className="text-xs text-slate-500 italic py-8 border-2 border-dashed border-white/5 rounded-xl text-center">No forensic archives generated yet. Archives are created automatically every 3 days.</div>;
+
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {archives.map((archive) => (
+          <div key={archive.id} className="bg-white/[0.02] border border-white/[0.05] p-4 rounded-xl hover:bg-white/[0.04] transition-all group">
+            <div className="flex items-start justify-between mb-3">
+              <div className="bg-cyan-500/10 p-2 rounded-lg group-hover:scale-110 transition-transform">
+                <Archive className="w-4 h-4 text-cyan-400" />
+              </div>
+              <button 
+                onClick={() => initiateDownload(archive.id)}
+                className="text-[10px] font-bold text-cyan-400 hover:text-cyan-300 transition-colors bg-cyan-500/5 px-3 py-1.5 rounded border border-cyan-500/10 uppercase"
+              >
+                UNLOCK & DOWNLOAD
+              </button>
+            </div>
+            <p className="text-sm font-bold text-white mb-1">Window: {new Date(archive.start_date).toLocaleDateString()} - {new Date(archive.end_date).toLocaleDateString()}</p>
+            <div className="flex items-center gap-3 mt-2 text-[10px] font-mono text-slate-500">
+               <span className="flex items-center gap-1"><Database className="w-3 h-3" /> {Math.round(archive.size_bytes / 1024)} KB</span>
+               <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {archive.event_count} events</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <ShieldAlert className="w-6 h-6 text-cyan-400" />
+              <h3 className="text-lg font-bold text-white">Forensic Authentication Required</h3>
+            </div>
+            <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+              You are attempting to download a secure telemetry archive. This file will be <span className="text-cyan-400 font-bold">PERMANENTLY DELETED</span> from the server immediately after this download starts. 
+              <br/><br/>
+              Enter your Admin Password below. <span className="italic">Note: For security, your typing will be invisible (SSH style).</span>
+            </p>
+            
+            <div className="bg-black border border-white/5 p-4 rounded-xl mb-6 flex items-center gap-2 font-mono">
+              <span className="text-cyan-500">$</span>
+              <input 
+                type="password"
+                autoFocus
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDownload()}
+                className="bg-transparent border-none outline-none text-transparent caret-cyan-400 w-full"
+                placeholder="type password..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setIsAuthModalOpen(false)}
+                className="flex-1 bg-white/5 hover:bg-white/10 text-white text-xs font-bold py-3 rounded-xl transition-all"
+              >
+                CANCEL
+              </button>
+              <button 
+                onClick={handleDownload}
+                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/20"
+              >
+                VERIFY & DOWNLOAD
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 

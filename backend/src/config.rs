@@ -13,6 +13,11 @@ pub struct AppConfig {
     pub redis_url: String,
     pub jwt_secret: String,
     pub cors_allowed_origins: String,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_user: Option<String>,
+    pub smtp_pass: Option<String>,
+    pub smtp_from: String,
 }
 
 impl AppConfig {
@@ -40,6 +45,16 @@ impl AppConfig {
                 .unwrap_or_else(|_| "change-me-in-production".to_string()),
             cors_allowed_origins: env::var("CORS_ALLOWED_ORIGINS")
                 .unwrap_or_else(|_| "http://localhost:3000,https://rav.handy.boats".to_string()),
+            smtp_host: env::var("SMTP_HOST")
+                .unwrap_or_else(|_| "smtp.gmail.com".to_string()),
+            smtp_port: env::var("SMTP_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(587),
+            smtp_user: env::var("SMTP_USER").ok(),
+            smtp_pass: env::var("SMTP_PASS").ok(),
+            smtp_from: env::var("SMTP_FROM")
+                .unwrap_or_else(|_| "noreply@rav-security.com".to_string()),
         })
     }
 }

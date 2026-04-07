@@ -23,6 +23,9 @@ use db::Database;
 pub struct AppState {
     pub db: Arc<Database>,
     pub config: Arc<AppConfig>,
+    pub archive_service: Arc<crate::services::archive::ArchiveService>,
+    pub notification_service: Arc<crate::services::notifications::NotificationService>,
+    pub encryption_service: Arc<crate::services::crypto::EncryptionService>,
     pub file_storage_dir: std::path::PathBuf,
     pub server_start_time: chrono::DateTime<chrono::Utc>,
 }
@@ -59,13 +62,62 @@ async fn main() -> Result<()> {
     let file_storage_dir = std::path::PathBuf::from("storage/files");
     std::fs::create_dir_all(&file_storage_dir)?;
     info!("File storage directory: {}", file_storage_dir.display());
+
+    // Initialize Archive System
+    let archive_storage = std::path::PathBuf::from("storage/archives");
+    let archive_service = Arc::new(crate::services::archive::ArchiveService::new(db.pool().clone(), archive_storage));
+    info!("Archive storage: {}", archive_service.storage_dir().display());
     
+    // Initialize Notification System
+    let notification_service = Arc::new(crate::services::notifications::NotificationService::new(
+        config.clone(),
+        db.pool().clone()
+    ));
+
+    // Initialize Encryption System
+    let encryption_service = Arc::new(crate::services::crypto::EncryptionService::new(&config.jwt_secret));
+
     let app_state = AppState {
         db: db.clone(),
         config: config.clone(),
+        archive_service: archive_service.clone(),
+        notification_service: notification_service.clone(),
+        encryption_service: encryption_service.clone(),
         file_storage_dir: file_storage_dir.clone(),
         server_start_time: chrono::Utc::now(),
     };
+
+    // Spawn Background Archiver Job
+    let archive_bg = archive_service.clone();
+    let notify_bg = notification_service.clone();
+    let encryption_bg = encryption_service.clone();
+    let db_bg = db.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(12 * 3600)).await; // Run every 12 hours
+            info!("Running automated archive rotation check...");
+            
+            // Query agents with events older than 3 days
+            let result = sqlx::query!(
+                r#"
+                SELECT DISTINCT agent_id, organization_id 
+                FROM events 
+                WHERE created_at < NOW() - INTERVAL '3 days'
+                "#
+            )
+            .fetch_all(db_bg.pool())
+            .await;
+
+            if let Ok(targets) = result {
+                for target in targets {
+                    if let Ok(Some(_arch)) = archive_bg.archive_agent_week(&target.agent_id, target.organization_id).await {
+                        // Notify admins (DB-backed + Encrypted SMTP)
+                        let _ = notify_bg.notify_archive_ready(target.organization_id, &target.agent_id, &encryption_bg).await;
+                    }
+                }
+            }
+        }
+    });
     
     // Build application
     let app = Router::new()
@@ -85,6 +137,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/admin/audits", get(api::admin::list_audit_logs))
         .route("/api/v1/org/me", get(api::org::get_current_org))
         .route("/api/v1/org/stats", get(api::org::get_org_stats))
+        .route("/api/v1/org/settings", get(handlers::get_org_settings))
+        .route("/api/v1/org/settings", patch(handlers::update_org_settings))
         .route("/api/v1/org/audits", get(api::org::list_org_audit_logs))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
@@ -98,6 +152,9 @@ async fn main() -> Result<()> {
         .route("/api/v1/files/upload", post(handlers::upload_file))
         .layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)) // Allow up to 20MB for screenshot uploads
         .route("/api/v1/files/:file_id", get(handlers::download_file))
+        .route("/api/v1/agents/:agent_id/archives", get(handlers::list_agent_archives))
+        .route("/api/v1/archives/:archive_id/download", get(handlers::download_archive))
+        .route("/api/v1/agents/:agent_id/archive", post(handlers::trigger_agent_archive))
         .layer(
             CorsLayer::new()
                 .allow_origin(

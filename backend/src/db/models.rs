@@ -167,3 +167,40 @@ pub struct EnrichedAuditLog {
     pub actor_email: Option<String>,
     pub actor_name: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Archive {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub agent_id: String,
+    pub filename: String,
+    pub size_bytes: i64,
+    pub event_count: i32,
+    pub start_date: DateTime<Utc>,
+    pub end_date: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OrganizationSettings {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub smtp_host: Option<String>,
+    pub smtp_port: Option<i32>,
+    pub smtp_username: Option<String>,
+    pub smtp_password_encrypted: Option<String>,
+    pub smtp_from_email: Option<String>,
+    pub smtp_enabled: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateOrganizationSettings {
+    pub smtp_host: Option<String>,
+    pub smtp_port: Option<i32>,
+    pub smtp_username: Option<String>,
+    pub smtp_password: Option<String>,
+    pub smtp_from_email: Option<String>,
+    pub smtp_enabled: Option<bool>,
+    pub verify_password: String, // Required to save sensitive data
+}

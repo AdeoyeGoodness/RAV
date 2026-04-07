@@ -20,7 +20,7 @@ use crate::agent_logic;
 const SERVICE_NAME: &str = "RAV Agent";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-pub fn install_service() -> Result<()> {
+pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
     let current_exe = std::env::current_exe()?;
     let exe_path = current_exe.to_str().context("Invalid executable path")?;
     
@@ -28,9 +28,9 @@ pub fn install_service() -> Result<()> {
     // Note: sc expects space after =
     let status = std::process::Command::new("sc")
         .arg("create")
-        .arg(SERVICE_NAME)
+        .arg(service_name)
         .arg(&format!("binPath= {}", exe_path))
-        .arg("DisplayName= RAV Agent Enterprise Monitor")
+        .arg(&format!("DisplayName= {}", display_name))
         .arg("start= auto")
         .arg("type= own")
         .output()
@@ -68,14 +68,14 @@ pub fn install_service() -> Result<()> {
     Ok(())
 }
 
-pub fn uninstall_service() -> Result<()> {
+pub fn uninstall_service(service_name: &str) -> Result<()> {
     // Attempt stop first
-    let _ = std::process::Command::new("sc").arg("stop").arg(SERVICE_NAME).output();
+    let _ = std::process::Command::new("sc").arg("stop").arg(service_name).output();
     std::thread::sleep(Duration::from_secs(1)); // Grace period
-
+ 
     let status = std::process::Command::new("sc")
         .arg("delete")
-        .arg(SERVICE_NAME)
+        .arg(service_name)
         .output()
         .context("Failed to execute sc delete")?;
         
@@ -84,13 +84,13 @@ pub fn uninstall_service() -> Result<()> {
         anyhow::bail!("sc delete failed: {}", err.trim());
     }
     
-    info!("Service '{}' uninstalled successfully via sc.", SERVICE_NAME);
+    info!("Service '{}' uninstalled successfully via sc.", service_name);
     Ok(())
 }
-
-pub fn is_service_running() -> Result<bool> {
+ 
+pub fn is_service_running(service_name: &str) -> Result<bool> {
     let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)?;
-    match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+    match manager.open_service(service_name, ServiceAccess::QUERY_STATUS) {
         Ok(service) => {
             let status = service.query_status()?;
             Ok(status.current_state == ServiceState::Running || status.current_state == ServiceState::StartPending)
@@ -98,11 +98,11 @@ pub fn is_service_running() -> Result<bool> {
         Err(_) => Ok(false),
     }
 }
-
-pub fn start_service() -> Result<()> {
+ 
+pub fn start_service(service_name: &str) -> Result<()> {
     let status = std::process::Command::new("sc")
         .arg("start")
-        .arg(SERVICE_NAME)
+        .arg(service_name)
         .output()
         .context("Failed to execute sc start")?;
         
@@ -115,35 +115,33 @@ pub fn start_service() -> Result<()> {
         anyhow::bail!("sc start failed: {}", err.trim());
     }
     
-    info!("Service '{}' start signal sent via sc.", SERVICE_NAME);
+    info!("Service '{}' start signal sent via sc.", service_name);
     Ok(())
 }
 
 // Entry point for Service Execution
 pub fn run_as_service() -> Result<()> {
-    service_dispatcher::start(SERVICE_NAME, ffi_service_main)
+    let config = Config::load().unwrap_or_default();
+    let service_name = config.stealth.service_name.clone();
+    service_dispatcher::start(service_name, ffi_service_main)
         .context("Failed to start service dispatcher")?;
     Ok(())
 }
 
 define_windows_service!(ffi_service_main, my_service_main);
 
-fn my_service_main(_arguments: Vec<OsString>) {
-    // This runs on a separate thread spawned by SCM.
-    
-    // 1. Initialize Logging (File based? or EventLog? For now, standard env_filter but stdout goes nowhere)
-    // NOTE: In production, services should log to file or EventLog.
-    // We assume Config::load sets up logging if we call main init? 
-    // Actually `main.rs` did `tracing_subscriber`. We need to do it here too if we want logs.
-    // For now, let's skip complex logging setup to reuse `config`.
+fn my_service_main(arguments: Vec<OsString>) {
+    let service_name = arguments.get(0)
+        .and_then(|s| s.to_str())
+        .unwrap_or("RAV Agent")
+        .to_string();
 
-    if let Err(e) = run_service_logic() {
-        // Can't easily log error if stdout is null, but we'll try
+    if let Err(e) = run_service_logic(&service_name) {
         eprintln!("Service error: {}", e);
     }
 }
 
-fn run_service_logic() -> Result<()> {
+fn run_service_logic(service_name: &str) -> Result<()> {
     // Create a channel to handle Stop Event
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
     
@@ -158,7 +156,7 @@ fn run_service_logic() -> Result<()> {
     };
 
     // Register Handler
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
+    let status_handle = service_control_handler::register(service_name, event_handler)?;
 
     // Report RUNNING
     status_handle.set_service_status(ServiceStatus {

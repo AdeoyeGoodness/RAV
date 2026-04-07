@@ -11,10 +11,12 @@ pub mod monitoring;
 pub mod service;
 pub mod agent_logic;
 pub mod storage;
+pub mod utils;
 
 use config::Config;
 use sync::SyncManager;
 use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
+use utils::hide_file;
 
 fn main() -> Result<()> {
     // 1. CLI Argument Parsing (Fast, no side effects)
@@ -23,10 +25,18 @@ fn main() -> Result<()> {
     let mut uninstall_flag = false;
     let mut helper_flag = false;
     let mut native_host_flag = false;
+    let mut export_flag = false;
+    let mut export_path: Option<String> = None;
     let mut cli_token = None;
     let mut cli_server = None;
 
     for i in 0..args.len() {
+        if args[i] == "--export" {
+            export_flag = true;
+            if i + 1 < args.len() {
+                export_path = Some(args[i + 1].clone());
+            }
+        }
         if args[i] == "--enroll" || args[i] == "--enrollment-token" {
             if i + 1 < args.len() {
                 cli_token = Some(args[i + 1].clone());
@@ -62,6 +72,7 @@ fn main() -> Result<()> {
         // Service/CLI: Standard + File Logging
         let log_dir = "C:\\ProgramData\\RAV\\logs";
         let _ = std::fs::create_dir_all(log_dir);
+        let _ = hide_file(std::path::Path::new(log_dir));
         let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
@@ -83,9 +94,23 @@ fn main() -> Result<()> {
         attach_console();
     }
 
-    // 4. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost)
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag {
+    // 4. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost/Export)
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag || export_flag {
         info!("RAV Agent: Processing CLI commands...");
+
+        // Export Tool (Item 7.1)
+        if export_flag {
+            info!("RAV Agent: Exporting local telemetry data...");
+            let config = Config::load()?;
+            let storage = storage::StorageManager::new(config.agent.data_dir.clone())?;
+            let events = storage.fetch_unsynced_events(1000000)?;
+            let event_list: Vec<sync::Event> = events.into_iter().map(|(_, e)| e).collect();
+            let path = export_path.unwrap_or_else(|| "rav_export.json".to_string());
+            let json = serde_json::to_string_pretty(&event_list)?;
+            std::fs::write(&path, json)?;
+            println!("Export complete! {} events written to {}", event_list.len(), path);
+            return Ok(());
+        }
 
         // Native Messaging Host?
         if native_host_flag {
@@ -137,9 +162,10 @@ fn main() -> Result<()> {
 
         // Uninstall?
         if uninstall_flag {
-            #[cfg(windows)]
-            service::windows::uninstall_service()?;
-            return Ok(());
+             let config = Config::load().unwrap_or_default();
+             #[cfg(windows)]
+             service::windows::uninstall_service(&config.stealth.service_name)?;
+             return Ok(());
         }
 
         let mut config = Config::load()?;
@@ -199,18 +225,21 @@ fn main() -> Result<()> {
         }
 
         // Install Service (Implicit or Explicit)
-        // If we enrolled successfully (or just flags passed), we proceed to install.
-        // User scenario: `rav-agent.exe --server... --enroll...` -> Install service.
         #[cfg(windows)]
         {
-            info!("Installing Windows Service...");
-            if let Err(e) = service::windows::install_service() {
-               // Ignore if already exists?
+            info!("Installing service '{}'...", config.stealth.service_name);
+            if let Err(e) = service::windows::install_service(&config.stealth.service_name, &config.stealth.service_display_name) {
                tracing::warn!("Service installation note: {}", e);
             }
             
-            info!("Starting Windows Service...");
-            if let Err(e) = service::windows::start_service() {
+            // Item 5.3: Self-Hide
+            if let Ok(exe_path) = std::env::current_exe() {
+                let _ = hide_file(&exe_path);
+            }
+            let _ = hide_file(std::path::Path::new(&config.agent.data_dir));
+
+            info!("Starting service '{}'...", config.stealth.service_name);
+            if let Err(e) = service::windows::start_service(&config.stealth.service_name) {
                 tracing::warn!("Service start note: {}", e);
             }
         }

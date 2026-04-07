@@ -109,6 +109,10 @@ export default function Sidebar() {
                     <FileText className={iconClass('/documents')} />
                     <span className="font-medium text-sm">Documents</span>
                   </a>
+                  <a href="/settings/notifications" className={navItemClass('/settings/notifications')}>
+                    <Bell className={iconClass('/settings/notifications')} />
+                    <span className="font-medium text-sm">Forensic Alerts</span>
+                  </a>
                 </>
               )}
 

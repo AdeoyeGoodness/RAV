@@ -8,6 +8,7 @@ use crate::encryption;
 use crate::sync::SyncManager;
 use crate::monitoring;
 use crate::storage;
+use tokio::time::Duration;
 
 pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output = ()>) -> Result<()> {
     // Ensure HW Fingerprint is valid BEFORE anything else
@@ -45,6 +46,19 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
     };
 
     info!("RAV Agent running. Waiting for shutdown...");
+
+    // Start periodic state persistence (Item 6.2)
+    let sync_p = sync_manager.clone();
+    let interval_mins = if config_arc.persistence.save_interval_minutes == 0 { 5 } else { config_arc.persistence.save_interval_minutes };
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(interval_mins * 60));
+        loop {
+            interval.tick().await;
+            if let Err(e) = sync_p.persist_state().await {
+                error!("State persistence error: {}", e);
+            }
+        }
+    });
 
     // Wait for shutdown signal
     shutdown_signal.await;
@@ -130,48 +144,93 @@ async fn start_monitoring(
     sync_manager: Arc<SyncManager>,
 ) -> Result<tokio::task::JoinHandle<()>> {
     let handle = tokio::spawn(async move {
-        // Start all monitoring modules as separate concurrent tasks
-        // Each runs in its own infinite loop, so they need to be spawned separately
+        // Start all monitoring modules as separate concurrent tasks with self-healing (Item 8.2)
         
-        // Start USB monitoring (runs in infinite loop)
+        // 1. USB Monitoring
         let config_usb = config.clone();
         let sync_usb = sync_manager.clone();
         tokio::spawn(async move {
-            if let Err(e) = monitoring::usb::start_monitoring(config_usb, sync_usb).await {
-                error!("USB monitoring error: {}", e);
+            loop {
+                info!("Starting/Restarting USB monitoring...");
+                if let Err(e) = monitoring::usb::start_monitoring(config_usb.clone(), sync_usb.clone()).await {
+                    error!("USB monitoring module CRASHED: {}. Restarting in 10s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(10)).await;
             }
         });
 
-        // Start network monitoring (runs in infinite loop)
+        // 2. Network Monitoring
         let config_network = config.clone();
         let sync_network = sync_manager.clone();
         tokio::spawn(async move {
-            if let Err(e) = monitoring::network::start_monitoring(config_network, sync_network).await {
-                error!("Network monitoring error: {}", e);
+            loop {
+                info!("Starting/Restarting Network monitoring...");
+                if let Err(e) = monitoring::network::start_monitoring(config_network.clone(), sync_network.clone()).await {
+                    error!("Network monitoring module CRASHED: {}. Restarting in 10s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(10)).await;
             }
         });
 
-        // Start screenshot monitoring (runs in infinite loop)
+        // 3. Screenshot Monitoring
         let config_screenshots = config.clone();
         let sync_screenshots = sync_manager.clone();
-        info!("Attempting to start screenshot monitoring...");
         tokio::spawn(async move {
-            if let Err(e) = monitoring::screenshots::start_monitoring(config_screenshots, sync_screenshots).await {
-                error!("Screenshot monitoring error: {}", e);
+            loop {
+                info!("Starting/Restarting Screenshot monitoring...");
+                if let Err(e) = monitoring::screenshots::start_monitoring(config_screenshots.clone(), sync_screenshots.clone()).await {
+                    error!("Screenshot monitoring module CRASHED: {}. Restarting in 10s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(10)).await;
             }
         });
 
-        // Start extension server (HTTP endpoint for browser extension)
+        // 4. Extension Server
         let config_extension = config.clone();
         let sync_extension = sync_manager.clone();
-        info!("Starting extension server on http://127.0.0.1:8089");
         tokio::spawn(async move {
-            if let Err(e) = monitoring::extension_server::start_extension_server(config_extension, sync_extension).await {
-                error!("Extension server error: {}", e);
+            loop {
+                info!("Starting/Restarting Extension Server...");
+                if let Err(e) = monitoring::extension_server::start_extension_server(config_extension.clone(), sync_extension.clone()).await {
+                    error!("Extension server CRASHED: {}. Restarting in 15s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(15)).await;
             }
         });
 
-        // Keep this task alive forever (all monitoring tasks run in background)
+        // 5. Resource Watcher (Item 11.2, 11.3, 11.4) + Tamper Detection (5.7)
+        let config_res = config.clone();
+        let sync_res = sync_manager.clone();
+        tokio::spawn(async move {
+            use sysinfo::{System, ProcessExt};
+            let mut sys = System::new();
+            let pid = sysinfo::get_current_pid().ok();
+            
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                
+                // 1. Tamper Check (Item 5.7)
+                if let Ok(true) = crate::utils::detect_tampering(&config_res.stealth.service_name) {
+                     sync_res.audit_event("CRITICAL: Local service tampering detected! Service entry missing or modified.", "critical").await;
+                }
+
+                // 2. Resource Monitoring (Item 11.2)
+                if let Some(pid) = pid {
+                    sys.refresh_process(pid);
+                    if let Some(proc) = sys.process(pid) {
+                        let mem_kb = proc.memory();
+                        let mem_mb = mem_kb / 1024;
+                        
+                        if mem_mb > config_res.performance.max_memory_mb {
+                            warn!("Resource Alert: Agent memory usage ({} MB) exceeds limit ({} MB). Throttling activities...", 
+                                 mem_mb, config_res.performance.max_memory_mb);
+                        }
+                    }
+                }
+            }
+        });
+
+        // Keep this task alive (all monitoring tasks run in background)
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
         }

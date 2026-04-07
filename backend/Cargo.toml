@@ -54,6 +54,14 @@ tower_governor = "0.2"
 # Random jitter for telemetry
 rand = "0.8"
 
+# Archiving
+zip = "0.6"
+
+# Notifications & Encryption
+lettre = { version = "0.11", features = ["tokio-rustls-tls", "smtp-transport", "hostname", "builder"] }
+aes-gcm = "0.10"
+base64 = "0.21"
+
 [features]
 default = []
 # s3 = ["aws-sdk-s3", "aws-config"]

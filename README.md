@@ -1,4 +1,4 @@
-# RAV - Enterprise Digital Forensics & Endpoint Monitoring Platform
+RAV - Enterprise Digital Forensics & Endpoint Monitoring Platform
 
 A comprehensive, enterprise-grade digital forensics and endpoint monitoring platform designed for Windows, macOS, and Linux environments.
 

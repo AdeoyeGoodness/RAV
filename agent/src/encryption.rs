@@ -20,9 +20,88 @@ pub fn initialize(config: &Config) -> Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
+    use winapi::um::dpapi::CryptProtectData;
+    use winapi::um::wincrypt::{CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB};
+    use std::ptr;
+
+    let mut input = DATA_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut _,
+    };
+    let mut output = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    let result = unsafe {
+        CryptProtectData(
+            &mut input,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+    };
+
+    if result == 0 {
+        return Err(anyhow::anyhow!("DPAPI CryptProtectData failed"));
+    }
+
+    let vec = unsafe {
+        std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec()
+    };
+    unsafe {
+        winapi::um::winbase::LocalFree(output.pbData as *mut _);
+    }
+    Ok(vec)
+}
+
+#[cfg(windows)]
+pub fn unprotect(data: &[u8]) -> Result<Vec<u8>> {
+    use winapi::um::dpapi::CryptUnprotectData;
+    use winapi::um::wincrypt::{CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB};
+    use std::ptr;
+
+    let mut input = DATA_BLOB {
+        cbData: data.len() as u32,
+        pbData: data.as_ptr() as *mut _,
+    };
+    let mut output = DATA_BLOB {
+        cbData: 0,
+        pbData: ptr::null_mut(),
+    };
+
+    let result = unsafe {
+        CryptUnprotectData(
+            &mut input,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+    };
+
+    if result == 0 {
+        return Err(anyhow::anyhow!("DPAPI CryptUnprotectData failed"));
+    }
+
+    let vec = unsafe {
+        std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec()
+    };
+    unsafe {
+        winapi::um::winbase::LocalFree(output.pbData as *mut _);
+    }
+    Ok(vec)
+}
+
 fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
     // SECURITY: Prevent Path Traversal
-    // Ensure the path does not contain relative components like '..'
     for component in key_path.components() {
         if matches!(component, std::path::Component::ParentDir) {
             anyhow::bail!("Security Violation: Encryption key path cannot contain '..'");
@@ -31,28 +110,36 @@ fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
 
     let key_bytes = if key_path.exists() {
         // Load existing key
-        let encrypted_key = fs::read(key_path)
+        let stored_key = fs::read(key_path)
             .context("Failed to read encryption key file")?;
         
-        // In production, this should decrypt the key using a master key
-        // For now, we'll assume the key is stored securely
-        if encrypted_key.len() != KEY_SIZE {
-            anyhow::bail!("Invalid key size");
+        // Use DPAPI to decrypt the master key on Windows
+        #[cfg(windows)]
+        {
+            unprotect(&stored_key).context("Failed to decrypt master key via DPAPI")?
         }
-        
-        encrypted_key
+        #[cfg(not(windows))]
+        {
+            stored_key
+        }
     } else {
         // Generate new key
-        let key_bytes: [u8; KEY_SIZE] = Aes256Gcm::generate_key(&mut OsRng).into();
+        let key: [u8; KEY_SIZE] = Aes256Gcm::generate_key(&mut OsRng).into();
+        let key_vec = key.to_vec();
         
         // Ensure parent directory exists
         if let Some(parent) = key_path.parent() {
             fs::create_dir_all(parent)?;
         }
         
-        // In production, encrypt this key with a master key before storing
-        fs::write(key_path, &key_bytes)
-            .context("Failed to write encryption key file")?;
+        // Protect the key with DPAPI before storing on Windows
+        #[cfg(windows)]
+        let data_to_store = protect(&key_vec).context("Failed to encrypt master key via DPAPI")?;
+        #[cfg(not(windows))]
+        let data_to_store = key_vec.clone();
+
+        fs::write(key_path, &data_to_store)
+            .context("Failed to write protected encryption key file")?;
         
         // Set restrictive permissions (Unix only)
         #[cfg(unix)]
@@ -63,8 +150,12 @@ fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
             fs::set_permissions(key_path, perms)?;
         }
         
-        key_bytes.to_vec()
+        key_vec
     };
+
+    if key_bytes.len() != KEY_SIZE {
+        anyhow::bail!("Invalid key size: expected {} bytes, got {}", KEY_SIZE, key_bytes.len());
+    }
 
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     Ok(Aes256Gcm::new(key))

@@ -1,0 +1,143 @@
+use crate::db::models::{Event, Archive};
+use sqlx::{PgPool, Postgres, Transaction};
+use anyhow::{Result, Context};
+use chrono::{DateTime, Utc, Duration};
+use std::fs;
+use std::path::{Path, PathBuf};
+use zip::write::FileOptions;
+use std::io::Write;
+use uuid::Uuid;
+use tracing::{info, error, warn};
+
+pub struct ArchiveService {
+    pool: PgPool,
+    storage_dir: PathBuf,
+}
+
+impl ArchiveService {
+    pub fn new(pool: PgPool, storage_dir: PathBuf) -> Self {
+        if !storage_dir.exists() {
+            fs::create_dir_all(&storage_dir).expect("Failed to create archive storage directory");
+        }
+        Self { pool, storage_dir }
+    }
+
+    pub fn storage_dir(&self) -> &Path {
+        &self.storage_dir
+    }
+
+    /// Primary task: Archive all events for an agent from the last 3 days, ZIP them, and DELETE from main DB.
+    pub async fn archive_agent_week(&self, agent_id: &str, org_id: Uuid) -> Result<Option<Archive>> {
+        let now = Utc::now();
+        let three_days_ago = now - Duration::days(3);
+
+        // 1. Fetch events for the window
+        let events = sqlx::query_as!(
+            Event,
+            r#"
+            SELECT * FROM events 
+            WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
+            ORDER BY created_at ASC
+            "#,
+            agent_id,
+            org_id,
+            three_days_ago
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        if events.is_empty() {
+            return Ok(None);
+        }
+
+        let event_count = events.len() as i32;
+        let start_date = events.first().unwrap().created_at;
+        let end_date = events.last().unwrap().created_at;
+
+        // 2. Prepare JSON Payload
+        let json_data = serde_json::to_string_pretty(&events)?;
+        
+        // 3. Create ZIP file
+        let archive_id = Uuid::new_v4();
+        let filename = format!("{}_{}.zip", agent_id, archive_id);
+        let archive_path = self.storage_dir.join(&filename);
+        
+        let file = fs::File::create(&archive_path)?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        zip.start_file("events.json", options)?;
+        zip.write_all(json_data.as_bytes())?;
+        zip.finish()?;
+
+        let size_bytes = fs::metadata(&archive_path)?.len() as i64;
+
+        // 4. Record Archive in DB and Purge Events (Atomic Transaction)
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query!(
+            r#"
+            INSERT INTO archives (id, organization_id, agent_id, filename, size_bytes, event_count, start_date, end_date, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            "#,
+            archive_id,
+            org_id,
+            agent_id,
+            filename,
+            size_bytes,
+            event_count,
+            start_date,
+            end_date,
+            now
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // DELETE THE ARCHIVED EVENTS
+        sqlx::query!(
+            r#"
+            DELETE FROM events 
+            WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
+            "#,
+            agent_id,
+            org_id,
+            three_days_ago
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        info!("Successfully archived {} events for agent {} into {}", event_count, agent_id, filename);
+
+        Ok(Some(Archive {
+            id: archive_id,
+            organization_id: org_id,
+            agent_id: agent_id.to_string(),
+            filename,
+            size_bytes,
+            event_count,
+            start_date,
+            end_date,
+            created_at: now,
+        }))
+    }
+
+    pub async fn list_archives(&self, agent_id: &str, org_id: Uuid) -> Result<Vec<Archive>> {
+        let archives = sqlx::query_as!(
+            Archive,
+            r#"
+            SELECT * FROM archives 
+            WHERE agent_id = $1 AND organization_id = $2
+            ORDER BY created_at DESC
+            "#,
+            agent_id,
+            org_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(archives)
+    }
+}

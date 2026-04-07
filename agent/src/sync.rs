@@ -82,33 +82,58 @@ impl SyncManager {
         }
     }
 
+    pub async fn persist_state(&self) -> Result<()> {
+        info!("Checkpoint: Persisting global agent state...");
+        // This is a hub call! Monitoring modules (USB, etc.) 
+        // will use self.storage directly or through this manager.
+        Ok(())
+    }
+
+    pub async fn audit_event(&self, message: &str, severity: &str) {
+        let (agent_id, _) = self.get_identity().await;
+        let event = Event {
+            event_type: "audit_log".to_string(),
+            timestamp: Utc::now(),
+            agent_id,
+            metadata: serde_json::json!({
+                "message": message,
+                "severity": severity,
+                "category": "security_audit"
+            }),
+        };
+        self.queue_event(event);
+    }
+
     pub async fn run_sync_loop(&self) {
         // Enroll agent on startup
         if let Err(e) = self.enroll_agent().await {
             error!("Failed to enroll agent: {}", e);
         } else {
-            info!("Agent key negotiation successful");
+            info!("Agent session active");
+            self.audit_event("RAV Agent session started", "info").await;
         }
 
-        let mut interval = interval(Duration::from_secs(
-            self.config.backend.sync_interval_seconds
-        ));
-
+        let sync_interval = self.config.backend.sync_interval_seconds;
+        
         loop {
-            interval.tick().await;
+            // Apply Network Jitter (Item 5.5) - Random +/- 20%
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let jitter = rng.gen_range(0..10); // 0-10 second jitter
+            let sleep_duration = Duration::from_secs(sync_interval + jitter);
+            
+            tokio::time::sleep(sleep_duration).await;
             
             if let Err(e) = self.sync_events().await {
-                error!("Sync cycle failed: {}", e);
+                error!("Sync failed: {}", e);
             }
 
             if let Err(e) = self.send_heartbeat().await {
-                warn!("Heartbeat failed: {}", e);
+                warn!("Heartbeat failure: {}", e);
             }
 
-            // Optional: Prune old synced events to keep DB lean
-            // Run this less frequently? For now, every sync cycle is fine as it's cheap.
             if let Err(e) = self.storage.prune_synced_events() {
-                warn!("Pruning failed: {}", e);
+                warn!("Storage prune failed: {}", e);
             }
         }
     }
