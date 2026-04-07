@@ -188,7 +188,7 @@ function tryCreateSearchEvent(item: chrome.history.HistoryItem): BrowserEvent | 
 /**
  * Fetch recent history and sync (for initial load or catch-up)
  */
-export async function syncRecentHistory(maxResults: number = 100, daysBack: number = 7): Promise<number> {
+export async function syncRecentHistory(maxResults: number = 10000, daysBack: number = 7): Promise<number> {
     const startTime = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
 
     try {
@@ -316,12 +316,18 @@ function mapDownloadState(state: string): DownloadData['state'] {
 /**
  * Sync recent downloads (for initial load or catch-up)
  */
-export async function syncRecentDownloads(maxResults: number = 50): Promise<number> {
+export async function syncRecentDownloads(maxResults: number = 0): Promise<number> {
     try {
-        const results = await chrome.downloads.search({
-            limit: maxResults,
+        const searchParams: chrome.downloads.DownloadQuery = {
             orderBy: ['-startTime']
-        });
+        };
+
+        // If maxResults is specified, apply limit
+        if (maxResults > 0) {
+            searchParams.limit = maxResults;
+        }
+
+        const results = await chrome.downloads.search(searchParams);
 
         let count = 0;
         for (const item of results) {

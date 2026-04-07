@@ -68,11 +68,11 @@ async function performInitialSync(): Promise<void> {
         return;
     }
 
-    // Sync recent history (last 7 days, max 100 items)
-    await syncRecentHistory(100, DEFAULT_CONFIG.max_history_age_days);
+    // Sync recent history - INCREASED TO 10,000 for comprehensive capture
+    await syncRecentHistory(10000, DEFAULT_CONFIG.max_history_age_days);
 
-    // Sync recent downloads (max 50 items)
-    await syncRecentDownloads(50);
+    // Sync recent downloads - Set to 0 for unlimited/all
+    await syncRecentDownloads(0);
 
     // Sync to agent
     await agentClient.sync();

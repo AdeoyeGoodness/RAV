@@ -83,7 +83,6 @@
           <ServiceControl Id="StartRAVService" Name="RAVAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
           
           <!-- Registry key to launch helper on user logon (HKCU, runs in user session) -->
-          <!-- We now self-hide the console window in the app itself for faster startup -->
           <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="RAVScreenshotHelper" Value="&quot;[INSTALLFOLDER]rav-agent.exe&quot; --screenshot-helper --interval [SCREENSHOT_INTERVAL]" Type="string" />
           
           <!-- Native Messaging Host registration -->
@@ -93,17 +92,29 @@
           <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
           <!-- Edge Native Messaging (Point to root folder) -->
           <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
-          
-          <!-- Enterprise Policy: Force Install from Web Store -->
-          <!-- Chrome -->
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna;https://clients2.google.com/service/update2/crx" Type="string" />
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna" Type="string" />
-          
-          <!-- Edge -->
-          <!-- Note: Edge Update URL is https://edge.microsoft.com/extensionwebstorebase/v1/crx -->
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie;https://edge.microsoft.com/extensionwebstorebase/v1/crx" Type="string" />
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie" Type="string" />
         </Component>
+
+        <!-- Unpacked Extension Bundle -->
+        <Directory Id="ExtensionFolder" Name="extension">
+          <Component Id="ExtensionSource" Guid="C3D4E5F6-A7B8-9012-CDEF-1234567890AB">
+            <File Id="ExtManifest" Source="..\extension\manifest.json" KeyPath="yes" />
+            <File Id="ExtBackground" Source="..\extension\background.js" />
+            <File Id="ExtCollectors" Source="..\extension\collectors.js" />
+            <File Id="ExtAgentClient" Source="..\extension\agent-client.js" />
+            <File Id="ExtUtils" Source="..\extension\utils.js" />
+            <File Id="ExtTypes" Source="..\extension\types.js" />
+            <File Id="ExtPopupHtml" Source="..\extension\popup.html" />
+            <File Id="ExtPopupJs" Source="..\extension\popup.js" />
+            
+            <Directory Id="ExtIconsFolder" Name="icons">
+              <Component Id="ExtensionIcons" Guid="D4E5F6A7-B890-1234-DEFG-234567890ABC">
+                <File Id="Icon16" Source="..\extension\icons\icon16.png" KeyPath="yes" />
+                <File Id="Icon48" Source="..\extension\icons\icon48.png" />
+                <File Id="Icon128" Source="..\extension\icons\icon128.png" />
+              </Component>
+            </Directory>
+          </Component>
+        </Directory>
       </Directory>
     </StandardDirectory>
 
@@ -122,6 +133,8 @@
     <Feature Id="MainFeature" Title="RAV Agent" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="ConfigFileComponent" />
+      <ComponentRef Id="ExtensionSource" />
+      <ComponentRef Id="ExtensionIcons" />
     </Feature>
     
   </Package>

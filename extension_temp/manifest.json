@@ -1,0 +1,33 @@
+{
+    "manifest_version": 3,
+    "name": "RAV Browser Monitor",
+    "version": "1.0.1",
+    "description": "Secure browser activity monitoring for RAV platform. Collects active tabs, history, and downloads.",
+    "permissions": [
+        "tabs",
+        "history",
+        "downloads",
+        "storage",
+        "alarms",
+        "nativeMessaging"
+    ],
+    "host_permissions": [],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "minimum_chrome_version": "102"
+}

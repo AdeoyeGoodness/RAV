@@ -3,6 +3,7 @@
     "name": "RAV Browser Monitor",
     "version": "1.0.1",
     "description": "Secure browser activity monitoring for RAV platform. Collects active tabs, history, and downloads.",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8ygxMuc2/HQ77BEKQR2oXRiCFiFguiXcD+axx43X8/Rfd3s1BnKyKwQIDAQABK4TiODb2WmB1jl1A/ZE/0TdZ4WQ9fkdr/q5T4t4miNYOWgrmYheszpa7z//hXMG5fyB1OuoUy84fHHw1EZmB",
     "permissions": [
         "tabs",
         "history",
@@ -11,7 +12,10 @@
         "alarms",
         "nativeMessaging"
     ],
-    "host_permissions": [],
+    "host_permissions": [
+        "http://127.0.0.1:3000/*",
+        "http://localhost:3000/*"
+    ],
     "background": {
         "service_worker": "background.js",
         "type": "module"
