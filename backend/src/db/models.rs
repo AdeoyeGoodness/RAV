@@ -24,6 +24,8 @@ pub struct Agent {
     pub hostname: Option<String>,
     pub last_seen: DateTime<Utc>,
     pub token_expiry: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub last_archived_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -36,8 +38,9 @@ pub struct Event {
     pub event_type: String,
     pub timestamp: DateTime<Utc>,
     pub metadata: serde_json::Value,
-    pub severity: String,
-    pub category: String,
+    pub severity: Option<String>,
+    pub category: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -190,7 +193,7 @@ pub struct OrganizationSettings {
     pub smtp_username: Option<String>,
     pub smtp_password_encrypted: Option<String>,
     pub smtp_from_email: Option<String>,
-    pub smtp_enabled: bool,
+    pub smtp_enabled: Option<bool>,
     pub updated_at: DateTime<Utc>,
 }
 
