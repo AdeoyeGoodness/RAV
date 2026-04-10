@@ -82,7 +82,7 @@ export default function ArchivesPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header />
         
-        <main className="flex-1 overflow-y-auto p-8 lg:p-12 pt-32 ml-64">
+        <main className="flex-1 overflow-y-auto p-8 lg:p-12 mt-20 ml-64">
           <div className="max-w-6xl mx-auto">
             {/* Page Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
