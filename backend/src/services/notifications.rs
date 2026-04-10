@@ -36,7 +36,7 @@ impl NotificationService {
         .await?;
 
         let settings = match settings {
-            Some(s) if s.smtp_enabled => s,
+            Some(s) if s.smtp_enabled.unwrap_or(false) => s,
             _ => {
                 info!("Archiving notification skipped for Org {}: SMTP not configured or disabled.", org_id);
                 return Ok(());
