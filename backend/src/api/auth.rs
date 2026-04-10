@@ -108,6 +108,33 @@ pub async fn login(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // Organization Access Guard (Multi-tenant Expiry Fix)
+    // Super Admins are exempt from organization-level expiry checks to prevent platform lockout
+    if user.role != "super_admin" {
+        if let Some(org_id) = user.organization_id {
+            let org = sqlx::query!(
+                "SELECT status, token_expiry FROM organizations WHERE id = $1",
+                org_id
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to fetch org for login check: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            if org.status != "active" {
+                return Err(StatusCode::FORBIDDEN);
+            }
+
+            if let Some(expiry) = org.token_expiry {
+                if expiry < Utc::now() {
+                    return Err(StatusCode::PAYMENT_REQUIRED);
+                }
+            }
+        }
+    }
+
     let exp = Utc::now()
         .checked_add_signed(Duration::hours(24))
         .expect("valid timestamp")
@@ -231,6 +258,31 @@ pub async fn me(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Organization Access Guard (Session validation)
+    let role: String = user_row.get(4);
+    if role != "super_admin" {
+        let org_id: Option<Uuid> = user_row.get(1);
+        if let Some(oid) = org_id {
+            let org = sqlx::query!(
+                "SELECT status, token_expiry FROM organizations WHERE id = $1",
+                oid
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            if org.status != "active" {
+                return Err(StatusCode::FORBIDDEN);
+            }
+
+            if let Some(expiry) = org.token_expiry {
+                if expiry < Utc::now() {
+                    return Err(StatusCode::PAYMENT_REQUIRED);
+                }
+            }
+        }
+    }
 
     Ok(Json(UserResponse {
         id: user_row.get(0),

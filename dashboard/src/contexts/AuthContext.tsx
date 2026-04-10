@@ -31,10 +31,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 if (user.organization_id) {
                     localStorage.setItem('rav_organization_id', user.organization_id)
                 }
-            } catch (error) {
+            } catch (error: any) {
                 setUser(null)
                 setApiAuthority(null, null)
                 localStorage.removeItem('rav_organization_id')
+
+                const status = error.response?.status;
+                if (status === 402) {
+                    router.push('/login?error=expired')
+                } else if (status === 403) {
+                    router.push('/login?error=suspended')
+                }
             } finally {
                 setIsLoading(false)
             }

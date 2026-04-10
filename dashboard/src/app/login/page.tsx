@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Shield, Lock, Mail, Loader2, AlertCircle, Eye, EyeOff, Fingerprint, Scan } from 'lucide-react'
 import { login as apiLogin } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -149,11 +149,19 @@ export default function LoginPage() {
     const [focusedField, setFocusedField] = useState<string | null>(null)
     const [mounted, setMounted] = useState(false)
     const router = useRouter()
+    const searchParams = useSearchParams()
     const { login } = useAuth()
 
     useEffect(() => {
         setMounted(true)
-    }, [])
+        
+        const errorType = searchParams.get('error')
+        if (errorType === 'expired') {
+            setError('Subscription Expired: Your organization\'s access period has ended. Please contact your administrator to renew.')
+        } else if (errorType === 'suspended') {
+            setError('Access Restricted: Your organization account has been paused or suspended. Please contact support.')
+        }
+    }, [searchParams])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -165,7 +173,15 @@ export default function LoginPage() {
             login(response.token, response.user)
         } catch (err: any) {
             console.error('Login failed:', err)
-            setError(err.response?.data?.message || 'Invalid email or password. Please try again.')
+            const status = err.response?.status;
+            
+            if (status === 402) {
+                setError('Subscription Expired: Your organization\'s access period has ended. Please contact your administrator to renew your forensic vault subscription.')
+            } else if (status === 403) {
+                setError('Access Restricted: Your organization account has been paused or suspended. Please contact DNEON Enterprise support for assistance.')
+            } else {
+                setError(err.response?.data?.message || 'Invalid credentials. Access to the command center denied.')
+            }
         } finally {
             setLoading(false)
         }
