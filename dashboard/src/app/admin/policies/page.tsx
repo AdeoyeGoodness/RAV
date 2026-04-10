@@ -104,9 +104,9 @@ export default function PoliciesPage() {
     return (
         <div className="flex h-screen bg-[#050510] text-slate-200 font-sans selection:bg-sky-500/30">
             <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden ml-64">
+            <div className="flex-1 flex flex-col overflow-hidden">
                 <Header />
-                <main className="flex-1 overflow-auto p-8 pt-32 space-y-6">
+                <main className="flex-1 overflow-auto p-8 pt-32 space-y-6 ml-64">
                     {/* Header */}
                     <div className="mb-10 flex items-start gap-4">
                         <button
