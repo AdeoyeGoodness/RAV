@@ -36,6 +36,8 @@
     
     <InstallExecuteSequence>
         <ScheduleReboot After="InstallFinalize" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
+        <!-- Patch native host JSON with real install path after files are copied -->
+        <Custom Action="PatchNativeHostManifest" After="InstallFiles" />
     </InstallExecuteSequence>
     
     
@@ -76,7 +78,7 @@
     <!-- Install directory structure -->
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="RAV Agent">
-        <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+        <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" Bitness="always64">
           <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
           <File Id="AgentNativeHostBat" Source="rav-native-host.bat" />
           <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem" />
@@ -88,15 +90,20 @@
           <!-- Native Messaging Host registration -->
           <File Id="NativeHostManifestChrome" Source="native-messaging-host.json" Name="com.rav.agent.json" />
           
-          <!-- Chrome Native Messaging (Point to root folder) -->
+          <!-- Chrome Native Messaging (HKLM) -->
           <RegistryValue Root="HKLM" Key="SOFTWARE\Google\Chrome\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
-          <!-- Edge Native Messaging (Point to root folder) -->
+          <!-- Chrome Native Messaging (HKCU) -->
+          <RegistryValue Root="HKCU" Key="SOFTWARE\Google\Chrome\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
+          
+          <!-- Edge Native Messaging (HKLM) -->
           <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
+          <!-- Edge Native Messaging (HKCU) -->
+          <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
         </Component>
 
         <!-- Unpacked Extension Bundle -->
         <Directory Id="ExtensionFolder" Name="extension">
-          <Component Id="ExtensionSource" Guid="C3D4E5F6-A7B8-9012-CDEF-1234567890AB">
+          <Component Id="ExtensionSource" Guid="C3D4E5F6-A7B8-9012-CDEF-1234567890AB" Bitness="always64">
             <File Id="ExtManifest" Source="..\extension\manifest.json" KeyPath="yes" />
             <File Id="ExtBackground" Source="..\extension\background.js" />
             <File Id="ExtCollectors" Source="..\extension\collectors.js" />
@@ -105,30 +112,40 @@
             <File Id="ExtTypes" Source="..\extension\types.js" />
             <File Id="ExtPopupHtml" Source="..\extension\popup.html" />
             <File Id="ExtPopupJs" Source="..\extension\popup.js" />
-            
-            <Directory Id="ExtIconsFolder" Name="icons">
-              <Component Id="ExtensionIcons" Guid="D4E5F6A7-B890-1234-DEFG-234567890ABC">
-                <File Id="Icon16" Source="..\extension\icons\icon16.png" KeyPath="yes" />
-                <File Id="Icon48" Source="..\extension\icons\icon48.png" />
-                <File Id="Icon128" Source="..\extension\icons\icon128.png" />
-              </Component>
-            </Directory>
           </Component>
+          <Directory Id="ExtIconsFolder" Name="icons">
+            <Component Id="ExtensionIcons" Guid="D4E5F6A7-B890-1234-CAD6-234567890ABC" Bitness="always64">
+              <File Id="Icon16" Source="..\extension\icons\icon16.png" KeyPath="yes" />
+              <File Id="Icon48" Source="..\extension\icons\icon48.png" />
+              <File Id="Icon128" Source="..\extension\icons\icon128.png" />
+            </Component>
+          </Directory>
         </Directory>
       </Directory>
     </StandardDirectory>
 
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="ProgramDataRAV" Name="RAV">
-        <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012">
-          <!-- Narrow permissions: Only SYSTEM and Admins should touch the config (contains tokens) -->
-          <CreateFolder />
+        <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012" Bitness="always64">
+          <!-- Wider permissions: The native host (User) needs to read config and write logs -->
+          <CreateFolder>
+            <util:PermissionEx User="Users" GenericAll="yes" />
+          </CreateFolder>
           <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
           <IniFile Id="WriteBackendUrl" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="url" Value="&quot;[BACKEND_URL]&quot;" />
           <IniFile Id="WriteEnrollmentToken" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="enrollment_token" Value="&quot;[ENROLLMENT_TOKEN]&quot;" />
         </Component>
       </Directory>
     </StandardDirectory>
+
+    <!-- Dynamically patch the native host manifest path after files are installed -->
+    <!-- This makes the MSI universal - works wherever the user installs -->
+    <CustomAction Id="PatchNativeHostManifest"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]rav-native-host.bat&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
 
     <Feature Id="MainFeature" Title="RAV Agent" Level="1">
       <ComponentRef Id="MainExecutable" />

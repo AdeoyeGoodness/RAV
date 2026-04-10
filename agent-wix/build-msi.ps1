@@ -59,7 +59,7 @@ Write-Host "[3/4] Building universal MSI installer..." -ForegroundColor Yellow
 $AgentExePath = Join-Path $AgentDir "target\release"
 
 Push-Location $WixDir
-wix build Product.wxs -ext WixToolset.UI.wixext -d AgentPath="$AgentExePath" -o "$OutputDir\RAVAgent.msi"
+wix build Product.wxs -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -d AgentPath="$AgentExePath" -o "$OutputDir\RAVAgent.msi"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: WiX build failed!" -ForegroundColor Red
     exit 1

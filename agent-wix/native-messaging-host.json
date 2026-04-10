@@ -1,11 +1,12 @@
 {
     "name": "com.rav.agent",
     "description": "RAV Agent Native Messaging Host",
-    "path": "C:\\Program Files\\RAV Agent\\rav-native-host.bat",
+    "path": "__INSTALL_PATH__",
     "type": "stdio",
     "allowed_origins": [
         "chrome-extension://lkgbkgaglogjopokmbcedcdlcajldhkk/",
         "chrome-extension://dlkdbjmoohiplloecfgblbggpijbomna/",
-        "chrome-extension://epjnmnocdpicilcklecnmkmdjdegnaie/"
+        "chrome-extension://epjnmnocdpicilcklecnmkmdjdegnaie/",
+        "chrome-extension://nihfegnoliailmnlfmgjpookgibibhjp/"
     ]
 }

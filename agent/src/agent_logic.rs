@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{info, error, warn};
 use std::future::Future;
 
 use crate::config::Config;
@@ -202,12 +202,13 @@ async fn start_monitoring(
         let config_res = config.clone();
         let sync_res = sync_manager.clone();
         tokio::spawn(async move {
-            use sysinfo::{System, ProcessExt};
-            let mut sys = System::new();
+            use sysinfo::System;
+            let mut sys = System::new_all();
             let pid = sysinfo::get_current_pid().ok();
             
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
+                sys.refresh_all();
                 
                 // 1. Tamper Check (Item 5.7)
                 if let Ok(true) = crate::utils::detect_tampering(&config_res.stealth.service_name) {

@@ -117,9 +117,11 @@ impl SyncManager {
         
         loop {
             // Apply Network Jitter (Item 5.5) - Random +/- 20%
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-            let jitter = rng.gen_range(0..10); // 0-10 second jitter
+            let jitter = {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                rng.gen_range(0..10) // 0-10 second jitter
+            };
             let sleep_duration = Duration::from_secs(sync_interval + jitter);
             
             tokio::time::sleep(sleep_duration).await;

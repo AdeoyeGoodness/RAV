@@ -23,7 +23,8 @@ pub fn initialize(config: &Config) -> Result<()> {
 #[cfg(windows)]
 pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
     use winapi::um::dpapi::CryptProtectData;
-    use winapi::um::wincrypt::{CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB};
+    use winapi::um::wincrypt::DATA_BLOB;
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
     use std::ptr;
 
     let mut input = DATA_BLOB {
@@ -63,7 +64,8 @@ pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
 #[cfg(windows)]
 pub fn unprotect(data: &[u8]) -> Result<Vec<u8>> {
     use winapi::um::dpapi::CryptUnprotectData;
-    use winapi::um::wincrypt::{CRYPTPROTECT_UI_FORBIDDEN, DATA_BLOB};
+    use winapi::um::wincrypt::DATA_BLOB;
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
     use std::ptr;
 
     let mut input = DATA_BLOB {

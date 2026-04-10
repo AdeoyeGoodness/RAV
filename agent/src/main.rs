@@ -266,7 +266,8 @@ fn main() -> Result<()> {
         Err(_) => {
             // Failed to run as service -> We are running in Console Mode
             // Check if service is already running (to avoid duplicate)
-            if let Ok(true) = service::windows::is_service_running() {
+            let config = Config::load().unwrap_or_default();
+            if let Ok(true) = service::windows::is_service_running(&config.stealth.service_name) {
                 println!("RAV Agent is already running as a background service.");
                 return Ok(());
             }

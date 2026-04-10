@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub backend: BackendConfig,
     pub agent: AgentConfig,
@@ -81,6 +81,18 @@ pub struct BackendConfig {
     pub heartbeat_interval_seconds: u64,
 }
 
+impl Default for BackendConfig {
+    fn default() -> Self {
+        BackendConfig {
+            url: "http://localhost:8080".to_string(),
+            api_key: None,
+            enrollment_token: None,
+            sync_interval_seconds: 10,
+            heartbeat_interval_seconds: 60,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub agent_id: Option<String>,
@@ -89,12 +101,31 @@ pub struct AgentConfig {
     pub data_dir: PathBuf,
 }
 
+impl Default for AgentConfig {
+    fn default() -> Self {
+        AgentConfig {
+            agent_id: None,
+            organization_id: None,
+            hardware_fingerprint: None,
+            data_dir: PathBuf::from("data"), // Will be substituted by real path in load()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptionConfig {
     pub key_path: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl Default for EncryptionConfig {
+    fn default() -> Self {
+        EncryptionConfig {
+            key_path: PathBuf::from("encryption.key"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MonitoringConfig {
     pub usb: UsbMonitoringConfig,
     pub network: NetworkMonitoringConfig,
@@ -108,11 +139,30 @@ pub struct UsbMonitoringConfig {
     pub track_file_transfers: bool,
 }
 
+impl Default for UsbMonitoringConfig {
+    fn default() -> Self {
+        UsbMonitoringConfig {
+            enabled: true,
+            track_file_transfers: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkMonitoringConfig {
     pub enabled: bool,
     pub track_dns: bool,
     pub track_connections: bool,
+}
+
+impl Default for NetworkMonitoringConfig {
+    fn default() -> Self {
+        NetworkMonitoringConfig {
+            enabled: true,
+            track_dns: true,
+            track_connections: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
