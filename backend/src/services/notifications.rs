@@ -87,4 +87,32 @@ impl NotificationService {
 
         Ok(())
     }
+
+    /// Verifies SMTP settings by sending a test email to a specific receiver.
+    pub async fn test_smtp_configuration(
+        &self,
+        receiver_email: &str,
+        host: &str,
+        port: u16,
+        username: Option<&str>,
+        password: Option<&str>,
+        from_email: &str,
+    ) -> Result<()> {
+        let mut mailer_builder = SmtpTransport::relay(host)?.port(port);
+
+        if let (Some(user), Some(pass)) = (username, password) {
+            mailer_builder = mailer_builder.credentials(Credentials::new(user.to_string(), pass.to_string()));
+        }
+
+        let mailer = mailer_builder.build();
+
+        let email = Message::builder()
+            .from(from_email.parse().context("Invalid sender")?)
+            .to(receiver_email.parse().context("Invalid recipient")?)
+            .subject("RAV GATEWAY TEST: SMTP Connection Verified")
+            .body("CONGRATULATIONS: Your RAV forensic alert gateway has been successfully configured and verified. Secure automated archives will now use this channel for critical notifications.\n\nAutomated Verification System".to_string())?;
+
+        mailer.send(&email).context("Failed to send test email")?;
+        Ok(())
+    }
 }

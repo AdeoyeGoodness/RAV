@@ -21,6 +21,7 @@ export default function NotificationSettings() {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyTarget, setVerifyTarget] = useState<'edit' | 'save' | 'discard' | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     fetchSettings();
@@ -137,10 +138,34 @@ export default function NotificationSettings() {
         const err = await res.text();
         setStatus({ type: 'error', msg: err || 'Authentication failed or server error.' });
       }
-    } catch (err) {
-      setStatus({ type: 'error', msg: 'Network failure. Could not connect to gateway.' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setStatus(null);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/settings/test`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('rav_token')}`
+        },
+        body: JSON.stringify(settings)
+      });
+
+      if (res.ok) {
+        setStatus({ type: 'success', msg: 'Verification alert dispatched. Please check your inbox.' });
+      } else {
+        const err = await res.text();
+        setStatus({ type: 'error', msg: `SMTP Test Failed: ${err || 'Connection refused.'}` });
+      }
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Network failure. Ensure firewall allows outbound SMTP.' });
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -268,6 +293,24 @@ export default function NotificationSettings() {
                   </div>
                 </div>
               </section>
+
+              {isEditing && (
+                <div className="flex items-center gap-4 p-4 bg-sky-500/5 border border-sky-500/10 rounded-2xl animate-in zoom-in duration-300">
+                  <div className="flex-1">
+                    <h3 className="text-sm font-bold text-sky-400">Gateway Validation</h3>
+                    <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Verify your configuration before locking the vault</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTesting}
+                    className="px-6 py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-400 text-xs font-bold transition-all flex items-center gap-2 border border-sky-500/20"
+                  >
+                    {isTesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                    {isTesting ? 'Verifying...' : 'Push Test Alert'}
+                  </button>
+                </div>
+              )}
 
               <div className="flex justify-end gap-4 pt-4">
                {isEditing ? (

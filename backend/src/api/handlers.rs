@@ -27,6 +27,15 @@ pub struct EventQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct TestSmtpPayload {
+    pub smtp_host: String,
+    pub smtp_port: u16,
+    pub smtp_username: Option<String>,
+    pub smtp_password: Option<String>,
+    pub smtp_from_email: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct VerifyIdentityPayload {
     pub password: String,
 }
@@ -807,4 +816,34 @@ pub async fn update_org_settings(
     })?;
 
     Ok(Json(serde_json::json!({"status": "success"})))
+}
+
+pub async fn test_org_settings(
+    State(state): State<AppState>,
+    claims: Claims,
+    Json(payload): Json<TestSmtpPayload>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let _org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    
+    // 1. Get user email to send the test to
+    let user_email = sqlx::query!("SELECT email FROM users WHERE id = $1", claims.sub)
+        .fetch_one(state.db.pool())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .email;
+
+    // 2. Delegate to NotificationService
+    state.notification_service.test_smtp_configuration(
+        &user_email,
+        &payload.smtp_host,
+        payload.smtp_port,
+        payload.smtp_username.as_deref(),
+        payload.smtp_password.as_deref(),
+        &payload.smtp_from_email,
+    ).await.map_err(|e| {
+        tracing::error!("SMTP test failed: {}", e);
+        StatusCode::BAD_REQUEST
+    })?;
+
+    Ok(Json(serde_json::json!({"status": "success", "message": "Test email dispatched successfully."})))
 }
