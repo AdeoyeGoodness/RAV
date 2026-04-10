@@ -260,6 +260,7 @@ export default function NotificationSettings() {
                       type="password" 
                       value={settings.smtp_password} 
                       disabled={!isEditing}
+                      autoComplete="new-password"
                       onChange={(e) => setSettings({...settings, smtp_password: e.target.value})}
                       className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white focus:border-sky-500/50 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       placeholder="••••••••••••"
@@ -325,6 +326,7 @@ export default function NotificationSettings() {
                     type="password"
                     autoFocus
                     value={verifyPassword}
+                    autoComplete="new-password"
                     onChange={(e) => setVerifyPassword(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmAction()}
                     className="w-full bg-black border border-white/10 rounded-xl px-4 py-4 text-sm text-white focus:border-rose-500/50 outline-none"
