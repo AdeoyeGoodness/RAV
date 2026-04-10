@@ -712,7 +712,7 @@ pub async fn get_org_settings(
                 smtp_username: None,
                 smtp_password_encrypted: None,
                 smtp_from_email: None,
-                smtp_enabled: false,
+                smtp_enabled: Some(false),
                 updated_at: Utc::now(),
             }))
         }

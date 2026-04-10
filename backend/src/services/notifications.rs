@@ -63,8 +63,9 @@ impl NotificationService {
         let mut mailer_builder = SmtpTransport::relay(&host)?.port(port);
 
         if let (Some(user), Some(enc_pass)) = (settings.smtp_username.as_ref(), settings.smtp_password_encrypted.as_ref()) {
-            let pass = encryption_service.decrypt(enc_pass).context("Failed to decrypt SMTP password")?;
-            mailer_builder = mailer_builder.credentials(Credentials::new(user.clone(), pass));
+            let pass: String = encryption_service.decrypt(enc_pass).context("Failed to decrypt SMTP password")?;
+            let user_str: String = user.clone();
+            mailer_builder = mailer_builder.credentials(Credentials::new(user_str, pass));
         }
 
         let mailer = mailer_builder.build();
