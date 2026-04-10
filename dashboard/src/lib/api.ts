@@ -59,9 +59,22 @@ export interface User {
   id: string
   organization_id: string | null
   email: string
-  role: string
-  full_name: string | null
+  role: 'super_admin' | 'org_admin' | 'user'
+  status: 'active' | 'suspended'
 }
+
+export interface Archive {
+  id: string
+  organization_id: string
+  agent_id: string
+  filename: string
+  size_bytes: number
+  event_count: number
+  start_date: string
+  end_date: string
+  created_at: string
+}
+
 
 export interface Event {
   id: string
@@ -264,6 +277,23 @@ export async function getCurrentUser(): Promise<User> {
 export async function login(credentials: any): Promise<{ token: string, user: User }> {
   const response = await api.post('/api/v1/auth/login', credentials)
   return response.data
+}
+
+export async function getArchives(agentId?: string): Promise<Archive[]> {
+  const params = agentId ? { agent_id: agentId } : {}
+  const response = await api.get('/api/v1/archives', { params })
+  return response.data
+}
+
+export async function downloadArchive(archiveId: string, password: string): Promise<Blob> {
+  const response = await api.post(`/api/v1/archives/${archiveId}/download`, { password }, {
+    responseType: 'blob',
+  })
+  return response.data
+}
+
+export async function deleteArchive(archiveId: string): Promise<void> {
+  await api.delete(`/api/v1/archives/${archiveId}`)
 }
 
 export async function register(userData: {
