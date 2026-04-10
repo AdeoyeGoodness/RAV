@@ -36,7 +36,7 @@ export default function AuditPage() {
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
-                <main className="flex-1 overflow-auto p-8 pt-24 space-y-6">
+                <main className="flex-1 overflow-auto p-8 pt-32 space-y-6">
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-2xl font-bold tracking-tight text-slate-200 flex items-center gap-2">
