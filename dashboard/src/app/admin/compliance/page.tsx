@@ -67,7 +67,7 @@ export default function ComplianceLogsPage() {
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
-                <main className="flex-1 overflow-auto p-8 space-y-6">
+                <main className="flex-1 overflow-auto p-8 pt-24 space-y-6">
                     {/* Header */}
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold flex items-center gap-3 tracking-tight text-slate-200">
