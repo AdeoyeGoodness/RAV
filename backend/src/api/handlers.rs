@@ -26,6 +26,39 @@ pub struct EventQuery {
     pub limit: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct VerifyIdentityPayload {
+    pub password: String,
+}
+
+pub async fn verify_identity(
+    State(state): State<AppState>,
+    claims: Claims,
+    Json(payload): Json<VerifyIdentityPayload>,
+) -> Result<StatusCode, StatusCode> {
+    let user_row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
+        .fetch_optional(state.db.pool())
+        .await
+        .map_err(|e| {
+            tracing::error!("Identity verify: DB query failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::warn!("Identity verify: User not found: {}", claims.sub);
+            StatusCode::UNAUTHORIZED
+        })?;
+
+    if bcrypt::verify(&payload.password, &user_row.password_hash).map_err(|e| {
+        tracing::error!("Identity verify: Bcrypt failure: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })? {
+        Ok(StatusCode::OK)
+    } else {
+        tracing::warn!("Identity verify: Invalid password for user: {}", claims.sub);
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 pub async fn ingest_events(
     State(state): State<AppState>,
     Json(events): Json<Vec<CreateEvent>>,

@@ -139,6 +139,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/stats", get(api::org::get_org_stats))
         .route("/api/v1/org/settings", get(handlers::get_org_settings))
         .route("/api/v1/org/settings", patch(handlers::update_org_settings))
+        .route("/api/v1/org/settings/verify", post(handlers::verify_identity))
         .route("/api/v1/org/audits", get(api::org::list_org_audit_logs))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
