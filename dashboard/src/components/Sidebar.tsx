@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy } from 'lucide-react'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy, Archive } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAgents, getOrgDetails, Organization as OrgType } from '@/lib/api'
 
