@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
                 r#"
                 SELECT DISTINCT agent_id, organization_id 
                 FROM events 
-                WHERE created_at < NOW() - INTERVAL '3 days'
+                WHERE created_at < NOW() - INTERVAL '7 days'
                 "#
             )
             .fetch_all(db_bg.pool())
@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
 
             if let Ok(targets) = result {
                 for target in targets {
-                    if let Ok(Some(_arch)) = archive_bg.archive_agent_week(&target.agent_id, target.organization_id).await {
+                    if let Ok(Some(_arch)) = archive_bg.archive_agent_telemetry(&target.agent_id, target.organization_id, false).await {
                         // Notify admins (DB-backed + Encrypted SMTP)
                         let _ = notify_bg.notify_archive_ready(target.organization_id, &target.agent_id, &encryption_bg).await;
                     }
