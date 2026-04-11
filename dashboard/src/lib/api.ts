@@ -285,6 +285,16 @@ export async function getArchives(agentId?: string): Promise<Archive[]> {
   return response.data
 }
 
+export async function triggerManualArchive(agentId: string): Promise<any> {
+  const response = await api.post(`/api/v1/agents/${agentId}/archive`)
+  return response.data
+}
+
+export async function collateArchives(): Promise<any> {
+  const response = await api.post('/api/v1/archives/collate')
+  return response.data
+}
+
 export async function downloadArchive(archiveId: string, password: string): Promise<Blob> {
   const response = await api.post(`/api/v1/archives/${archiveId}/download`, { password }, {
     responseType: 'blob',

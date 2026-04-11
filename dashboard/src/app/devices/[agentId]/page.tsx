@@ -4,7 +4,7 @@ import React from 'react'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert } from 'lucide-react'
-import { getAgents, getEvents, deleteAgentEvents } from '@/lib/api'
+import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import USBMonitoring from '@/components/USBMonitoring'
@@ -428,14 +428,22 @@ export default function DeviceDetailsPage() {
                 </div>
                 <button 
                   onClick={async () => {
-                    if (confirm("Manually archive all data older than 7 days for this agent?")) {
-                      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/${agentId}/archive`, { method: 'POST' });
-                      window.location.reload();
+                    if (confirm("Trigger immediate forensic archival for this device? This will bundle ALL current telemetry into a secure ZIP for retrieval.")) {
+                      try {
+                        const res = await triggerManualArchive(agentId);
+                        if (res.status === 'success') {
+                          window.location.reload();
+                        } else {
+                          alert(res.message || "Archive requested, check vault shortly.");
+                        }
+                      } catch (err) {
+                        alert("Failed to reach archival orchestrator.");
+                      }
                     }
                   }}
                   className="px-4 py-2 bg-cyan-500/10 text-cyan-400 text-xs font-bold rounded-lg border border-cyan-500/20 hover:bg-cyan-500/20 transition-all uppercase tracking-wider"
                 >
-                  Trigger Manual Archive
+                  Request On-Demand Archive
                 </button>
               </div>
 
@@ -491,7 +499,7 @@ function ArchivesList({ agentId }: { agentId: string }) {
   };
 
   if (loading) return <div className="text-xs text-slate-500 italic">Initializing archive index...</div>;
-  if (archives.length === 0) return <div className="text-xs text-slate-500 italic py-8 border-2 border-dashed border-white/5 rounded-xl text-center">No forensic archives generated yet. Archives are created automatically every 3 days.</div>;
+  if (archives.length === 0) return <div className="text-xs text-slate-500 italic py-8 border-2 border-dashed border-white/5 rounded-xl text-center">No forensic archives generated yet. Archives are created automatically every 7 days.</div>;
 
   return (
     <>

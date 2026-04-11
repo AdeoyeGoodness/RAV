@@ -26,11 +26,17 @@ impl ArchiveService {
         &self.storage_dir
     }
 
-    /// Primary task: Archive all events for an agent from the last 3 days, ZIP them, and DELETE from main DB.
-    pub async fn archive_agent_week(&self, agent_id: &str, org_id: Uuid) -> Result<Option<Archive>> {
+    /// Primary task: Archive events for an agent. 
+    /// By default (weekly pulse), it only takes events older than 7 days.
+    /// If 'include_recent' is true (manual request), it takes everything.
+    pub async fn archive_agent_telemetry(&self, agent_id: &str, org_id: Uuid, include_recent: bool) -> Result<Option<Archive>> {
         let now = Utc::now();
-        let three_days_ago = now - Duration::days(3);
-
+        let cutoff = if include_recent {
+            now
+        } else {
+            now - Duration::days(7)
+        };
+        
         // 1. Fetch events for the window
         let events = sqlx::query_as!(
             Event,
@@ -41,7 +47,7 @@ impl ArchiveService {
             "#,
             agent_id,
             org_id,
-            three_days_ago
+            cutoff
         )
         .fetch_all(&self.pool)
         .await?;
@@ -59,7 +65,8 @@ impl ArchiveService {
         
         // 3. Create ZIP file
         let archive_id = Uuid::new_v4();
-        let filename = format!("{}_{}.zip", agent_id, archive_id);
+        let prefix = if include_recent { "MANUAL" } else { "WEEKLY" };
+        let filename = format!("{}_{}_{}.zip", prefix, agent_id, archive_id);
         let archive_path = self.storage_dir.join(&filename);
         
         let file = fs::File::create(&archive_path)?;
@@ -103,7 +110,7 @@ impl ArchiveService {
             "#,
             agent_id,
             org_id,
-            three_days_ago
+            cutoff
         )
         .execute(&mut *tx)
         .await?;

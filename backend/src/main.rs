@@ -156,6 +156,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/files/:file_id", get(handlers::download_file))
         .route("/api/v1/agents/:agent_id/archives", get(handlers::list_agent_archives))
         .route("/api/v1/archives/:archive_id/download", get(handlers::download_archive))
+        .route("/api/v1/archives", get(handlers::get_all_archives))
+        .route("/api/v1/archives/collate", post(handlers::trigger_org_archive))
         .route("/api/v1/agents/:agent_id/archive", post(handlers::trigger_agent_archive))
         .layer(
             CorsLayer::new()

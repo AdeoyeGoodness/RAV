@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react'
 import { Archive, Download, Trash2, Calendar, Database, Shield, Lock, Search, AlertCircle, RefreshCw } from 'lucide-react'
-import { getArchives, downloadArchive, deleteArchive, Archive as ArchiveType } from '@/lib/api'
+import { getArchives, downloadArchive, deleteArchive, collateArchives, triggerManualArchive, Archive as ArchiveType } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
@@ -16,6 +16,7 @@ export default function ArchivesPage() {
   const [selectedArchive, setSelectedArchive] = useState<ArchiveType | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isCollating, setIsCollating] = useState(false)
 
   useEffect(() => {
     fetchArchives()
@@ -63,6 +64,22 @@ export default function ArchivesPage() {
     }
   }
 
+  const handleCollate = async () => {
+    setIsCollating(true)
+    setError(null)
+    try {
+      const res = await collateArchives()
+      if (res.status === 'success') {
+        fetchArchives()
+      }
+    } catch (err) {
+      console.error('Collation failed:', err)
+      setError('Bulk collation failed. Check network status.')
+    } finally {
+      setIsCollating(false)
+    }
+  }
+
   const filteredArchives = archives.filter(a => 
     a.agent_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     a.filename.toLowerCase().includes(searchQuery.toLowerCase())
@@ -105,6 +122,14 @@ export default function ArchivesPage() {
                   title="Refresh Vault"
                 >
                   <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                </button>
+                <button 
+                  onClick={handleCollate}
+                  disabled={isCollating}
+                  className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-sm transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isCollating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
+                  {isCollating ? 'Collating...' : 'Collate All Records'}
                 </button>
                 <div className="relative group">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-sky-400 transition-colors" />

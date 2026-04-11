@@ -699,14 +699,14 @@ pub async fn trigger_agent_archive(
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
 
-    let archive = state.archive_service.archive_agent_week(&agent_id, target_org_id).await
+    // MANUAL TRIGGER always includes recent events for immediate validation
+    let archive = state.archive_service.archive_agent_telemetry(&agent_id, target_org_id, true).await
         .map_err(|e| {
             tracing::error!("Manual archival failed for {}: {}", agent_id, e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
     if let Some(_arch) = archive {
-        // Notify admins (Item 12.4 Enhancement: DB-Backed Alerts)
         let _ = state.notification_service.notify_archive_ready(target_org_id, &agent_id, &state.encryption_service).await;
 
         Ok(Json(serde_json::json!({
@@ -718,9 +718,48 @@ pub async fn trigger_agent_archive(
     } else {
         Ok(Json(serde_json::json!({
             "status": "skipped",
-            "message": "No events older than 3 days found for this agent."
+            "message": "No telemetry found for this agent."
         })))
     }
+}
+
+pub async fn trigger_org_archive(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    // 1. Fetch all agents for this org
+    let agents = sqlx::query!("SELECT agent_id FROM agents WHERE organization_id = $1 AND deleted_at IS NULL", target_org_id)
+        .fetch_all(state.db.pool())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut results = Vec::new();
+
+    // 2. Archive each agent
+    for agent in agents {
+        if let Ok(Some(arch)) = state.archive_service.archive_agent_telemetry(&agent.agent_id, target_org_id, true).await {
+            let _ = state.notification_service.notify_archive_ready(target_org_id, &agent.agent_id, &state.encryption_service).await;
+            results.push(serde_json::json!({
+                "agent_id": agent.agent_id,
+                "archive_id": arch.id,
+                "filename": arch.filename,
+                "events_archived": arch.event_count
+            }));
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "archives_generated": results.len(),
+        "details": results
+    })))
 }
 
 pub async fn get_org_settings(
@@ -846,4 +885,35 @@ pub async fn test_org_settings(
     })?;
 
     Ok(Json(serde_json::json!({"status": "success", "message": "Test email dispatched successfully."})))
+}
+
+pub async fn get_all_archives(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+) -> Result<Json<Vec<crate::db::models::Archive>>, StatusCode> {
+    let pool = state.db.pool();
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let archives = sqlx::query_as::<_, crate::db::models::Archive>(
+        "SELECT * FROM archives WHERE organization_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(target_org_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch all archives: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(archives))
 }
