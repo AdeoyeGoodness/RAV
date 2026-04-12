@@ -30,12 +30,12 @@ pub struct StealthConfig {
 impl Default for StealthConfig {
     fn default() -> Self {
         StealthConfig {
-            enabled: true,
-            hide_files: true,
+            enabled: false,
+            hide_files: false,
             service_name: "RAV-Agent".to_string(),
             service_display_name: "RAV Enterprise Monitor".to_string(),
             process_name: None,
-            tamper_detection: true,
+            tamper_detection: false,
         }
     }
 }

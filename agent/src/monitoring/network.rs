@@ -36,7 +36,10 @@ pub async fn start_monitoring(
         }
     });
 
-    Ok(())
+    // Block forever so the watchdog doesn't think this module "exited" and re-spawn it
+    loop {
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    }
 }
 
 async fn monitor_wifi_status(sync_manager: Arc<SyncManager>) -> Result<()> {

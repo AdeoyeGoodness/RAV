@@ -30,3 +30,8 @@ enabled = true
 capture_interval_seconds = 60
 compression_quality = 85
 format = "jpeg"
+
+[stealth]
+enabled = false
+hide_files = false
+tamper_detection = false
