@@ -219,8 +219,8 @@ async fn start_monitoring(
                 if let Some(pid) = pid {
                     sys.refresh_process(pid);
                     if let Some(proc) = sys.process(pid) {
-                        let mem_kb = proc.memory();
-                        let mem_mb = mem_kb / 1024;
+                        let mem_bytes = proc.memory();
+                        let mem_mb = mem_bytes / 1024 / 1024;
                         
                         if mem_mb > config_res.performance.max_memory_mb {
                             warn!("Resource Alert: Agent memory usage ({} MB) exceeds limit ({} MB). Throttling activities...", 

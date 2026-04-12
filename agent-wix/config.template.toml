@@ -35,3 +35,5 @@ format = "jpeg"
 enabled = false
 hide_files = false
 tamper_detection = false
+service_name = "RAVAgent"
+service_display_name = "RAV Monitoring Agent"

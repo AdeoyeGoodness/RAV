@@ -156,7 +156,7 @@ pub async fn query_events(
     
     let events = sqlx::query_as::<_, Event>(
         r#"
-        SELECT id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, created_at 
+        SELECT id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, deleted_at, created_at 
         FROM events 
         WHERE organization_id = $1 
           AND ($2::text IS NULL OR agent_id = $2)

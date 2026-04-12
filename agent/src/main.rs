@@ -72,7 +72,7 @@ fn main() -> Result<()> {
         // Service/CLI: Standard + File Logging
         let log_dir = "C:\\ProgramData\\RAV\\logs";
         let _ = std::fs::create_dir_all(log_dir);
-        let _ = hide_file(std::path::Path::new(log_dir));
+        // let _ = hide_file(std::path::Path::new(log_dir)); // Temporarily disabled so you can see logs
         let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
@@ -233,10 +233,10 @@ fn main() -> Result<()> {
             }
             
             // Item 5.3: Self-Hide
-            if let Ok(exe_path) = std::env::current_exe() {
-                let _ = hide_file(&exe_path);
-            }
-            let _ = hide_file(std::path::Path::new(&config.agent.data_dir));
+            // if let Ok(exe_path) = std::env::current_exe() {
+            //     let _ = hide_file(&exe_path);
+            // }
+            // let _ = hide_file(std::path::Path::new(&config.agent.data_dir));
 
             info!("Starting service '{}'...", config.stealth.service_name);
             if let Err(e) = service::windows::start_service(&config.stealth.service_name) {
