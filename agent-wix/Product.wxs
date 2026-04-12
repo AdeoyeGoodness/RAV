@@ -96,6 +96,16 @@
           <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
           <!-- Edge Native Messaging (HKCU) -->
           <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
+
+          <!-- Enterprise Policy: Force Install from Web Store -->
+          <!-- Chrome -->
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna;https://clients2.google.com/service/update2/crx" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna" Type="string" />
+          
+          <!-- Edge -->
+          <!-- Note: Edge Update URL is https://edge.microsoft.com/extensionwebstorebase/v1/crx -->
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie;https://edge.microsoft.com/extensionwebstorebase/v1/crx" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie" Type="string" />
         </Component>
 
         <!-- Unpacked Extension Bundle -->
