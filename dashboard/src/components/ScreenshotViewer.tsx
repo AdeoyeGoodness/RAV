@@ -188,7 +188,18 @@ export default function ScreenshotViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedEvents.map(e => e.id).join(',')])
 
-  // No auto-refresh — user clicks manual refresh button when needed
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // Auto-refresh effect — controlled by toggle
+  useEffect(() => {
+    if (!autoRefresh || !onRefresh) return
+
+    const interval = setInterval(() => {
+      onRefresh()
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [autoRefresh, onRefresh])
 
   // Cleanup image URL on unmount
   useEffect(() => {
@@ -287,6 +298,16 @@ export default function ScreenshotViewer({
               Show All
             </button>
           )}
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
+            style={autoRefresh
+              ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }
+              : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)', borderColor: 'transparent' }
+            }
+          >
+            Auto: {autoRefresh ? 'ON' : 'OFF'}
+          </button>
           {onClear && (
             <button
               onClick={onClear}

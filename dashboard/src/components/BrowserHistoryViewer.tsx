@@ -175,16 +175,18 @@ export default function BrowserHistoryViewer({
     }
   }
 
-  // Auto-refresh effect
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // Auto-refresh effect — controlled by toggle
   useEffect(() => {
-    if (!onRefresh) return
+    if (!autoRefresh || !onRefresh) return
 
     const interval = setInterval(() => {
       onRefresh()
-    }, 10000) // Refresh every 10 seconds
+    }, 10000)
 
     return () => clearInterval(interval)
-  }, [onRefresh])
+  }, [autoRefresh, onRefresh])
 
   if (browserEvents.length === 0 && !loading) {
     return (
@@ -205,6 +207,16 @@ export default function BrowserHistoryViewer({
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Browser History</h2>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
+            style={autoRefresh
+              ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }
+              : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)', borderColor: 'transparent' }
+            }
+          >
+            Auto: {autoRefresh ? 'ON' : 'OFF'}
+          </button>
           {onRefresh && (
             <button
               onClick={onRefresh}
