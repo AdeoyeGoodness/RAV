@@ -85,9 +85,9 @@ export function ActivitySummary({ stats }: ActivitySummaryProps) {
                                         <span className="text-[10px] text-slate-700 ml-2">{sub}</span>
                                     </div>
                                 </div>
-                                <div className="flex items-baseline gap-1">
+                                <div className="flex items-baseline gap-1.5 min-w-[120px] justify-end text-right">
                                     <span className="text-sm font-bold text-slate-200 tabular-nums">{count}</span>
-                                    <span className="text-[10px] text-slate-600">{detail}</span>
+                                    <span className="text-[10px] text-slate-600 w-[70px]">{detail}</span>
                                 </div>
                             </div>
 

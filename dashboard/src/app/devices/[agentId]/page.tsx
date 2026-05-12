@@ -48,8 +48,6 @@ export default function DeviceDetailsPage() {
   useEffect(() => {
     if (user) {
       loadDeviceData()
-      const interval = setInterval(loadDeviceData, 10000) // Refresh every 10 seconds for faster updates
-      return () => clearInterval(interval)
     }
   }, [agentId, user])
 

@@ -188,16 +188,7 @@ export default function ScreenshotViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedEvents.map(e => e.id).join(',')])
 
-  // Auto-refresh effect
-  useEffect(() => {
-    if (!onRefresh) return
-
-    const interval = setInterval(() => {
-      onRefresh()
-    }, 10000) // Refresh every 10 seconds for faster updates
-
-    return () => clearInterval(interval)
-  }, [onRefresh])
+  // No auto-refresh — user clicks manual refresh button when needed
 
   // Cleanup image URL on unmount
   useEffect(() => {
