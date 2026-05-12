@@ -30,6 +30,39 @@ pub fn hide_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn set_directory_permissions(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        
+        let path_str = path.to_string_lossy();
+        
+        // Grant "Users" Full Control (F) to this folder and all subfolders/files (OI)(CI)
+        let output = Command::new("icacls")
+            .arg(path_str.as_ref())
+            .arg("/grant")
+            .arg("Users:(OI)(CI)F")
+            .arg("/T")
+            .arg("/Q") // Quiet mode
+            .output();
+
+        if let Ok(out) = output {
+            if out.status.success() {
+                info!("Directory permissions explicitly relaxed for: {:?}", path);
+            } else {
+                let err = String::from_utf8_lossy(&out.stderr);
+                tracing::warn!("Failed to set permissions for {:?}: {}", path, err);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub fn detect_tampering(service_name: &str) -> Result<bool> {
     // 1. Check if config still exists 
     // Usually Config::get_config_path() but we'll use a standard check for the data dir

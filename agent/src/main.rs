@@ -16,7 +16,7 @@ pub mod utils;
 use config::Config;
 use sync::SyncManager;
 use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
-use utils::hide_file;
+use utils::{hide_file, set_directory_permissions};
 
 fn main() -> Result<()> {
     // 1. CLI Argument Parsing (Fast, no side effects)
@@ -72,6 +72,11 @@ fn main() -> Result<()> {
         // Service/CLI: Standard + File Logging
         let log_dir = "C:\\ProgramData\\RAV\\logs";
         let _ = std::fs::create_dir_all(log_dir);
+        
+        // Item 4 Fix: Grant regular user accounts read/write access to this folder
+        // so the browser extension's Native Messaging Host can open the SQLite queue.
+        let _ = set_directory_permissions(std::path::Path::new("C:\\ProgramData\\RAV"));
+        
         // let _ = hide_file(std::path::Path::new(log_dir)); // Temporarily disabled so you can see logs
         let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
         let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);

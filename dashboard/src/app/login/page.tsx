@@ -391,7 +391,7 @@ export default function LoginPage() {
 
                     {/* Version tag */}
                     <div className="absolute bottom-[-60px] left-1/2 -translate-x-1/2 text-[10px] text-slate-700 font-mono">
-                        RAV v1.0 • DNEON ENTERPRISE
+                        RAV v1.0
                     </div>
                 </div>
             </div>
