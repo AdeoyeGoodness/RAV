@@ -55,13 +55,6 @@ export function UserInsights() {
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/[0.03]">
-                    <div className="flex items-center gap-2.5">
-                        <Fingerprint className="w-3.5 h-3.5 text-amber-400/60" />
-                        <span className="text-[11px] text-slate-500">Auth</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-600">JWT / Bearer</span>
-                </div>
             </div>
 
             {/* Platform version */}
