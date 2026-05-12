@@ -188,19 +188,6 @@ export default function BrowserHistoryViewer({
     return () => clearInterval(interval)
   }, [autoRefresh, onRefresh])
 
-  if (browserEvents.length === 0 && !loading) {
-    return (
-      <div className="rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Browser History</h2>
-        </div>
-        <div className="text-center py-12">
-          <Globe className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.3)' }} />
-          <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>No browser history data available</p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="rounded-2xl p-6 transition-colors overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>

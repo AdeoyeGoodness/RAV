@@ -47,12 +47,12 @@ export default function DeviceDetailsPage() {
 
   useEffect(() => {
     if (user) {
-      loadDeviceData()
+      loadDeviceData(true)
     }
   }, [agentId, user])
 
-  const loadDeviceData = async () => {
-    setLoading(true)
+  const loadDeviceData = async (isInitial = false) => {
+    if (isInitial) setLoading(true)
     try {
       const [agentsData, eventsData] = await Promise.all([
         getAgents(),
