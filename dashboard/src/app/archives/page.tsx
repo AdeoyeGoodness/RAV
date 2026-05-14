@@ -5,6 +5,7 @@ import { Archive, Download, Trash2, Calendar, Database, Shield, Lock, Search, Al
 import { getArchives, downloadArchive, deleteArchive, collateArchives, triggerManualArchive, Archive as ArchiveType } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ExpiryBanner from '@/components/ExpiryBanner'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function ArchivesPage() {
@@ -97,6 +98,7 @@ export default function ArchivesPage() {
     <div className="flex h-screen bg-[#050510] text-slate-300">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
+        <ExpiryBanner />
         <Header />
         
         <main className="flex-1 overflow-y-auto p-8 lg:p-12 mt-20 ml-64">

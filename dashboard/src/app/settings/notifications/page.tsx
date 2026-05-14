@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react'
 import { Mail, ShieldCheck, Lock, Save, AlertCircle, ShieldAlert, CheckCircle2, Server, Hash, UserCheck, XCircle, RefreshCw } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ExpiryBanner from '@/components/ExpiryBanner'
 
 export default function NotificationSettings() {
   const [settings, setSettings] = useState({
@@ -173,6 +174,7 @@ export default function NotificationSettings() {
     <div className="flex h-screen bg-[#050510] text-slate-300">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden ml-64">
+        <ExpiryBanner />
         <Header />
         <main className="flex-1 p-8 pt-24 overflow-y-auto">
           <div className="max-w-4xl mx-auto">

@@ -2,6 +2,7 @@
 
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ExpiryBanner from '@/components/ExpiryBanner'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -26,6 +27,7 @@ export default function TelemetryPage() {
 
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
+                <ExpiryBanner />
                 <Header />
                 <main className="flex-1 overflow-auto p-8 space-y-6 mt-20">
                     {/* Page Header */}

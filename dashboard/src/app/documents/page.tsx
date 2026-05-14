@@ -6,6 +6,7 @@ import { ArrowLeft, Download, FileText, Calendar, HardDrive, User, File, Trash2,
 import { getEvents, deleteAgentEvents } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ExpiryBanner from '@/components/ExpiryBanner'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface Document {
@@ -265,6 +266,7 @@ IMPORTANT NOTES:
     <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
       <Sidebar />
       <div className="flex-1 ml-64">
+        <ExpiryBanner />
         <Header />
         <main className="pt-20 p-8 overflow-y-auto h-full">
           <div className="max-w-7xl mx-auto">

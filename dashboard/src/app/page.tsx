@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import ExpiryBanner from '@/components/ExpiryBanner'
 import { StatsRow } from '@/components/dashboard/StatsRow'
 import { ActivitySummary } from '@/components/dashboard/ActivitySummary'
 import { KeyEvents } from '@/components/dashboard/KeyEvents'
@@ -109,6 +110,7 @@ export default function DashboardPage() {
 
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
+        <ExpiryBanner />
         <Header />
 
         <main className="flex-1 overflow-auto p-8 space-y-6 mt-20 relative z-10">
