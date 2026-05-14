@@ -174,8 +174,8 @@ export default function NotificationSettings() {
     <div className="flex h-screen bg-[#050510] text-slate-300">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden ml-64">
-        <ExpiryBanner />
         <Header />
+        <ExpiryBanner />
         <main className="flex-1 p-8 pt-24 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             <header className="mb-10">

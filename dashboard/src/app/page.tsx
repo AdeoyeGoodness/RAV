@@ -110,8 +110,8 @@ export default function DashboardPage() {
 
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
-        <ExpiryBanner />
         <Header />
+        <ExpiryBanner />
 
         <main className="flex-1 overflow-auto p-8 space-y-6 mt-20 relative z-10">
           {/* Top Bar — Title + Refresh */}

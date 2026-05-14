@@ -98,8 +98,8 @@ export default function ArchivesPage() {
     <div className="flex h-screen bg-[#050510] text-slate-300">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <ExpiryBanner />
         <Header />
+        <ExpiryBanner />
         
         <main className="flex-1 overflow-y-auto p-8 lg:p-12 mt-20 ml-64">
           <div className="max-w-6xl mx-auto">
