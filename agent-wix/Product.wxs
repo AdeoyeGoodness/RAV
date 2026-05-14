@@ -149,7 +149,7 @@
     <!-- This makes the MSI universal - works wherever the user installs -->
     <CustomAction Id="PatchNativeHostManifest"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]rav-native-host.bat&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
+                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]rav-agent.exe&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />

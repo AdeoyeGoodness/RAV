@@ -56,7 +56,7 @@ fn main() -> Result<()> {
         if args[i] == "--screenshot-helper" {
             helper_flag = true;
         }
-        if args[i] == "--native-host" {
+        if args[i] == "--native-host" || args[i].starts_with("chrome-extension://") || args[i].starts_with("moz-extension://") {
             native_host_flag = true;
         }
     }
@@ -95,7 +95,7 @@ fn main() -> Result<()> {
     // 3. Dynamic Console Attachment: If we have CLI flags, try to attach to parent console
     // so the user actually sees the output in their terminal.
     #[cfg(windows)]
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || native_host_flag {
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag {
         attach_console();
     }
 
