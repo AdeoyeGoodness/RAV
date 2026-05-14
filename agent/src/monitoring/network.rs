@@ -82,8 +82,12 @@ async fn get_wifi_info() -> Result<WifiInfo> {
     #[cfg(windows)]
     {
         use std::process::Command;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
         let output = Command::new("netsh")
             .args(&["wlan", "show", "interfaces"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()?;
         let out_str = String::from_utf8_lossy(&output.stdout);
         
@@ -93,14 +97,44 @@ async fn get_wifi_info() -> Result<WifiInfo> {
 
         for line in out_str.lines() {
             let line = line.trim();
-            if line.starts_with("SSID") {
-                ssid = line.split(':').nth(1).unwrap_or("unknown").trim().to_string();
-            } else if line.starts_with("Signal") {
-                signal = line.split(':').nth(1).unwrap_or("0%").trim().to_string();
-            } else if line.starts_with("Name") {
-                interface = line.split(':').nth(1).unwrap_or("unknown").trim().to_string();
+            // Match "SSID" but not "BSSID" — check the key name before the colon
+            if let Some((key, value)) = line.split_once(':') {
+                let key = key.trim();
+                let value = value.trim();
+                match key {
+                    "SSID" => ssid = value.to_string(),
+                    "Signal" => signal = value.to_string(),
+                    "Name" => interface = value.to_string(),
+                    _ => {}
+                }
             }
         }
+
+        // Fallback: If WiFi shows "Disconnected" or empty SSID, check if we have
+        // an active Ethernet/wired connection instead
+        if ssid.is_empty() || ssid == "Disconnected" {
+            let eth_output = Command::new("netsh")
+                .args(&["interface", "show", "interface"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            if let Ok(eth_out) = eth_output {
+                let eth_str = String::from_utf8_lossy(&eth_out.stdout);
+                for line in eth_str.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    // Format: Admin State    State         Type            Interface Name
+                    // e.g.:   Enabled        Connected     Dedicated       Ethernet
+                    if parts.len() >= 4 && parts[1] == "Connected" && parts[2] == "Dedicated" {
+                        let iface_name = parts[3..].join(" ");
+                        ssid = "Wired/Ethernet".to_string();
+                        signal = "100%".to_string();
+                        interface = iface_name;
+                        break;
+                    }
+                }
+            }
+        }
+
         Ok(WifiInfo { ssid, signal, interface })
     }
 
@@ -189,9 +223,12 @@ async fn get_active_connections() -> Result<Vec<Connection>> {
 #[cfg(windows)]
 async fn get_windows_connections() -> Result<Vec<Connection>> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     
     let output = Command::new("netstat")
         .args(&["-ano"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()?;
 
     let output_str = String::from_utf8_lossy(&output.stdout);
@@ -244,9 +281,12 @@ fn parse_address(addr: &str) -> Option<(String, u16)> {
 #[cfg(windows)]
 fn get_process_name(pid: &str) -> Result<String> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     
     let output = Command::new("tasklist")
         .args(&["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()?;
     
     let output_str = String::from_utf8_lossy(&output.stdout);

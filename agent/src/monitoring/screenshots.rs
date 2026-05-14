@@ -112,13 +112,12 @@ async fn start_windows_monitoring(
                     Err(e) => {
                         error!("Failed to upload screenshot: {}", e);
                         let (agent_id, _) = sync_manager.get_identity().await;
-                        // Still log the event even if upload fails
+                        // Log as a failed upload — don't include file_id since it doesn't exist on backend
                         let event = Event {
-                            event_type: "screenshot_captured".to_string(),
+                            event_type: "screenshot_upload_failed".to_string(),
                             timestamp: Utc::now(),
                             agent_id,
                             metadata: json!({
-                                "file_id": file_id,
                                 "width": width,
                                 "height": height,
                                 "file_size": image_data.len(),
@@ -351,6 +350,9 @@ async fn capture_via_helper() -> Result<(Vec<u8>, u32, u32)> {
         output_path.display()
     );
     
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     // Create scheduled task that runs as the current user interactively
     let create_result = Command::new("schtasks")
         .args(&[
@@ -362,6 +364,7 @@ async fn capture_via_helper() -> Result<(Vec<u8>, u32, u32)> {
             "/F",  // Force overwrite
             "/RL", "HIGHEST",
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     
     if let Err(e) = create_result {
@@ -372,10 +375,11 @@ async fn capture_via_helper() -> Result<(Vec<u8>, u32, u32)> {
     // Run the task immediately
     let run_result = Command::new("schtasks")
         .args(&["/Run", "/TN", task_name])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     
     if let Err(e) = run_result {
-        let _ = Command::new("schtasks").args(&["/Delete", "/TN", task_name, "/F"]).output();
+        let _ = Command::new("schtasks").args(&["/Delete", "/TN", task_name, "/F"]).creation_flags(CREATE_NO_WINDOW).output();
         anyhow::bail!("Failed to run screenshot task: {}", e);
     }
     
@@ -393,7 +397,7 @@ async fn capture_via_helper() -> Result<(Vec<u8>, u32, u32)> {
     }
     
     // Clean up the scheduled task
-    let _ = Command::new("schtasks").args(&["/Delete", "/TN", task_name, "/F"]).output();
+    let _ = Command::new("schtasks").args(&["/Delete", "/TN", task_name, "/F"]).creation_flags(CREATE_NO_WINDOW).output();
     
     // Read the output file
     if !output_path.exists() {
