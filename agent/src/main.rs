@@ -1,8 +1,11 @@
-#![windows_subsystem = "windows"]
 use anyhow::Result;
 use std::sync::Arc;
-// use tokio::signal;
 use tracing::info;
+
+#[cfg(windows)]
+use winapi::um::wincon::GetConsoleWindow;
+#[cfg(windows)]
+use winapi::um::winuser::{ShowWindow, SW_HIDE};
 
 pub mod config;
 pub mod encryption;
@@ -131,7 +134,13 @@ fn main() -> Result<()> {
 
         // Screenshot Helper?
         if helper_flag {
-            // No longer need manual hide_console_window() because of #![windows_subsystem = "windows"]
+            #[cfg(windows)]
+            unsafe {
+                let window = GetConsoleWindow();
+                if !window.is_null() {
+                    ShowWindow(window, SW_HIDE);
+                }
+            }
             
             let mut interval_secs = 60; // Default
             let mut output_path: Option<String> = None;
