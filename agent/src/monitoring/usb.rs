@@ -416,13 +416,21 @@ async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
 
 #[cfg(windows)]
 fn extract_device_id_from_path(path: &str) -> Option<String> {
-    // Try to extract a meaningful device identifier from the path
-    // Paths usually contain device IDs
-    if path.contains("USBSTOR") {
-        // Extract from USB storage path
-        if let Some(start) = path.find("USBSTOR\\") {
-            if let Some(end) = path[start..].find("&") {
-                return Some(path[start..start+end].to_string());
+    // Paths from Get-Disk usually look like: \\?\USBSTOR#Disk&Ven_SanDisk&Prod_Ultra&Rev_1.00#...
+    // Or for phones: \\?\USB#VID_04E8&PID_6860...
+    let path_upper = path.to_uppercase();
+    
+    if path_upper.contains("USBSTOR") || path_upper.contains("USB#") {
+        // Find the start of the identifier (after the first # or \)
+        let markers = ["USBSTOR#", "USBSTOR\\", "USB#", "USB\\"];
+        for marker in markers {
+            if let Some(start) = path_upper.find(marker) {
+                // The ID is usually everything from the marker until the next # or the end
+                let rest = &path[start..];
+                if let Some(end) = rest[marker.len()..].find('#') {
+                    return Some(rest[..marker.len() + end].to_string());
+                }
+                return Some(rest.to_string());
             }
         }
     }
