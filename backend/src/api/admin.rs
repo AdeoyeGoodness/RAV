@@ -370,7 +370,25 @@ pub async fn delete_organization(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // 3. Delete agents
+    // 3. Delete archives (FK: archives_organization_id_fkey)
+    sqlx::query!("DELETE FROM archives WHERE organization_id = $1", org_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization archives: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 4. Delete organization settings (FK: organization_settings_organization_id_fkey)
+    sqlx::query!("DELETE FROM organization_settings WHERE organization_id = $1", org_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete organization settings: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 5. Delete agents
     sqlx::query!("DELETE FROM agents WHERE organization_id = $1", org_id)
         .execute(&mut *tx)
         .await
