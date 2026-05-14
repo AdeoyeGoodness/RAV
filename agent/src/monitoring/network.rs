@@ -111,7 +111,24 @@ async fn get_wifi_info() -> Result<WifiInfo> {
         }
 
         // Fallback: If WiFi shows "Disconnected" or empty SSID, check if we have
-        // an active Ethernet/wired connection instead
+        // an active connection using Get-NetConnectionProfile (works in Session 0)
+        if ssid.is_empty() || ssid == "Disconnected" {
+            let ps_output = Command::new("powershell")
+                .args(&["-Command", "(Get-NetConnectionProfile | Where-Object { $_.IPv4Connectivity -eq 'Internet' -or $_.IPv6Connectivity -eq 'Internet' } | Select-Object -First 1).Name"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            
+            if let Ok(ps_out) = ps_output {
+                let profile_name = String::from_utf8_lossy(&ps_out.stdout).trim().to_string();
+                if !profile_name.is_empty() {
+                    ssid = profile_name.clone();
+                    signal = "100%".to_string(); // Default to 100% if we only get the profile name
+                    interface = profile_name;
+                }
+            }
+        }
+
+        // Final Fallback: If we still don't have a name, just list the adapter type
         if ssid.is_empty() || ssid == "Disconnected" {
             let eth_output = Command::new("netsh")
                 .args(&["interface", "show", "interface"])
@@ -122,11 +139,16 @@ async fn get_wifi_info() -> Result<WifiInfo> {
                 let eth_str = String::from_utf8_lossy(&eth_out.stdout);
                 for line in eth_str.lines() {
                     let parts: Vec<&str> = line.split_whitespace().collect();
-                    // Format: Admin State    State         Type            Interface Name
-                    // e.g.:   Enabled        Connected     Dedicated       Ethernet
                     if parts.len() >= 4 && parts[1] == "Connected" && parts[2] == "Dedicated" {
                         let iface_name = parts[3..].join(" ");
-                        ssid = "Wired/Ethernet".to_string();
+                        let iface_lower = iface_name.to_lowercase();
+                        
+                        if iface_lower.contains("wi-fi") || iface_lower.contains("wireless") || iface_lower.contains("wlan") {
+                            ssid = "Wi-Fi (Active)".to_string();
+                        } else {
+                            ssid = "Wired/Ethernet".to_string();
+                        }
+                        
                         signal = "100%".to_string();
                         interface = iface_name;
                         break;
