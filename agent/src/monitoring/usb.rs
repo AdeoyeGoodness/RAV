@@ -756,6 +756,7 @@ fn find_matching_usb_source_path(
 #[cfg(windows)]
 async fn get_usb_drive_letters() -> Result<std::collections::HashSet<String>> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
     
     let mut drive_set = std::collections::HashSet::new();
     
