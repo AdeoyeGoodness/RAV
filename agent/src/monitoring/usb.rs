@@ -321,6 +321,7 @@ async fn start_windows_monitoring(
 #[cfg(windows)]
 async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
     
     // Query multiple sources to catch all USB devices:
     // 1. PnP USB devices (controllers, hubs, etc.)
@@ -333,8 +334,9 @@ async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
     let pnp_output = Command::new("powershell")
         .args(&[
             "-Command",
-            "Get-PnpDevice -Class USB -Status OK | Select-Object -ExpandProperty InstanceId | Where-Object { $_ -ne $null }"
+            "Get-PnpDevice -Class USB,WPD -Status OK | Select-Object -ExpandProperty InstanceId | Where-Object { $_ -ne $null }"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = pnp_output {
@@ -353,6 +355,7 @@ async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
             "-Command",
             "Get-Disk | Where-Object { $_.BusType -eq 'USB' -or $_.BusType -eq 'SD' } | ForEach-Object { $_.Path }"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = disk_output {
@@ -374,6 +377,7 @@ async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
             "-Command",
             "Get-WmiObject Win32_USBControllerDevice | ForEach-Object { [wmi]$_.Dependent } | Select-Object -ExpandProperty PNPDeviceID | Where-Object { $_ -ne $null }"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = wmi_output {
@@ -392,6 +396,7 @@ async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
             "-Command",
             "Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 -or ($_.DriveType -eq 3 -and $_.MediaType -eq 11) } | ForEach-Object { $_.DeviceID }"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = logical_output {
@@ -427,15 +432,17 @@ fn extract_device_id_from_path(path: &str) -> Option<String> {
 #[cfg(windows)]
 async fn get_usb_device_details() -> Result<std::collections::HashMap<String, String>> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
     
     let mut device_map = std::collections::HashMap::new();
     
-    // Get device friendly names using PowerShell
+    // Get device friendly names using PowerShell (improved to catch phones which show up as WPD/MTP)
     let output = Command::new("powershell")
         .args(&[
             "-Command",
-            "Get-PnpDevice -Class USB -Status OK | Select-Object InstanceId, FriendlyName | ConvertTo-Json"
+            "Get-PnpDevice -Class USB,WPD,DiskDrive -Status OK | Select-Object InstanceId, FriendlyName | ConvertTo-Json"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = output {
@@ -469,6 +476,7 @@ async fn get_usb_device_details() -> Result<std::collections::HashMap<String, St
             "-Command",
             "Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } | Select-Object DeviceID, VolumeName | ConvertTo-Json"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = disk_output {
@@ -757,6 +765,7 @@ async fn get_usb_drive_letters() -> Result<std::collections::HashSet<String>> {
             "-Command",
             "Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } | Select-Object -ExpandProperty DeviceID"
         ])
+        .creation_flags(0x08000000)
         .output();
     
     if let Ok(output) = output {
@@ -1064,6 +1073,7 @@ async fn map_drives_to_devices(
     drive_letters: &std::collections::HashSet<String>,
 ) -> Result<std::collections::HashMap<String, (String, String)>> {
     use std::process::Command;
+    use std::os::windows::process::CommandExt;
     
     let mut drive_map = std::collections::HashMap::new();
     
@@ -1080,6 +1090,7 @@ async fn map_drives_to_devices(
                     drive_letter.replace(":", "")
                 )
             ])
+            .creation_flags(0x08000000)
             .output();
         
         if let Ok(output) = device_output {
@@ -1096,6 +1107,7 @@ async fn map_drives_to_devices(
                             device_id
                         )
                     ])
+                    .creation_flags(0x08000000)
                     .output();
                 
                 let device_name = if let Ok(name_out) = name_output {
