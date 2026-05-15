@@ -70,13 +70,13 @@ async fn start_windows_monitoring(
         // Capture screenshot
         match capture_windows_screenshot(&config).await {
             Ok((image_data, width, height)) => {
-                // Compute hash of purely the image data to detect stale frames (e.g. screen off)
+                // Compute hash of purely the image data to detect stale frames
                 let mut data_hasher = Sha256::new();
                 data_hasher.update(&image_data);
                 let current_image_hash = format!("{:x}", data_hasher.finalize());
                 
                 if current_image_hash == last_image_hash {
-                    tracing::debug!("Screenshot is identical to previous (screen likely off or idle). Skipping to prevent spam.");
+                    tracing::debug!("Screenshot identical to previous frame. Skipping.");
                     continue;
                 }
                 last_image_hash = current_image_hash;
@@ -107,7 +107,6 @@ async fn start_windows_monitoring(
                 {
                     Ok(backup_file_id) => {
                         let (agent_id, _) = sync_manager.get_identity().await;
-                        // Log screenshot event
                         let event = Event {
                             event_type: "screenshot_captured".to_string(),
                             timestamp: Utc::now(),
@@ -122,7 +121,6 @@ async fn start_windows_monitoring(
                             }),
                         };
                         sync_manager.queue_event(event);
-                        // Trigger immediate sync for screenshots to reduce delay
                         let sync_manager_clone = sync_manager.clone();
                         tokio::spawn(async move {
                             sync_manager_clone.sync_events_immediate().await;
@@ -130,51 +128,36 @@ async fn start_windows_monitoring(
                         info!("Screenshot uploaded and event logged: {}", backup_file_id);
                     }
                     Err(e) => {
-                        error!("Failed to upload screenshot, caching for offline recovery: {}", e);
+                        error!("Upload failed, saving to offline cache: {}", e);
                         
-                        // Save to offline cache
+                        // Save to offline cache — image is preserved, will be recovered later
                         let offline_dir = std::path::Path::new("C:\\ProgramData\\RAV\\offline_screenshots");
                         let _ = std::fs::create_dir_all(offline_dir);
                         let ext = if config.monitoring.screenshots.format == "png" { "png" } else { "jpg" };
                         let offline_path = offline_dir.join(format!("{}.{}", file_id, ext));
-                        let _ = std::fs::write(&offline_path, &image_data);
+                        if let Err(write_err) = std::fs::write(&offline_path, &image_data) {
+                            error!("CRITICAL: Failed to write offline cache: {}", write_err);
+                        } else {
+                            info!("Screenshot cached offline: {} ({} bytes)", file_id, image_data.len());
+                        }
                         
-                        // Cleanup old offline screenshots to prevent infinite disk usage (keep max 1000)
+                        // Cleanup old offline screenshots (keep max 1000)
                         if let Ok(entries) = std::fs::read_dir(offline_dir) {
                             let mut files: Vec<_> = entries.filter_map(|e| e.ok()).collect();
                             if files.len() > 1000 {
                                 files.sort_by(|a, b| {
                                     let a_time = a.metadata().and_then(|m| m.modified()).ok();
                                     let b_time = b.metadata().and_then(|m| m.modified()).ok();
-                                    b_time.cmp(&a_time) // Newest first
+                                    b_time.cmp(&a_time)
                                 });
                                 for file in files.into_iter().skip(1000) {
                                     let _ = std::fs::remove_file(file.path());
                                 }
                             }
                         }
-
-                        let (agent_id, _) = sync_manager.get_identity().await;
-                        // Log as a failed upload — don't include file_id since it doesn't exist on backend
-                        let event = Event {
-                            event_type: "screenshot_upload_failed".to_string(),
-                            timestamp: Utc::now(),
-                            agent_id,
-                            metadata: json!({
-                                "width": width,
-                                "height": height,
-                                "file_size": image_data.len(),
-                                "format": config.monitoring.screenshots.format,
-                                "platform": "windows",
-                                "upload_error": format!("{}", e),
-                            }),
-                        };
-                        sync_manager.queue_event(event);
-                        // Trigger immediate sync even for failed uploads
-                        let sync_manager_clone = sync_manager.clone();
-                        tokio::spawn(async move {
-                            sync_manager_clone.sync_events_immediate().await;
-                        });
+                        
+                        // DO NOT emit screenshot_upload_failed — the image is safely cached.
+                        // The offline recovery task will upload it and emit screenshot_captured.
                     }
                 }
             }
@@ -267,6 +250,39 @@ async fn process_offline_screenshots(config: Arc<Config>, sync_manager: Arc<Sync
     }
 }
 
+/// Check if the user has been idle for more than `threshold_secs` seconds.
+/// Uses Windows GetLastInputInfo API. Returns false in service/Session 0 mode
+/// (since there's no user input to measure — the helper handles that).
+#[cfg(windows)]
+fn is_user_idle(threshold_secs: u32) -> bool {
+    use std::mem;
+    
+    #[repr(C)]
+    struct LASTINPUTINFO {
+        cb_size: u32,
+        dw_time: u32,
+    }
+    
+    extern "system" {
+        fn GetLastInputInfo(plii: *mut LASTINPUTINFO) -> i32;
+        fn GetTickCount() -> u32;
+    }
+    
+    unsafe {
+        let mut lii = LASTINPUTINFO {
+            cb_size: mem::size_of::<LASTINPUTINFO>() as u32,
+            dw_time: 0,
+        };
+        if GetLastInputInfo(&mut lii) == 0 {
+            // API call failed (likely Session 0 / service mode) — don't skip
+            return false;
+        }
+        let now = GetTickCount();
+        let idle_ms = now.wrapping_sub(lii.dw_time);
+        idle_ms > threshold_secs * 1000
+    }
+}
+
 #[cfg(windows)]
 async fn capture_windows_screenshot(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -301,7 +317,8 @@ async fn capture_windows_screenshot(config: &Config) -> Result<(Vec<u8>, u32, u3
     }
 }
 
-/// Read the latest screenshot from the helper folder
+/// Read the latest screenshot from the helper folder and DELETE it after reading
+/// so it is never re-read as a stale frame.
 #[cfg(windows)]
 async fn read_from_helper_folder(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     use std::fs;
@@ -321,7 +338,7 @@ async fn read_from_helper_folder(config: &Config) -> Result<(Vec<u8>, u32, u32)>
         .collect();
     
     if files.is_empty() {
-        anyhow::bail!("No screenshots in helper folder - helper may not be running");
+        anyhow::bail!("No screenshots in helper folder - helper may not be running or idle");
     }
     
     // Sort by modification time (newest first)
@@ -334,12 +351,12 @@ async fn read_from_helper_folder(config: &Config) -> Result<(Vec<u8>, u32, u32)>
     let newest_file = &files[0];
     let filepath = newest_file.path();
     
-    // Check if file is recent enough (within last 5 minutes)
+    // Check if file is recent enough (within last 2 minutes)
     if let Ok(metadata) = newest_file.metadata() {
         if let Ok(modified) = metadata.modified() {
             let age = std::time::SystemTime::now().duration_since(modified).unwrap_or_default();
-            if age > std::time::Duration::from_secs(300) {
-                anyhow::bail!("Helper screenshot is stale ({}s old) - helper may have stopped", age.as_secs());
+            if age > std::time::Duration::from_secs(120) {
+                anyhow::bail!("Helper screenshot is stale ({}s old) - user likely idle", age.as_secs());
             }
         }
     }
@@ -348,6 +365,13 @@ async fn read_from_helper_folder(config: &Config) -> Result<(Vec<u8>, u32, u32)>
     
     // Read the file
     let image_data = fs::read(&filepath)?;
+    
+    // DELETE the file after reading so we never re-read it as stale
+    let _ = fs::remove_file(&filepath);
+    // Also clean up any older files
+    for old_file in files.iter().skip(1) {
+        let _ = fs::remove_file(old_file.path());
+    }
     
     // Decode to get dimensions
     let img = image::load_from_memory(&image_data)?;
@@ -672,6 +696,7 @@ async fn run_windows_helper(interval_secs: u64) -> Result<()> {
     use std::time::Instant;
     use std::fs;
     use std::path::Path;
+    use sha2::{Sha256, Digest};
 
     let duration = Duration::from_secs(interval_secs);
     let mut interval_timer = interval(duration);
@@ -688,6 +713,8 @@ async fn run_windows_helper(interval_secs: u64) -> Result<()> {
     info!("Screenshot Helper started (Interval: {}s)", interval_secs);
     info!("Saving screenshots to: {}", helper_folder.display());
 
+    let mut last_helper_hash = String::new();
+
     loop {
         interval_timer.tick().await;
         let start = Instant::now();
@@ -698,7 +725,20 @@ async fn run_windows_helper(interval_secs: u64) -> Result<()> {
                     let screen = &screens[0];
                     match screen.capture() {
                         Ok(image) => {
-                            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                            // Convert to raw bytes for hashing
+                            let raw_rgba = image.as_raw();
+                            let mut hasher = Sha256::new();
+                            hasher.update(raw_rgba);
+                            let current_hash = format!("{:x}", hasher.finalize());
+                            
+                            // Skip if identical to the previous frame
+                            if current_hash == last_helper_hash {
+                                tracing::debug!("Helper: Frame identical, skipping write");
+                                continue;
+                            }
+                            last_helper_hash = current_hash;
+
+                            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S%3f");
                             let filename = format!("screenshot_{}.png", timestamp);
                             let filepath = helper_folder.join(&filename);
                             
@@ -711,8 +751,8 @@ async fn run_windows_helper(interval_secs: u64) -> Result<()> {
                             info!("Helper: Captured {}x{} -> {} in {:?}", 
                                   image.width(), image.height(), filename, start.elapsed());
                             
-                            // Cleanup old screenshots (keep only last 5)
-                            cleanup_old_screenshots(helper_folder, 5).await;
+                            // Cleanup old screenshots (keep only last 3)
+                            cleanup_old_screenshots(helper_folder, 3).await;
                         }
                         Err(e) => error!("Helper: Capture failed: {}", e),
                     }

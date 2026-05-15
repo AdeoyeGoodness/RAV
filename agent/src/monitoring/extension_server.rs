@@ -30,7 +30,7 @@ pub struct ExtensionPayload {
     pub batch_timestamp: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ExtensionEvent {
     pub event_id: String,
     pub event_type: String,
@@ -169,6 +169,15 @@ async fn handle_events(
             }
             Err(e) => {
                 warn!("Failed to convert extension event {}: {}", ext_event.event_id, e);
+                // Offline fallback: cache raw event to disk
+                let offline_dir = std::path::Path::new("C:\\ProgramData\\RAV\\offline_extension_events");
+                let _ = std::fs::create_dir_all(offline_dir);
+                let filename = format!("{}_{}.json", ext_event.event_type, ext_event.event_id);
+                let filepath = offline_dir.join(&filename);
+                if let Ok(json_data) = serde_json::to_string(&ext_event) {
+                    let _ = std::fs::write(&filepath, json_data);
+                    warn!("Extension event cached offline: {}", filename);
+                }
             }
         }
     }

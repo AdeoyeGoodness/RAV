@@ -542,36 +542,49 @@ fn is_safe_drive_letter(drive: &str) -> bool {
 
 #[cfg(windows)]
 async fn take_initial_snapshot(drive_letter: &str) -> Result<std::collections::HashMap<String, u64>> {
-    use std::fs;
     use std::path::Path;
 
     // SECURITY: Validate drive letter to prevent Path Traversal
     if !is_safe_drive_letter(drive_letter) {
-        // Log warning but don't error out the whole flow, just return empty snapshot
         tracing::warn!("Security Warning: Invalid drive letter detected: {}", drive_letter);
         return Ok(std::collections::HashMap::new());
     }
     
-    let drive_path = format!("{}", drive_letter);
+    let drive_path = format!("{}\\" , drive_letter);
     let path = Path::new(&drive_path);
     let mut snapshot = std::collections::HashMap::new();
     
     if path.exists() {
-        if let Ok(entries) = fs::read_dir(path) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_file() {
-                    if let Ok(metadata) = fs::metadata(&entry_path) {
-                        let full_path = entry_path.to_string_lossy().to_string();
-                        let file_size = metadata.len();
-                        snapshot.insert(full_path, file_size);
-                    }
+        walk_dir_files(path, &mut snapshot, 3); // Max 3 levels deep on USB
+    }
+    
+    Ok(snapshot)
+}
+
+/// Recursively walk a directory and collect file paths + sizes.
+/// `max_depth` prevents runaway recursion on symlinks or deep trees.
+#[cfg(windows)]
+fn walk_dir_files(dir: &std::path::Path, out: &mut std::collections::HashMap<String, u64>, max_depth: u32) {
+    use std::fs;
+    if max_depth == 0 { return; }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_file() {
+                if let Ok(metadata) = fs::metadata(&entry_path) {
+                    out.insert(entry_path.to_string_lossy().to_string(), metadata.len());
+                }
+            } else if entry_path.is_dir() {
+                // Skip hidden/system folders like System Volume Information, $RECYCLE.BIN
+                let name = entry_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if !name.starts_with('$') && !name.starts_with('.') && name != "System Volume Information" {
+                    walk_dir_files(&entry_path, out, max_depth - 1);
                 }
             }
         }
     }
-    
-    Ok(snapshot)
 }
 
 #[cfg(windows)]
@@ -607,96 +620,82 @@ async fn monitor_system_for_usb_files(
         let snapshot = system_snapshots.entry(system_dir.clone()).or_insert_with(std::collections::HashMap::new);
         let mut current_files: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
         
-        if let Ok(entries) = fs::read_dir(sys_path) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_file() {
-                    if let Ok(metadata) = fs::metadata(&entry_path) {
-                        let file_path = entry_path.to_string_lossy().to_string();
-                        let file_size = metadata.len();
-                        current_files.insert(file_path.clone(), file_size);
+        // Recursively scan (2 levels deep covers e.g. Documents/MyProject/file.txt)
+        walk_dir_files(sys_path, &mut current_files, 2);
                         
-                        // Check if file is new (not in snapshot) - this indicates it was recently copied
-                        if !snapshot.contains_key(&file_path) {
-                            let file_name = entry_path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("Unknown")
-                                .to_string();
-                                
-                            // Try to find source USB path from recent USB file removals (CUT/MOVE)
-                            let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
-                            
-                            // Try to find source USB path from current USB files (COPY)
-                            let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
-                            
-                            let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
-                            
-                            // If we found a match on a USB drive (either currently there or recently removed), log it
-                            if source_usb_path.is_some() {
-                                info!("Detected file copied FROM USB to system: {} ({} bytes) from {}", 
-                                      file_path, file_size, 
-                                      source_usb_path.as_ref().map(|s| s.as_str()).unwrap_or("unknown USB location"));
-                                
-                                log_file_transfer(
-                                    &file_path,
-                                    file_size,
-                                    "from_usb_to_system",
-                                    "", // No drive letter for system files
-                                    device_id,
-                                    device_name,
-                                    source_usb_path.as_deref(),
-                                    None,
-                                    sync_manager,
-                                    config,
-                                ).await?;
-                            }
-                        } else {
-                            // File exists in snapshot - check if it was removed and re-added (modified)
-                            if let Some(&old_size) = snapshot.get(&file_path) {
-                                if old_size != file_size {
-                                    // File was modified - might be a re-copy
-                                    let file_name = entry_path.file_name()
-                                        .and_then(|n| n.to_str())
-                                        .unwrap_or("Unknown")
-                                        .to_string();
-                                        
-                                    let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
-                                    let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
-                                    let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
-                                    
-                                    if source_usb_path.is_some() {
-                                        log_file_transfer(
-                                            &file_path,
-                                            file_size,
-                                            "from_usb_to_system",
-                                            "",
-                                            device_id,
-                                            device_name,
-                                            source_usb_path.as_deref(),
-                                            None,
-                                            sync_manager,
-                                            config,
-                                        ).await?;
-                                    }
-                                }
-                            }
-                        }
+        for (file_path, &file_size) in &current_files {
+            let entry_path = std::path::Path::new(file_path);
+            // Check if file is new (not in snapshot)
+            if !snapshot.contains_key(file_path) {
+                let file_name = entry_path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                    
+                // Try to find source USB path from recent USB file removals (CUT/MOVE)
+                let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                
+                // Try to find source USB path from current USB files (COPY)
+                let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
+                
+                let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
+                
+                if source_usb_path.is_some() {
+                    info!("Detected file copied FROM USB to system: {} ({} bytes) from {}", 
+                          file_path, file_size, 
+                          source_usb_path.as_ref().map(|s| s.as_str()).unwrap_or("unknown USB location"));
+                    
+                    log_file_transfer(
+                        file_path,
+                        file_size,
+                        "from_usb_to_system",
+                        "",
+                        device_id,
+                        device_name,
+                        source_usb_path.as_deref(),
+                        None,
+                        sync_manager,
+                        config,
+                    ).await?;
+                }
+            } else if let Some(&old_size) = snapshot.get(file_path) {
+                if old_size != file_size {
+                    let file_name = entry_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Unknown")
+                        .to_string();
+                        
+                    let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                    let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
+                    let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
+                    
+                    if source_usb_path.is_some() {
+                        log_file_transfer(
+                            file_path,
+                            file_size,
+                            "from_usb_to_system",
+                            "",
+                            device_id,
+                            device_name,
+                            source_usb_path.as_deref(),
+                            None,
+                            sync_manager,
+                            config,
+                        ).await?;
                     }
                 }
             }
         }
         
-        // Check for files that were removed from system directories (might have been copied to USB)
+        // Check for files that were removed from system directories
         for (file_path, &old_size) in snapshot.iter() {
             if !current_files.contains_key(file_path) {
-                // File was removed from system directory
                 let file_name = std::path::Path::new(file_path)
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
                 
-                // Record this removal for matching with USB file appearances
                 recent_system_removals.push_back((
                     file_name,
                     file_path.clone(),
@@ -839,16 +838,11 @@ async fn monitor_usb_file_transfers(
     
     let mut current_files: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     
-    // Recursively get all files (simplified - only top level for now)
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let entry_path = entry.path();
-            if entry_path.is_file() {
-                if let Ok(metadata) = fs::metadata(&entry_path) {
-                    let full_path = entry_path.to_string_lossy().to_string();
-                    let file_size = metadata.len();
-                    current_files.insert(full_path.clone(), file_size);
-                    
+    // Recursively scan USB drive (3 levels deep)
+    walk_dir_files(path, &mut current_files, 3);
+    
+    for (full_path, &file_size) in &current_files {
+                    let entry_path = std::path::Path::new(full_path);
                     // Extract file name for matching
                     let file_name = entry_path.file_name()
                         .and_then(|n| n.to_str())
@@ -856,14 +850,11 @@ async fn monitor_usb_file_transfers(
                         .to_string();
                     
                     // Only log if this is a NEW file (not in snapshot) or MODIFIED file
-                    // Existing files are already in the snapshot and won't be logged
-                    if let Some(&old_size) = last_snapshot.get(&full_path) {
+                    if let Some(&old_size) = last_snapshot.get(full_path) {
                         if old_size != file_size {
-                            // File was modified after initial snapshot
-                            // Try to find source path from recent system file removals
                             let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
                             log_file_transfer(
-                                &full_path,
+                                full_path,
                                 file_size,
                                 "to_usb",
                                 drive_letter,
@@ -876,11 +867,10 @@ async fn monitor_usb_file_transfers(
                             ).await?;
                         }
                     } else {
-                        // New file - copied TO USB (not in initial snapshot)
-                        // Try to find source path from recent system file removals
+                        // New file - copied TO USB
                         let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
                         log_file_transfer(
-                            &full_path,
+                            full_path,
                             file_size,
                             "to_usb",
                             drive_letter,
@@ -892,9 +882,6 @@ async fn monitor_usb_file_transfers(
                             config,
                         ).await?;
                     }
-                }
-            }
-        }
     }
     
     // Check for files that were removed (copied FROM USB)
