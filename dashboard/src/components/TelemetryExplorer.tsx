@@ -265,80 +265,80 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
     }
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {/* Filter Bar */}
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap bg-black/20 p-3 rounded-2xl border border-white/5">
                 {/* Agent Select */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pl-9 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-52 appearance-none cursor-pointer"
+                        className="bg-black/40 border border-white/5 rounded-xl px-4 py-2 pl-10 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/30 focus:shadow-[0_0_10px_rgba(6,182,212,0.1)] transition-all w-52 appearance-none cursor-pointer"
                         value={filters.agent_id}
                         onChange={(e) => setFilters({ ...filters, agent_id: e.target.value })}
                     >
-                        <option value="">All Endpoints</option>
+                        <option value="" className="bg-slate-900">All Endpoints</option>
                         {agents.map(agent => (
-                            <option key={agent.agent_id} value={agent.agent_id}>
+                            <option key={agent.agent_id} value={agent.agent_id} className="bg-slate-900">
                                 {agent.hostname || agent.agent_id.substring(0, 12)}
                             </option>
                         ))}
                     </select>
-                    <Monitor className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Monitor className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Time Range */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none cursor-pointer"
+                        className="bg-black/40 border border-white/5 rounded-xl px-4 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/30 focus:shadow-[0_0_10px_rgba(6,182,212,0.1)] transition-all w-36 appearance-none cursor-pointer"
                         value={filters.timeRange}
                         onChange={(e) => setFilters({ ...filters, timeRange: e.target.value })}
                     >
-                        <option value="1h">Last Hour</option>
-                        <option value="24h">Last 24 Hours</option>
-                        <option value="7d">Last 7 Days</option>
-                        <option value="30d">Last 30 Days</option>
+                        <option value="1h" className="bg-slate-900">Last Hour</option>
+                        <option value="24h" className="bg-slate-900">Last 24 Hours</option>
+                        <option value="7d" className="bg-slate-900">Last 7 Days</option>
+                        <option value="30d" className="bg-slate-900">Last 30 Days</option>
                     </select>
-                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Category */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-44 appearance-none cursor-pointer"
+                        className="bg-black/40 border border-white/5 rounded-xl px-4 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/30 focus:shadow-[0_0_10px_rgba(6,182,212,0.1)] transition-all w-44 appearance-none cursor-pointer"
                         value={filters.category}
                         onChange={(e) => setFilters({ ...filters, category: e.target.value })}
                     >
-                        <option value="">Category: All</option>
-                        <option value="system">System</option>
-                        <option value="process">Process</option>
-                        <option value="network">Network</option>
-                        <option value="file">File</option>
-                        <option value="security">Security</option>
+                        <option value="" className="bg-slate-900">Category: All</option>
+                        <option value="system" className="bg-slate-900">System</option>
+                        <option value="process" className="bg-slate-900">Process</option>
+                        <option value="network" className="bg-slate-900">Network</option>
+                        <option value="file" className="bg-slate-900">File</option>
+                        <option value="security" className="bg-slate-900">Security</option>
                     </select>
-                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Severity */}
                 <div className="relative">
                     <select
-                        className="bg-[#131524]/80 border border-white/10 rounded-lg px-3 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/50 transition-all w-36 appearance-none cursor-pointer"
+                        className="bg-black/40 border border-white/5 rounded-xl px-4 py-2 pr-8 text-sm text-slate-300 outline-none focus:border-cyan-500/30 focus:shadow-[0_0_10px_rgba(6,182,212,0.1)] transition-all w-36 appearance-none cursor-pointer"
                         value={filters.severity}
                         onChange={(e) => setFilters({ ...filters, severity: e.target.value })}
                     >
-                        <option value="">Any Severity</option>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="critical">Critical</option>
+                        <option value="" className="bg-slate-900">Any Severity</option>
+                        <option value="low" className="bg-slate-900">Low</option>
+                        <option value="medium" className="bg-slate-900">Medium</option>
+                        <option value="high" className="bg-slate-900">High</option>
+                        <option value="critical" className="bg-slate-900">Critical</option>
                     </select>
-                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <ChevronDown className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
 
                 {/* Export */}
                 <button
                     onClick={exportToCSV}
                     disabled={events.length === 0}
-                    className="px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Download className="w-4 h-4" />
                     Export
@@ -347,26 +347,27 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                 {/* Run Explorer */}
                 <button
                     onClick={fetchEvents}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium flex items-center gap-2 transition-colors ml-auto"
+                    className="px-5 py-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)] font-bold uppercase tracking-wider text-xs ml-auto transition-all flex items-center gap-2"
                 >
+                    <Activity className="w-4 h-4" />
                     Run Explorer
                 </button>
             </div>
 
             {/* Results Summary & Insights */}
             <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-2 text-sm">
-                    <span className="text-white font-bold">Telemetry Results</span>
-                    <span className="text-slate-500">Showing:</span>
-                    <span className="text-slate-300">{agentDisplayName}</span>
+                <div className="flex items-center gap-3 text-xs bg-black/20 p-3 rounded-xl border border-white/5 mb-2">
+                    <div className="px-2 py-1 bg-cyan-500/10 text-cyan-400 rounded uppercase font-bold tracking-wider">Telemetry Results</div>
+                    <span className="text-slate-500 font-medium">Showing:</span>
+                    <span className="text-white font-medium">{agentDisplayName}</span>
                     <span className="text-slate-600">|</span>
-                    <span className="text-slate-300">
+                    <span className="text-white font-medium">
                         {filters.timeRange === '1h' ? 'Last Hour' :
                             filters.timeRange === '24h' ? 'Last 24 Hours' :
                                 filters.timeRange === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
                     </span>
                     <span className="text-slate-600">|</span>
-                    <span className="text-slate-300">Categories: {filters.category || 'All Activity'}</span>
+                    <span className="text-white font-medium">Categories: {filters.category || 'All Activity'}</span>
                 </div>
 
                 {/* Network Insights Summary — Only shown when category is network */}
@@ -414,17 +415,17 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             </div>
 
             {/* Events Table */}
-            <div className="bg-[#131524]/60 backdrop-blur-xl border border-white/[0.08] rounded-2xl overflow-hidden">
+            <div className="bg-black/20 backdrop-blur-xl border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
                 <table className="w-full text-sm text-left">
-                    <thead className="bg-white/5 border-b border-white/5">
+                    <thead className="bg-black/40 border-b border-white/5">
                         <tr>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-10"></th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-28">Time (UTC)</th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-40">Endpoint</th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-36">Event Type</th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Description</th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24">Category</th>
-                            <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24 text-center">Severity</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-10"></th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-28">Time (UTC)</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-40">Endpoint</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-36">Event Type</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Description</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24">Category</th>
+                            <th className="px-4 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24 text-center">Severity</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -449,7 +450,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                                     {/* Collapsible Date Group Header */}
                                     <tr
                                         key={`header-${dateGroup}`}
-                                        className="bg-[#0A0B14]/70 cursor-pointer hover:bg-[#0A0B14] transition-colors"
+                                        className="bg-white/[0.02] cursor-pointer hover:bg-white/[0.04] transition-colors border-y border-white/5"
                                         onClick={() => toggleGroup(dateGroup)}
                                     >
                                         <td colSpan={7} className="px-4 py-2.5">
@@ -511,13 +512,13 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
 
                                             {/* Expanded Details */}
                                             {expandedRow === event.id && (
-                                                <tr className="bg-black/30">
-                                                    <td colSpan={7} className="px-6 py-4 border-t border-white/5">
+                                                <tr className="bg-black/40">
+                                                    <td colSpan={7} className="px-6 py-5 border-t border-white/5">
                                                         <div className="flex items-center justify-between mb-3">
-                                                            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Metadata Payload</h4>
+                                                            <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Activity className="w-3 h-3" /> Metadata Payload</h4>
                                                             <span className="text-[10px] text-slate-600 font-mono">ID: {event.id}</span>
                                                         </div>
-                                                        <pre className="bg-[#0A0B14] p-4 rounded-lg border border-white/5 text-[11px] font-mono text-cyan-400/80 overflow-auto max-h-48">
+                                                        <pre className="bg-black/60 p-4 rounded-xl border border-white/5 text-[11px] font-mono text-cyan-400/80 overflow-auto max-h-48 custom-scrollbar">
                                                             {JSON.stringify(event.metadata, null, 2)}
                                                         </pre>
                                                     </td>
@@ -551,9 +552,9 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                                 <button
                                     key={idx}
                                     onClick={() => setCurrentPage(page)}
-                                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${currentPage === page
-                                        ? 'bg-blue-600 text-white'
-                                        : 'hover:bg-white/5 text-slate-400'
+                                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page
+                                        ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30'
+                                        : 'hover:bg-white/5 text-slate-400 border border-transparent'
                                         }`}
                                 >
                                     {page}
