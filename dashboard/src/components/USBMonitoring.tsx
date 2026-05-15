@@ -42,7 +42,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
   // Apply date filter
   const dateFilteredEvents = dateFilter
     ? usbEvents.filter(e => {
-        const eventDate = new Date(e.timestamp)
+        const eventDate = parseSafeDate(e.timestamp)
         const filterDate = new Date(dateFilter)
         // Compare dates (ignore time)
         return eventDate.toDateString() === filterDate.toDateString()
@@ -123,6 +123,14 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  }
+
+  const parseSafeDate = (ts: string) => {
+    let iso = ts.replace(' ', 'T')
+    if (!iso.endsWith('Z') && !iso.match(/[+-]\d{2}:\d{2}$/)) {
+      iso += 'Z'
+    }
+    return new Date(iso)
   }
 
   // Auto-refresh effect
@@ -295,8 +303,8 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
                       <div className="flex items-center space-x-4 text-[11px] font-mono text-slate-500">
                         <span className="bg-black/50 px-2 py-1 rounded text-slate-300">DEV: {details.device.substring(0, 30)}</span>
                         {details.fileSize && <span className="bg-black/50 px-2 py-1 rounded text-cyan-400">SIZE: {details.fileSize}</span>}
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}</span>
-                        <span>{format(new Date(event.timestamp), 'HH:mm:ss')}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(parseSafeDate(event.timestamp), { addSuffix: true })}</span>
+                        <span>{format(parseSafeDate(event.timestamp), 'HH:mm:ss')}</span>
                       </div>
                       {event.event_type === 'usb_file_transfer' && event.metadata?.file_path && (
                         <button

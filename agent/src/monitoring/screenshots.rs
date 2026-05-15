@@ -55,6 +55,13 @@ async fn start_windows_monitoring(
         config.monitoring.screenshots.compression_quality
     );
 
+    // Start offline upload task
+    let config_clone = config.clone();
+    let sync_manager_clone = sync_manager.clone();
+    tokio::spawn(async move {
+        process_offline_screenshots(config_clone, sync_manager_clone).await;
+    });
+
     loop {
         interval_timer.tick().await;
 
@@ -110,7 +117,30 @@ async fn start_windows_monitoring(
                         info!("Screenshot uploaded and event logged: {}", backup_file_id);
                     }
                     Err(e) => {
-                        error!("Failed to upload screenshot: {}", e);
+                        error!("Failed to upload screenshot, caching for offline recovery: {}", e);
+                        
+                        // Save to offline cache
+                        let offline_dir = std::path::Path::new("C:\\ProgramData\\RAV\\offline_screenshots");
+                        let _ = std::fs::create_dir_all(offline_dir);
+                        let ext = if config.monitoring.screenshots.format == "png" { "png" } else { "jpg" };
+                        let offline_path = offline_dir.join(format!("{}.{}", file_id, ext));
+                        let _ = std::fs::write(&offline_path, &image_data);
+                        
+                        // Cleanup old offline screenshots to prevent infinite disk usage (keep max 1000)
+                        if let Ok(entries) = std::fs::read_dir(offline_dir) {
+                            let mut files: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+                            if files.len() > 1000 {
+                                files.sort_by(|a, b| {
+                                    let a_time = a.metadata().and_then(|m| m.modified()).ok();
+                                    let b_time = b.metadata().and_then(|m| m.modified()).ok();
+                                    b_time.cmp(&a_time) // Newest first
+                                });
+                                for file in files.into_iter().skip(1000) {
+                                    let _ = std::fs::remove_file(file.path());
+                                }
+                            }
+                        }
+
                         let (agent_id, _) = sync_manager.get_identity().await;
                         // Log as a failed upload — don't include file_id since it doesn't exist on backend
                         let event = Event {
@@ -137,6 +167,88 @@ async fn start_windows_monitoring(
             }
             Err(e) => {
                 error!("Failed to capture screenshot: {}", e);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+async fn process_offline_screenshots(config: Arc<Config>, sync_manager: Arc<SyncManager>) {
+    use std::fs;
+    use std::path::Path;
+    
+    let offline_dir = Path::new("C:\\ProgramData\\RAV\\offline_screenshots");
+    if !offline_dir.exists() {
+        let _ = fs::create_dir_all(offline_dir);
+    }
+
+    let mut interval_timer = tokio::time::interval(Duration::from_secs(60)); // Check every minute
+    loop {
+        interval_timer.tick().await;
+        
+        if let Ok(entries) = fs::read_dir(offline_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        let file_id = file_name.split('.').next().unwrap_or("unknown");
+                        
+                        if let Ok(image_data) = fs::read(&path) {
+                            // Decode to get dimensions
+                            if let Ok(img) = image::load_from_memory(&image_data) {
+                                let width = img.width();
+                                let height = img.height();
+                                
+                                // Try to upload
+                                match upload_screenshot(file_id, &image_data, width, height, &config, &sync_manager).await {
+                                    Ok(backup_file_id) => {
+                                        let (agent_id, _) = sync_manager.get_identity().await;
+                                        
+                                        // Attempt to get original capture time from file modification time
+                                        let timestamp = if let Ok(metadata) = entry.metadata() {
+                                            if let Ok(modified) = metadata.modified() {
+                                                chrono::DateTime::<Utc>::from(modified)
+                                            } else { Utc::now() }
+                                        } else { Utc::now() };
+                                        
+                                        let event = Event {
+                                            event_type: "screenshot_captured".to_string(),
+                                            timestamp,
+                                            agent_id,
+                                            metadata: json!({
+                                                "file_id": backup_file_id,
+                                                "width": width,
+                                                "height": height,
+                                                "file_size": image_data.len(),
+                                                "format": config.monitoring.screenshots.format,
+                                                "platform": "windows",
+                                                "recovered_from_offline": true,
+                                            }),
+                                        };
+                                        sync_manager.queue_event(event);
+                                        
+                                        // Trigger immediate sync
+                                        let sync_manager_clone = sync_manager.clone();
+                                        tokio::spawn(async move {
+                                            sync_manager_clone.sync_events_immediate().await;
+                                        });
+                                        
+                                        // Remove the file from offline cache
+                                        let _ = fs::remove_file(&path);
+                                        info!("Recovered and uploaded offline screenshot: {}", file_id);
+                                    }
+                                    Err(e) => {
+                                        // Still offline or error, wait for next cycle
+                                        tracing::debug!("Offline recovery failed for {}, will retry: {}", file_id, e);
+                                    }
+                                }
+                            } else {
+                                // Corrupted image, delete it
+                                let _ = fs::remove_file(&path);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

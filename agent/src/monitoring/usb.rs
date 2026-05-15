@@ -94,6 +94,13 @@ async fn start_windows_monitoring(
         }
     }
 
+    // Start offline USB file processing task
+    let config_clone_offline = config.clone();
+    let sync_manager_clone_offline = sync_manager.clone();
+    tokio::spawn(async move {
+        process_offline_usb_files(config_clone_offline, sync_manager_clone_offline).await;
+    });
+
     // Start file transfer monitoring task
     if config.monitoring.usb.track_file_transfers {
         let sync_manager_clone = sync_manager.clone();
@@ -164,6 +171,7 @@ async fn start_windows_monitoring(
                     &mut system_file_snapshots,
                     &mut recent_usb_file_removals,
                     &mut recent_system_file_removals,
+                    &last_file_snapshots,
                     &sync_manager_clone,
                     &config_clone,
                 ).await {
@@ -573,6 +581,7 @@ async fn monitor_system_for_usb_files(
     system_snapshots: &mut std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
     recent_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, chrono::DateTime<chrono::Utc>)>,
     recent_system_removals: &mut std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)>,
+    usb_snapshots: &std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
     sync_manager: &SyncManager,
     config: &Config,
 ) -> Result<()> {
@@ -609,38 +618,21 @@ async fn monitor_system_for_usb_files(
                         
                         // Check if file is new (not in snapshot) - this indicates it was recently copied
                         if !snapshot.contains_key(&file_path) {
-                            // Check if file was recently created/modified (within last 120 seconds)
-                            let is_recent = if let Ok(modified_time) = metadata.modified() {
-                                if let Ok(duration) = now.duration_since(modified_time) {
-                                    duration.as_secs() < 120
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            };
-                            
-                            // Also check creation time if available
-                            let is_newly_created = if let Ok(created_time) = metadata.created() {
-                                if let Ok(duration) = now.duration_since(created_time) {
-                                    duration.as_secs() < 120
-                                } else {
-                                    false
-                                }
-                            } else {
-                                false
-                            };
-                            
-                            if is_recent || is_newly_created {
-                                // New file in system directory - likely copied FROM USB TO SYSTEM
-                                let file_name = entry_path.file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("Unknown")
-                                    .to_string();
+                            let file_name = entry_path.file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Unknown")
+                                .to_string();
                                 
-                                // Try to find source USB path from recent USB file removals
-                                let source_usb_path = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
-                                
+                            // Try to find source USB path from recent USB file removals (CUT/MOVE)
+                            let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                            
+                            // Try to find source USB path from current USB files (COPY)
+                            let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
+                            
+                            let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
+                            
+                            // If we found a match on a USB drive (either currently there or recently removed), log it
+                            if source_usb_path.is_some() {
                                 info!("Detected file copied FROM USB to system: {} ({} bytes) from {}", 
                                       file_path, file_size, 
                                       source_usb_path.as_ref().map(|s| s.as_str()).unwrap_or("unknown USB location"));
@@ -667,20 +659,25 @@ async fn monitor_system_for_usb_files(
                                         .and_then(|n| n.to_str())
                                         .unwrap_or("Unknown")
                                         .to_string();
-                                    let source_usb_path = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                                        
+                                    let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                                    let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
+                                    let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
                                     
-                                    log_file_transfer(
-                                        &file_path,
-                                        file_size,
-                                        "from_usb_to_system",
-                                        "",
-                                        device_id,
-                                        device_name,
-                                        source_usb_path.as_deref(),
-                                        None,
-                                        sync_manager,
-                                        config,
-                                    ).await?;
+                                    if source_usb_path.is_some() {
+                                        log_file_transfer(
+                                            &file_path,
+                                            file_size,
+                                            "from_usb_to_system",
+                                            "",
+                                            device_id,
+                                            device_name,
+                                            source_usb_path.as_deref(),
+                                            None,
+                                            sync_manager,
+                                            config,
+                                        ).await?;
+                                    }
                                 }
                             }
                         }
@@ -756,6 +753,28 @@ fn find_matching_usb_source_path(
     for (_, removed_path, removed_size, _, _) in recent_removals.iter().rev() {
         if *removed_size == file_size {
             return Some(removed_path.clone());
+        }
+    }
+    None
+}
+
+// Helper function to find matching USB source path from current USB snapshots
+#[cfg(windows)]
+fn find_matching_usb_current_path(
+    file_name: &str,
+    file_size: u64,
+    usb_snapshots: &std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
+) -> Option<String> {
+    for (_, files) in usb_snapshots {
+        for (usb_path, &usb_size) in files {
+            let usb_file_name = std::path::Path::new(usb_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("Unknown");
+                
+            if usb_file_name == file_name && usb_size == file_size {
+                return Some(usb_path.clone());
+            }
         }
     }
     None
@@ -1047,14 +1066,14 @@ async fn backup_and_upload_file(
     
     let (agent_id, _) = _sync_manager.get_identity().await;
     
-    // Create multipart form
+    // Create multipart form (cloned for offline retry if needed)
     let form = multipart::Form::new()
         .text("file_id", file_id.clone())
         .text("file_name", file_name.to_string())
-        .text("agent_id", agent_id)
+        .text("agent_id", agent_id.clone())
         .text("file_path", source_path.to_string())
         .text("file_size", file_size.to_string())
-        .part("file", multipart::Part::bytes(file_data)
+        .part("file", multipart::Part::bytes(file_data.clone())
             .file_name(file_name.to_string())
             .mime_str("application/octet-stream")?);
     
@@ -1064,17 +1083,131 @@ async fn backup_and_upload_file(
         request = request.header("X-API-Key", api_key);
     }
     
-    let response = request.send().await?;
+    let response = match request.send().await {
+        Ok(res) => res,
+        Err(e) => {
+            tracing::warn!("Failed to upload USB file: {}, caching offline", e);
+            save_usb_to_offline_cache(&file_id, file_name, source_path, file_size, &file_data)?;
+            return Ok(file_id);
+        }
+    };
     
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        anyhow::bail!("Backend returned error {}: {}", status, body);
+        tracing::warn!("Backend returned error {}: {}, caching offline", status, body);
+        save_usb_to_offline_cache(&file_id, file_name, source_path, file_size, &file_data)?;
+        return Ok(file_id);
     }
     
     info!("File uploaded to backend: {} ({} bytes)", file_id, file_size);
     
     Ok(file_id)
+}
+
+#[cfg(windows)]
+fn save_usb_to_offline_cache(
+    file_id: &str,
+    file_name: &str,
+    source_path: &str,
+    file_size: u64,
+    file_data: &[u8],
+) -> Result<()> {
+    use std::fs;
+    let offline_dir = std::path::Path::new("C:\\ProgramData\\RAV\\offline_usb_files");
+    let _ = fs::create_dir_all(offline_dir);
+    
+    let bin_path = offline_dir.join(format!("{}.bin", file_id));
+    let json_path = offline_dir.join(format!("{}.json", file_id));
+    
+    fs::write(&bin_path, file_data)?;
+    
+    let meta = json!({
+        "file_name": file_name,
+        "source_path": source_path,
+        "file_size": file_size
+    });
+    fs::write(&json_path, serde_json::to_string(&meta)?)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+async fn process_offline_usb_files(config: Arc<Config>, sync_manager: Arc<SyncManager>) {
+    use std::fs;
+    use std::path::Path;
+    use reqwest::multipart;
+    
+    let offline_dir = Path::new("C:\\ProgramData\\RAV\\offline_usb_files");
+    if !offline_dir.exists() {
+        let _ = fs::create_dir_all(offline_dir);
+    }
+
+    let mut interval_timer = tokio::time::interval(std::time::Duration::from_secs(60));
+    
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build().unwrap_or_default();
+        
+    loop {
+        interval_timer.tick().await;
+        
+        if let Ok(entries) = fs::read_dir(offline_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "json") {
+                    if let Some(file_id) = path.file_stem().and_then(|n| n.to_str()) {
+                        let bin_path = offline_dir.join(format!("{}.bin", file_id));
+                        if !bin_path.exists() {
+                            let _ = fs::remove_file(&path); // orphan meta
+                            continue;
+                        }
+                        
+                        // Load metadata
+                        if let Ok(meta_str) = fs::read_to_string(&path) {
+                            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&meta_str) {
+                                let file_name = meta["file_name"].as_str().unwrap_or("unknown");
+                                let source_path = meta["source_path"].as_str().unwrap_or("unknown");
+                                let file_size = meta["file_size"].as_u64().unwrap_or(0);
+                                
+                                if let Ok(file_data) = fs::read(&bin_path) {
+                                    let url = format!("{}/api/v1/files/upload", config.backend.url);
+                                    let (agent_id, _) = sync_manager.get_identity().await;
+                                    
+                                    let form = multipart::Form::new()
+                                        .text("file_id", file_id.to_string())
+                                        .text("file_name", file_name.to_string())
+                                        .text("agent_id", agent_id)
+                                        .text("file_path", source_path.to_string())
+                                        .text("file_size", file_size.to_string())
+                                        .part("file", multipart::Part::bytes(file_data)
+                                            .file_name(file_name.to_string())
+                                            .mime_str("application/octet-stream").unwrap());
+                                            
+                                    let mut request = client.post(&url).multipart(form);
+                                    if let Some(api_key) = &config.backend.api_key {
+                                        request = request.header("X-API-Key", api_key);
+                                    }
+                                    
+                                    if let Ok(response) = request.send().await {
+                                        if response.status().is_success() {
+                                            tracing::info!("Recovered offline USB file: {}", file_id);
+                                            let _ = fs::remove_file(&path);
+                                            let _ = fs::remove_file(&bin_path);
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Corrupt meta
+                                let _ = fs::remove_file(&path);
+                                let _ = fs::remove_file(&bin_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(windows)]

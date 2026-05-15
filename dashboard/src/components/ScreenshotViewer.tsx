@@ -42,12 +42,20 @@ export default function ScreenshotViewer({
   const loadingRef = useRef<Set<string>>(new Set())
 
   // Filter screenshot events
-  const screenshotEvents = events.filter(e => e.event_type === 'screenshot_captured')
+  const screenshotEvents = events.filter(e => e.event_type === 'screenshot_captured' || e.event_type === 'screenshot_upload_failed')
+
+  const parseSafeDate = (ts: string) => {
+    let iso = ts.replace(' ', 'T')
+    if (!iso.endsWith('Z') && !iso.match(/[+-]\d{2}:\d{2}$/)) {
+      iso += 'Z'
+    }
+    return new Date(iso)
+  }
 
   // Apply date filter
   const dateFilteredEvents = dateFilter
     ? screenshotEvents.filter(e => {
-      const eventDate = new Date(e.timestamp)
+      const eventDate = parseSafeDate(e.timestamp)
       const filterDate = new Date(dateFilter)
       return eventDate.toDateString() === filterDate.toDateString()
     })
@@ -55,8 +63,8 @@ export default function ScreenshotViewer({
 
   // Sort events by timestamp
   const sortedEvents = [...dateFilteredEvents].sort((a, b) => {
-    const timeA = new Date(a.timestamp).getTime()
-    const timeB = new Date(b.timestamp).getTime()
+    const timeA = parseSafeDate(a.timestamp).getTime()
+    const timeB = parseSafeDate(b.timestamp).getTime()
     return sortOrder === 'newest' ? timeB - timeA : timeA - timeB
   })
 
@@ -351,14 +359,27 @@ export default function ScreenshotViewer({
           sortedEvents.map((event) => (
             <div
               key={event.id}
-              className="bg-black/40 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/[0.04] hover:border-blue-500/40 hover:-translate-y-1 hover:shadow-lg transition-all duration-300 group"
-              onClick={() => loadScreenshotImage(event)}
+              className={`bg-black/40 border ${event.event_type === 'screenshot_upload_failed' ? 'border-rose-500/20 hover:border-rose-500/40' : 'border-white/5 hover:border-blue-500/40'} rounded-xl p-3 cursor-pointer hover:bg-white/[0.04] hover:-translate-y-1 hover:shadow-lg transition-all duration-300 group`}
+              onClick={() => {
+                if (event.event_type === 'screenshot_upload_failed') {
+                  setErrorMessage(`Upload failed (Offline or network error): ${event.metadata?.upload_error || 'Unknown error'}`)
+                  setTimeout(() => setErrorMessage(null), 5000)
+                } else {
+                  loadScreenshotImage(event)
+                }
+              }}
             >
-              <div className="aspect-video rounded-lg mb-3 flex items-center justify-center relative overflow-hidden bg-slate-950 border border-white/5 group-hover:border-blue-500/30 transition-colors">
-                {thumbnailUrls.has(event.id) ? (
+              <div className={`aspect-video rounded-lg mb-3 flex items-center justify-center relative overflow-hidden bg-slate-950 border ${event.event_type === 'screenshot_upload_failed' ? 'border-rose-500/20 group-hover:border-rose-500/30' : 'border-white/5 group-hover:border-blue-500/30'} transition-colors`}>
+                {event.event_type === 'screenshot_upload_failed' ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center bg-rose-500/5">
+                    <Camera className="w-8 h-8 text-rose-500/40 mb-2" />
+                    <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Upload Failed</span>
+                    <span className="text-[8px] font-mono text-rose-500/60 mt-1 truncate w-full px-2" title={event.metadata?.upload_error}>OFFLINE / NETWORK ERROR</span>
+                  </div>
+                ) : thumbnailUrls.has(event.id) ? (
                   <img
                     src={thumbnailUrls.get(event.id)}
-                    alt={`Screenshot ${format(new Date(event.timestamp), 'HH:mm:ss')}`}
+                    alt={`Screenshot ${format(parseSafeDate(event.timestamp), 'HH:mm:ss')}`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={() => {
                       setThumbnailErrors(prev => new Set(prev).add(event.id))
@@ -394,8 +415,8 @@ export default function ScreenshotViewer({
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-white tracking-wider uppercase">{format(new Date(event.timestamp), 'MMM dd, yyyy')}</p>
-                  <p className="text-xs font-mono text-blue-400">{format(new Date(event.timestamp), 'HH:mm:ss')}</p>
+                  <p className="text-xs font-bold text-white tracking-wider uppercase">{format(parseSafeDate(event.timestamp), 'MMM dd, yyyy')}</p>
+                  <p className="text-xs font-mono text-blue-400">{format(parseSafeDate(event.timestamp), 'HH:mm:ss')}</p>
                 </div>
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
                   <span className="bg-white/5 px-1.5 py-0.5 rounded">
@@ -432,7 +453,7 @@ export default function ScreenshotViewer({
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
               <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-3">
                 <Camera className="w-5 h-5 text-blue-400" />
-                Snapshot taken on <span className="text-blue-400">{format(new Date(selectedScreenshot.timestamp), 'PPpp')}</span>
+                Snapshot taken on <span className="text-blue-400">{format(parseSafeDate(selectedScreenshot.timestamp), 'PPpp')}</span>
               </h3>
               <button
                 onClick={() => {
