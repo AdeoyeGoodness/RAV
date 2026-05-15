@@ -1,4 +1,6 @@
-#![windows_subsystem = "windows"]
+// NOTE: Do NOT use #![windows_subsystem = "windows"] here!
+// It breaks Chrome Native Messaging by destroying stdin/stdout pipes.
+// The service runs via SCM (no console). Child processes use CREATE_NO_WINDOW.
 use anyhow::Result;
 use std::sync::Arc;
 use tracing::info;
@@ -18,6 +20,9 @@ use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
 use utils::{hide_file, set_directory_permissions};
 
 fn main() -> Result<()> {
+    // Keep the tracing guard alive for the duration of the process
+    let mut _tracing_guard = None;
+
     // 1. CLI Argument Parsing (Fast, no side effects)
     let args: Vec<String> = std::env::args().collect();
     let mut install_flag = false;
@@ -78,15 +83,13 @@ fn main() -> Result<()> {
         
         // let _ = hide_file(std::path::Path::new(log_dir)); // Temporarily disabled so you can see logs
         let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
-        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        _tracing_guard = Some(guard);
 
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
             .with_writer(non_blocking)
             .init();
-        
-        // This guard must live for the duration of the program.
-        std::mem::forget(_guard); 
         
         info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
     }
@@ -94,7 +97,7 @@ fn main() -> Result<()> {
     // 3. Dynamic Console Attachment: If we have CLI flags, try to attach to parent console
     // so the user actually sees the output in their terminal.
     #[cfg(windows)]
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag {
+    if !native_host_flag && (cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag) {
         attach_console();
     }
 
@@ -119,12 +122,21 @@ fn main() -> Result<()> {
         // Native Messaging Host?
         if native_host_flag {
             info!("RAV Agent: Running in Native Messaging Host mode...");
-            let config = Arc::new(Config::load()?);
-            encryption::initialize(&config)?;
-            let storage = Arc::new(storage::StorageManager::new(config.agent.data_dir.clone())?);
-            let sync_manager = Arc::new(SyncManager::new(config.clone(), storage)?);
             
-            monitoring::native_host::run_native_host(config, sync_manager)?;
+            let result = (|| -> Result<()> {
+                let config = Arc::new(Config::load()?);
+                encryption::initialize(&config)?;
+                let storage = Arc::new(storage::StorageManager::new(config.agent.data_dir.clone())?);
+                let sync_manager = Arc::new(SyncManager::new(config.clone(), storage)?);
+                
+                monitoring::native_host::run_native_host(config, sync_manager)?;
+                Ok(())
+            })();
+            
+            if let Err(e) = result {
+                tracing::error!("Native Messaging Host FATAL ERROR: {:?}", e);
+            }
+            
             return Ok(());
         }
 
@@ -233,6 +245,10 @@ fn main() -> Result<()> {
             if let Err(e) = service::windows::install_service(&config.stealth.service_name, &config.stealth.service_display_name) {
                tracing::warn!("Service installation note: {}", e);
             }
+            
+            // Self-repair Native Messaging Host manifest and registry
+            // This ensures the extension can always connect, even if the MSI custom action failed
+            utils::repair_native_messaging_host();
             
             // Item 5.3: Self-Hide
             // if let Ok(exe_path) = std::env::current_exe() {

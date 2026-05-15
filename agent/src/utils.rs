@@ -38,6 +38,8 @@ pub fn set_directory_permissions(path: &Path) -> Result<()> {
     #[cfg(windows)]
     {
         use std::process::Command;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         
         let path_str = path.to_string_lossy();
         
@@ -48,6 +50,7 @@ pub fn set_directory_permissions(path: &Path) -> Result<()> {
             .arg("Users:(OI)(CI)F")
             .arg("/T")
             .arg("/Q") // Quiet mode
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
 
         if let Ok(out) = output {
@@ -69,9 +72,12 @@ pub fn detect_tampering(service_name: &str) -> Result<bool> {
     #[cfg(windows)]
     {
         use std::process::Command;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let output = Command::new("sc")
             .arg("query")
             .arg(service_name)
+            .creation_flags(CREATE_NO_WINDOW)
             .output();
             
         if let Ok(out) = output {
@@ -83,4 +89,110 @@ pub fn detect_tampering(service_name: &str) -> Result<bool> {
     }
     
     Ok(false)
+}
+
+/// Self-repair the Native Messaging Host manifest and registry keys.
+/// Called on every agent startup to ensure the extension can always connect.
+/// This makes Native Messaging work regardless of whether the MSI custom action succeeded.
+#[cfg(windows)]
+pub fn repair_native_messaging_host() {
+    use std::fs;
+    
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("Cannot repair native messaging: failed to get exe path: {}", e);
+            return;
+        }
+    };
+    
+    let install_dir = match exe_path.parent() {
+        Some(p) => p,
+        None => return,
+    };
+    
+    let manifest_path = install_dir.join("com.rav.agent.json");
+    
+    // Build the manifest with the correct path and all known extension IDs
+    let manifest = serde_json::json!({
+        "name": "com.rav.agent",
+        "description": "RAV Agent Native Messaging Host",
+        "path": exe_path.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [
+            "chrome-extension://lkgbkgaglogjopokmbcedcdlcajldhkk/",
+            "chrome-extension://dlkdbjmoohiplloecfgblbggpijbomna/",
+            "chrome-extension://epjnmnocdpicilcklecnmkmdjdegnaie/",
+            "chrome-extension://nihfegnoliailmnlfmgjpookgibibhjp/"
+        ]
+    });
+    
+    // Write the manifest
+    match serde_json::to_string_pretty(&manifest) {
+        Ok(json_str) => {
+            if let Err(e) = fs::write(&manifest_path, &json_str) {
+                tracing::warn!("Failed to write native messaging manifest: {}", e);
+                return;
+            }
+            info!("Native Messaging manifest written: {}", manifest_path.display());
+        }
+        Err(e) => {
+            tracing::warn!("Failed to serialize native messaging manifest: {}", e);
+            return;
+        }
+    }
+    
+    // Ensure registry keys point to this manifest
+    let manifest_path_str = manifest_path.to_string_lossy().to_string();
+    
+    use winapi::um::winreg::{RegCreateKeyExW, RegSetValueExW, HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER};
+    use winapi::um::winnt::{REG_SZ, KEY_WRITE};
+    use winapi::shared::minwindef::HKEY;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsStr;
+    use std::ptr;
+    
+    let registry_paths = [
+        (HKEY_LOCAL_MACHINE, "SOFTWARE\\Google\\Chrome\\NativeMessagingHosts\\com.rav.agent"),
+        (HKEY_CURRENT_USER,  "SOFTWARE\\Google\\Chrome\\NativeMessagingHosts\\com.rav.agent"),
+        (HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Edge\\NativeMessagingHosts\\com.rav.agent"),
+        (HKEY_CURRENT_USER,  "SOFTWARE\\Microsoft\\Edge\\NativeMessagingHosts\\com.rav.agent"),
+    ];
+    
+    for (root, subkey) in &registry_paths {
+        let subkey_wide: Vec<u16> = OsStr::new(subkey).encode_wide().chain(std::iter::once(0)).collect();
+        let value_wide: Vec<u16> = OsStr::new(&manifest_path_str).encode_wide().chain(std::iter::once(0)).collect();
+        
+        unsafe {
+            let mut hkey: HKEY = ptr::null_mut();
+            let mut disposition: u32 = 0;
+            
+            let result = RegCreateKeyExW(
+                *root,
+                subkey_wide.as_ptr(),
+                0,
+                ptr::null_mut(),
+                0, // REG_OPTION_NON_VOLATILE
+                KEY_WRITE,
+                ptr::null_mut(),
+                &mut hkey,
+                &mut disposition,
+            );
+            
+            if result == 0 {
+                // Set the default value to the manifest path
+                RegSetValueExW(
+                    hkey,
+                    ptr::null(), // Default value
+                    0,
+                    REG_SZ,
+                    value_wide.as_ptr() as *const u8,
+                    (value_wide.len() * 2) as u32,
+                );
+                winapi::um::winreg::RegCloseKey(hkey);
+            }
+        }
+    }
+    
+    info!("Native Messaging registry keys verified for Chrome and Edge");
 }

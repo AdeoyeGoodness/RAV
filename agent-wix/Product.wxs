@@ -78,11 +78,13 @@
         <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" Bitness="always64">
           <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
           <File Id="AgentNativeHostBat" Source="rav-native-host.bat" />
+          <File Id="LaunchHelperVbs" Source="launch-helper.vbs" />
           <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem" />
           <ServiceControl Id="StartRAVService" Name="RAVAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
           
           <!-- Registry key to launch helper on user logon (HKCU, runs in user session) -->
-          <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="RAVScreenshotHelper" Value="&quot;[INSTALLFOLDER]rav-agent.exe&quot; --screenshot-helper --interval [SCREENSHOT_INTERVAL]" Type="string" />
+          <!-- Uses wscript to run the VBS launcher silently (no console window) -->
+          <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Run" Name="RAVScreenshotHelper" Value="wscript.exe &quot;[INSTALLFOLDER]launch-helper.vbs&quot;" Type="string" />
           
           <!-- Native Messaging Host registration -->
           <File Id="NativeHostManifestChrome" Source="native-messaging-host.json" Name="com.rav.agent.json" />

@@ -26,6 +26,8 @@ pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
     
     // Use sc.exe for robust installation
     // Note: sc expects space after =
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     let status = std::process::Command::new("sc")
         .arg("create")
         .arg(service_name)
@@ -33,6 +35,7 @@ pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
         .arg(&format!("DisplayName= {}", display_name))
         .arg("start= auto")
         .arg("type= own")
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .context("Failed to execute sc create")?;
         
@@ -51,6 +54,7 @@ pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
         .arg("description")
         .arg(SERVICE_NAME)
         .arg("Remote Agent Verification Enterprise Monitor")
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
 
     // Configure Failure Recovery: Restart Service after 1 minute (60000ms) for 1st, 2nd, and subsequent failures.
@@ -62,6 +66,7 @@ pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
         .arg("86400")
         .arg("actions=")
         .arg("restart/60000/restart/60000/restart/60000")
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
     
     info!("Service '{}' installed successfully via sc.", SERVICE_NAME);
@@ -69,13 +74,16 @@ pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
 }
 
 pub fn uninstall_service(service_name: &str) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     // Attempt stop first
-    let _ = std::process::Command::new("sc").arg("stop").arg(service_name).output();
+    let _ = std::process::Command::new("sc").arg("stop").arg(service_name).creation_flags(CREATE_NO_WINDOW).output();
     std::thread::sleep(Duration::from_secs(1)); // Grace period
  
     let status = std::process::Command::new("sc")
         .arg("delete")
         .arg(service_name)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .context("Failed to execute sc delete")?;
         
@@ -100,9 +108,12 @@ pub fn is_service_running(service_name: &str) -> Result<bool> {
 }
  
 pub fn start_service(service_name: &str) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     let status = std::process::Command::new("sc")
         .arg("start")
         .arg(service_name)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .context("Failed to execute sc start")?;
         

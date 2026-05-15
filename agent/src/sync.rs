@@ -150,10 +150,13 @@ impl SyncManager {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
             // Use wmic to get OS info
             // wmic os get Caption,Version /value
             if let Ok(output) = Command::new("wmic")
                 .args(&["os", "get", "Caption,Version", "/value"])
+                .creation_flags(CREATE_NO_WINDOW)
                 .output() 
             {
                 if let Ok(text) = String::from_utf8(output.stdout) {

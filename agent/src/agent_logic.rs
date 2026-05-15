@@ -26,6 +26,10 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
     let config_arc = Arc::new(config);
     encryption::initialize(&config_arc)?;
     
+    // Self-repair Native Messaging on every service start
+    #[cfg(windows)]
+    crate::utils::repair_native_messaging_host();
+    
     // Init Persistence
     let storage = Arc::new(storage::StorageManager::new(config_arc.agent.data_dir.clone())?);
     
@@ -103,8 +107,12 @@ pub fn generate_hardware_fingerprint() -> String {
     // Add system UUID (Windows)
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
         if let Ok(output) = Command::new("wmic")
             .args(&["csproduct", "get", "uuid"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
             if let Ok(uuid_str) = String::from_utf8(output.stdout) {
@@ -122,6 +130,7 @@ pub fn generate_hardware_fingerprint() -> String {
         // Add processor ID
         if let Ok(output) = Command::new("wmic")
             .args(&["cpu", "get", "ProcessorId"])
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
             if let Ok(proc_id) = String::from_utf8(output.stdout) {

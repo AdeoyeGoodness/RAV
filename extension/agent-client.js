@@ -2,7 +2,7 @@
  * RAV Browser Extension - Agent Communication
  *
  * Handles secure communication with the local RAV agent.
- * All communication is localhost-only (127.0.0.1).
+ * All communication uses Chrome Native Messaging (stdio protocol).
  */
 import { DEFAULT_CONFIG } from './types.js';
 const EXTENSION_VERSION = '1.0.0';

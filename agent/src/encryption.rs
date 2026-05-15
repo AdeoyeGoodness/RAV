@@ -25,6 +25,7 @@ pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
     use winapi::um::dpapi::CryptProtectData;
     use winapi::um::wincrypt::DATA_BLOB;
     const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+    const CRYPTPROTECT_LOCAL_MACHINE: u32 = 0x4;
     use std::ptr;
 
     let mut input = DATA_BLOB {
@@ -43,7 +44,7 @@ pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
             ptr::null_mut(),
             ptr::null_mut(),
             ptr::null_mut(),
-            CRYPTPROTECT_UI_FORBIDDEN,
+            CRYPTPROTECT_UI_FORBIDDEN | CRYPTPROTECT_LOCAL_MACHINE,
             &mut output,
         )
     };
@@ -66,6 +67,7 @@ pub fn unprotect(data: &[u8]) -> Result<Vec<u8>> {
     use winapi::um::dpapi::CryptUnprotectData;
     use winapi::um::wincrypt::DATA_BLOB;
     const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x1;
+    const CRYPTPROTECT_LOCAL_MACHINE: u32 = 0x4;
     use std::ptr;
 
     let mut input = DATA_BLOB {
@@ -84,7 +86,7 @@ pub fn unprotect(data: &[u8]) -> Result<Vec<u8>> {
             ptr::null_mut(),
             ptr::null_mut(),
             ptr::null_mut(),
-            CRYPTPROTECT_UI_FORBIDDEN,
+            CRYPTPROTECT_UI_FORBIDDEN | CRYPTPROTECT_LOCAL_MACHINE,
             &mut output,
         )
     };
@@ -118,41 +120,20 @@ fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
         // Use DPAPI to decrypt the master key on Windows
         #[cfg(windows)]
         {
-            unprotect(&stored_key).context("Failed to decrypt master key via DPAPI")?
+            match unprotect(&stored_key) {
+                Ok(key) => key,
+                Err(e) => {
+                    tracing::warn!("Failed to decrypt master key. Regenerating... ({})", e);
+                    generate_and_store_key(key_path)?
+                }
+            }
         }
         #[cfg(not(windows))]
         {
             stored_key
         }
     } else {
-        // Generate new key
-        let key: [u8; KEY_SIZE] = Aes256Gcm::generate_key(&mut OsRng).into();
-        let key_vec = key.to_vec();
-        
-        // Ensure parent directory exists
-        if let Some(parent) = key_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        
-        // Protect the key with DPAPI before storing on Windows
-        #[cfg(windows)]
-        let data_to_store = protect(&key_vec).context("Failed to encrypt master key via DPAPI")?;
-        #[cfg(not(windows))]
-        let data_to_store = key_vec.clone();
-
-        fs::write(key_path, &data_to_store)
-            .context("Failed to write protected encryption key file")?;
-        
-        // Set restrictive permissions (Unix only)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(key_path)?.permissions();
-            perms.set_mode(0o600); // rw-------
-            fs::set_permissions(key_path, perms)?;
-        }
-        
-        key_vec
+        generate_and_store_key(key_path)?
     };
 
     if key_bytes.len() != KEY_SIZE {
@@ -161,6 +142,37 @@ fn load_or_generate_key(key_path: &Path) -> Result<Aes256Gcm> {
 
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     Ok(Aes256Gcm::new(key))
+}
+
+fn generate_and_store_key(key_path: &Path) -> Result<Vec<u8>> {
+    // Generate new key
+    let key: [u8; KEY_SIZE] = Aes256Gcm::generate_key(&mut OsRng).into();
+    let key_vec = key.to_vec();
+    
+    // Ensure parent directory exists
+    if let Some(parent) = key_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    
+    // Protect the key with DPAPI before storing on Windows
+    #[cfg(windows)]
+    let data_to_store = protect(&key_vec).context("Failed to encrypt master key via DPAPI")?;
+    #[cfg(not(windows))]
+    let data_to_store = key_vec.clone();
+
+    fs::write(key_path, &data_to_store)
+        .context("Failed to write protected encryption key file")?;
+    
+    // Set restrictive permissions (Unix only)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(key_path)?.permissions();
+        perms.set_mode(0o600); // rw-------
+        fs::set_permissions(key_path, perms)?;
+    }
+    
+    Ok(key_vec)
 }
 
 pub fn encrypt_data(data: &[u8]) -> Result<Vec<u8>> {

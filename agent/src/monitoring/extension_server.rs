@@ -73,6 +73,7 @@ pub async fn start_extension_server(
     config: Arc<Config>,
     sync_manager: Arc<SyncManager>,
 ) -> Result<()> {
+    
     let state = ExtensionServerState {
         config: config.clone(),
         sync_manager,
@@ -81,6 +82,7 @@ pub async fn start_extension_server(
     let app = Router::new()
         .route("/api/extension/ping", get(handle_ping))
         .route("/api/extension/events", post(handle_events))
+        .layer(axum::middleware::from_fn(cors_middleware))
         .with_state(state);
 
     // IMPORTANT: Bind to 127.0.0.1 ONLY - never expose to network
@@ -94,6 +96,37 @@ pub async fn start_extension_server(
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// CORS middleware - allows browser extensions to make requests
+async fn cors_middleware(
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::Method;
+    use axum::response::IntoResponse;
+    
+    // Handle OPTIONS preflight requests immediately
+    if req.method() == Method::OPTIONS {
+        let mut response = StatusCode::OK.into_response();
+        let headers = response.headers_mut();
+        headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+        headers.insert("Access-Control-Allow-Methods", "GET, POST, OPTIONS".parse().unwrap());
+        headers.insert("Access-Control-Allow-Headers", "Content-Type, X-RAV-Extension".parse().unwrap());
+        return response;
+    }
+    
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert("Access-Control-Allow-Origin", "*".parse().unwrap());
+    headers.insert("Access-Control-Allow-Methods", "GET, POST, OPTIONS".parse().unwrap());
+    headers.insert("Access-Control-Allow-Headers", "Content-Type, X-RAV-Extension".parse().unwrap());
+    response
+}
+
+/// Handle OPTIONS preflight requests
+async fn handle_options() -> StatusCode {
+    StatusCode::OK
 }
 
 // ============================================================================
