@@ -62,12 +62,25 @@ async fn start_windows_monitoring(
         process_offline_screenshots(config_clone, sync_manager_clone).await;
     });
 
+    let mut last_image_hash = String::new();
+
     loop {
         interval_timer.tick().await;
 
         // Capture screenshot
         match capture_windows_screenshot(&config).await {
             Ok((image_data, width, height)) => {
+                // Compute hash of purely the image data to detect stale frames (e.g. screen off)
+                let mut data_hasher = Sha256::new();
+                data_hasher.update(&image_data);
+                let current_image_hash = format!("{:x}", data_hasher.finalize());
+                
+                if current_image_hash == last_image_hash {
+                    tracing::debug!("Screenshot is identical to previous (screen likely off or idle). Skipping to prevent spam.");
+                    continue;
+                }
+                last_image_hash = current_image_hash;
+                
                 info!("Screenshot captured: {}x{} ({} bytes)", width, height, image_data.len());
 
                 // Generate file ID from hash
