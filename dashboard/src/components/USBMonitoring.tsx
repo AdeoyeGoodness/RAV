@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
-import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar } from 'lucide-react'
+import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar, Clock } from 'lucide-react'
 
 interface Event {
   id: string
@@ -137,30 +137,32 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
   }, [autoRefresh, onRefresh])
 
   return (
-    <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+    <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
       {/* Header with Filters */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4 flex-wrap">
-          <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>USB Monitoring</h2>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/5">
+        <div className="flex items-center space-x-4 flex-wrap gap-y-3">
+          <div className="flex items-center gap-3 mr-4">
+            <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
+              <Usb className="w-5 h-5" />
+            </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">USB Activity</h2>
+          </div>
           <div className="flex items-center space-x-2">
             {/* Date Filter */}
-            <div className="flex items-center space-x-2 px-3 py-1 rounded-lg border transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
-              <Calendar className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-cyan-500/30 transition-colors">
+              <Calendar className="w-4 h-4 text-slate-400" />
               <input
                 type="date"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="px-2 py-1 bg-transparent border-none text-sm focus:outline-none transition-all max-w-[140px]"
-                style={{ color: 'var(--text-primary)' }}
+                className="px-2 py-1 bg-transparent border-none text-sm text-slate-300 focus:outline-none transition-all max-w-[140px]"
                 title="Filter events by date"
+                style={{ colorScheme: 'dark' }}
               />
               {dateFilter && (
                 <button
                   onClick={() => setDateFilter('')}
-                  className="p-1 rounded transition-all"
-                  style={{ color: '#FF6B6B' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  className="p-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
                   title="Clear date filter"
                 >
                   <X className="w-3 h-3" />
@@ -168,88 +170,44 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
               )}
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 bg-black/40 p-1 rounded-xl border border-white/5">
             <button
               onClick={() => setFilter('all')}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                 filter === 'all'
-                  ? ''
-                  : ''
+                  ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.3)]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
-              style={filter === 'all' 
-                ? { backgroundColor: 'var(--accent-cyan)', color: 'var(--bg-primary)' }
-                : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)' }
-              }
-              onMouseEnter={(e) => {
-                if (filter !== 'all') {
-                  e.currentTarget.style.opacity = '0.8'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (filter !== 'all') {
-                  e.currentTarget.style.opacity = '1'
-                }
-              }}
             >
               All ({dateFilter ? dateFilteredEvents.length : usbEvents.length})
             </button>
             <button
               onClick={() => setFilter('usb_inserted')}
-              className="px-3 py-1 rounded-lg text-sm font-medium transition-all"
-              style={filter === 'usb_inserted'
-                ? { backgroundColor: '#00FF88', color: 'var(--bg-primary)' }
-                : { backgroundColor: 'var(--bg-tertiary)', color: 'rgba(0, 255, 136, 0.7)' }
-              }
-              onMouseEnter={(e) => {
-                if (filter !== 'usb_inserted') {
-                  e.currentTarget.style.opacity = '0.8'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (filter !== 'usb_inserted') {
-                  e.currentTarget.style.opacity = '1'
-                }
-              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                filter === 'usb_inserted'
+                  ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
             >
               Inserted ({insertedEvents.length})
             </button>
             <button
               onClick={() => setFilter('usb_removed')}
-              className="px-3 py-1 rounded-lg text-sm font-medium transition-all"
-              style={filter === 'usb_removed'
-                ? { backgroundColor: '#FF6B6B', color: 'var(--bg-primary)' }
-                : { backgroundColor: 'var(--bg-tertiary)', color: 'rgba(255, 107, 107, 0.7)' }
-              }
-              onMouseEnter={(e) => {
-                if (filter !== 'usb_removed') {
-                  e.currentTarget.style.opacity = '0.8'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (filter !== 'usb_removed') {
-                  e.currentTarget.style.opacity = '1'
-                }
-              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                filter === 'usb_removed'
+                  ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
             >
               Removed ({removedEvents.length})
             </button>
             <button
               onClick={() => setFilter('usb_file_transfer')}
-              className="px-3 py-1 rounded-lg text-sm font-medium transition-all"
-              style={filter === 'usb_file_transfer'
-                ? { backgroundColor: 'var(--accent-purple)', color: '#ffffff' }
-                : { backgroundColor: 'var(--bg-tertiary)', color: 'rgba(108, 92, 231, 0.7)' }
-              }
-              onMouseEnter={(e) => {
-                if (filter !== 'usb_file_transfer') {
-                  e.currentTarget.style.opacity = '0.8'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (filter !== 'usb_file_transfer') {
-                  e.currentTarget.style.opacity = '1'
-                }
-              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                filter === 'usb_file_transfer'
+                  ? 'bg-violet-500 text-white shadow-[0_0_15px_rgba(139,92,246,0.3)]'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
             >
               Transfers ({transferEvents.length})
             </button>
@@ -258,21 +216,11 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
-            style={autoRefresh
-              ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }
-              : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)', borderColor: 'transparent' }
-            }
-            onMouseEnter={(e) => {
-              if (!autoRefresh) {
-                e.currentTarget.style.opacity = '0.8'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!autoRefresh) {
-                e.currentTarget.style.opacity = '1'
-              }
-            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
+              autoRefresh
+                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.1)]'
+                : 'bg-black/40 text-slate-500 border-white/5 hover:text-slate-300'
+            }`}
           >
             Auto: {autoRefresh ? 'ON' : 'OFF'}
           </button>
@@ -280,18 +228,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
             <button
               onClick={onClear}
               disabled={loading || events.length === 0}
-              className="p-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: 'var(--bg-tertiary)', color: '#FF6B6B' }}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'
-                }
-              }}
+              className="p-2 rounded-lg bg-black/40 border border-white/5 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="Clear displayed data"
             >
               <Trash2 className="w-4 h-4" />
@@ -300,37 +237,26 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="p-2 rounded-lg transition-all disabled:opacity-50"
-            style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)' }}
-            onMouseEnter={(e) => {
-              if (!e.currentTarget.disabled) {
-                e.currentTarget.style.opacity = '0.8'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!e.currentTarget.disabled) {
-                e.currentTarget.style.opacity = '1'
-              }
-            }}
+            className="p-2 rounded-lg bg-black/40 border border-white/5 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all disabled:opacity-50"
             title="Refresh data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-300' : ''}`} />
           </button>
         </div>
       </div>
 
       {/* Events List */}
-      <div className="space-y-3 max-h-[600px] overflow-y-auto">
+      <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
         {loading ? (
-          <div className="text-center py-12">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-            <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading USB events...</p>
+          <div className="text-center py-16 bg-black/20 rounded-xl border border-white/5">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-slate-500" />
+            <p className="text-slate-400 font-medium">Loading USB events...</p>
           </div>
         ) : filteredEvents.length === 0 ? (
-          <div className="text-center py-12">
-            <Usb className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.2)' }} />
-            <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>No USB events found</p>
-            <p className="text-sm transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }}>
+          <div className="text-center py-16 bg-black/20 rounded-xl border border-dashed border-white/10">
+            <Usb className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+            <p className="text-lg font-bold mb-2 text-slate-300">No USB events found</p>
+            <p className="text-sm text-slate-500">
               {clearTimestamp 
                 ? 'Waiting for new events after clear...'
                 : filter === 'all' 
@@ -340,10 +266,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
             {clearTimestamp && onResetFilter && (
               <button
                 onClick={onResetFilter}
-                className="mt-4 px-4 py-2 rounded-lg transition-all text-sm"
-                style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'; }}
+                className="mt-6 px-5 py-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all font-bold text-xs uppercase tracking-wider"
               >
                 Show All Events
               </button>
@@ -355,36 +278,35 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
             return (
               <div
                 key={event.id}
-                className={`p-4 rounded-lg border ${getEventColor(event.event_type)} transition-all hover:border-opacity-50`}
+                className={`p-5 rounded-xl border ${getEventColor(event.event_type)} hover:brightness-110 transition-all bg-white/[0.02]`}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3 flex-1">
-                    {getEventIcon(event.event_type)}
+                  <div className="flex items-start space-x-4 flex-1">
+                    <div className={`p-2.5 rounded-lg bg-black/40 ${getEventColor(event.event_type).split(' ')[0]}`}>
+                      {getEventIcon(event.event_type)}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold mb-1 transition-colors" style={{ color: 'var(--text-primary)' }}>
+                      <p className="text-base font-bold mb-1 text-white">
                         {details.title}
                       </p>
-                      <p className="text-xs mb-2 truncate transition-colors" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-sm mb-3 truncate text-slate-400">
                         {details.subtitle}
                       </p>
-                      <div className="flex items-center space-x-4 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span>Device: {details.device.substring(0, 30)}</span>
-                        {details.fileSize && <span>Size: {details.fileSize}</span>}
-                        <span>{formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}</span>
+                      <div className="flex items-center space-x-4 text-[11px] font-mono text-slate-500">
+                        <span className="bg-black/50 px-2 py-1 rounded text-slate-300">DEV: {details.device.substring(0, 30)}</span>
+                        {details.fileSize && <span className="bg-black/50 px-2 py-1 rounded text-cyan-400">SIZE: {details.fileSize}</span>}
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}</span>
                         <span>{format(new Date(event.timestamp), 'HH:mm:ss')}</span>
                       </div>
                       {event.event_type === 'usb_file_transfer' && event.metadata?.file_path && (
                         <button
-                          className="mt-2 flex items-center space-x-1 text-xs transition-colors"
-                          style={{ color: 'var(--accent-cyan)' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.color = '#00FF88'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--accent-cyan)'; }}
+                          className="mt-4 flex items-center space-x-2 text-xs font-bold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-1.5 rounded-lg border border-cyan-500/20 transition-all uppercase tracking-wider"
                           onClick={() => {
                             window.location.href = `/documents?id=${event.id}`
                           }}
                         >
                           <Eye className="w-3 h-3" />
-                          <span>View Document</span>
+                          <span>View Document Analysis</span>
                         </button>
                       )}
                     </div>

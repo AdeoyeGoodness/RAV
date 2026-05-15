@@ -140,9 +140,9 @@ export default function DeviceDetailsPage() {
     const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
     const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
 
-    if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
-    if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
-    return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
+    if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', glow: 'shadow-[0_0_15px_rgba(16,185,129,0.2)]' }
+    if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', glow: 'shadow-[0_0_15px_rgba(245,158,11,0.2)]' }
+    return { status: 'offline', color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/30', glow: 'shadow-[0_0_15px_rgba(244,63,94,0.2)]' }
   }
 
   if (isLoading || !user) {
@@ -204,91 +204,100 @@ export default function DeviceDetailsPage() {
   )
 
   return (
-    <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex h-screen bg-[#020817] text-slate-200 font-sans selection:bg-cyan-500/30 relative overflow-hidden">
+      {/* Background Glow Effects */}
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
+      
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="flex-1 ml-64 flex flex-col relative z-10">
         <Header />
         <ExpiryBanner />
-        <main className="pt-20 p-8 overflow-y-auto h-full">
-          <div className="max-w-7xl mx-auto space-y-6">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+        
+        <main className="flex-1 overflow-y-auto p-8 pt-24 custom-scrollbar">
+          <div className="max-w-7xl mx-auto space-y-8">
+            {/* Header Area */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-white/5">
+              <div className="flex items-start space-x-5">
                 <button
                   onClick={() => router.back()}
-                  className="p-2 rounded-lg transition-colors"
-                  style={{ color: 'var(--text-primary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  className="mt-1 p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-cyan-400 transition-all duration-300 group"
                 >
-                  <ArrowLeft className="w-5 h-5 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
+                  <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
                 </button>
                 <div>
-                  <h1 className="text-3xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || agent.agent_id}</h1>
-                  <p className="mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Device Details & Forensics</p>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h1 className="text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                      {agent.hostname || agent.agent_id}
+                    </h1>
+                    <div className={`px-3 py-1 rounded-full border ${status.bg} ${status.border} ${status.glow} flex items-center gap-2`}>
+                      <div className={`w-2 h-2 rounded-full bg-current ${status.color} ${status.status === 'online' ? 'animate-pulse' : ''}`} />
+                      <span className={`${status.color} text-xs font-bold tracking-widest uppercase`}>
+                        {status.status}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-slate-400 font-medium tracking-wide flex items-center gap-2">
+                    <Monitor className="w-4 h-4 opacity-70" />
+                    Forensic Device Profile
+                  </p>
                 </div>
               </div>
+              
               <div className="flex items-center space-x-4">
-                <div className={`px-4 py-2 rounded-lg border ${status.bg} ${status.border}`}>
-                  <span className={`${status.color} font-medium`}>
-                    {status.status.toUpperCase()}
-                  </span>
-                </div>
                 <button
                   onClick={handleDeleteAllData}
-                  className="px-4 py-2 rounded-lg transition-all flex items-center space-x-2 border"
-                  style={{
-                    backgroundColor: 'rgba(255, 107, 107, 0.2)',
-                    color: '#FF6B6B',
-                    borderColor: 'rgba(255, 107, 107, 0.3)'
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.3)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'; }}
-                  title="Delete all events for this device"
+                  className="px-5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 hover:text-rose-300 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)] transition-all duration-300 flex items-center space-x-2 font-semibold text-sm group"
+                  title="Wipe all forensic data for this node"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete All Data</span>
+                  <Trash2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span>Wipe Node Data</span>
                 </button>
               </div>
             </div>
 
             {/* Device Info Card & Network Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-6">
-              <div className="border rounded-xl p-6 transition-colors h-full" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                <h2 className="text-xl font-bold mb-6 transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                  <Monitor className="w-5 h-5 text-cyan-500" />
-                  Hardware Identity
+              {/* Identity Card */}
+              <div className="relative group bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 hover:border-cyan-500/30 transition-all duration-500 overflow-hidden shadow-xl">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                
+                <h2 className="text-xl font-bold mb-8 flex items-center gap-3 text-white">
+                  <div className="p-2 bg-cyan-500/10 rounded-lg border border-cyan-500/20 text-cyan-400">
+                    <HardDrive className="w-5 h-5" />
+                  </div>
+                  System Identity
                 </h2>
-                <div className="space-y-6">
-                  {/* Fingerprint gets its own row to prevent overlap */}
-                  <div className="p-4 bg-white/[0.02] rounded-lg border border-white/[0.05]">
-                    <div className="flex items-center space-x-3 mb-2">
-                       <HardDrive className="w-4 h-4 text-slate-500" />
-                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Hardware Fingerprint</p>
+                
+                <div className="space-y-7">
+                  {/* Fingerprint */}
+                  <div className="relative p-5 bg-black/40 rounded-xl border border-white/5 group/fp hover:border-white/10 transition-colors">
+                    <div className="flex items-center space-x-3 mb-3">
+                       <ShieldAlert className="w-4 h-4 text-cyan-500" />
+                       <p className="text-xs font-bold uppercase tracking-[0.15em] text-cyan-500/80">Cryptographic Fingerprint</p>
                     </div>
-                    <p className="text-xs font-mono text-cyan-400/70 break-all leading-relaxed">{agent.hardware_fingerprint}</p>
+                    <p className="text-sm font-mono text-slate-300 break-all leading-relaxed group-hover/fp:text-cyan-100 transition-colors">
+                      {agent.hardware_fingerprint}
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex items-center space-x-3">
-                      <Monitor className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Hostname</p>
-                        <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{agent.hostname || 'unknown'}</p>
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Internal Node ID</p>
+                      <p className="text-base font-medium text-white">{agent.agent_id}</p>
                     </div>
-                    <div className="flex items-center space-x-3">
-                       <Clock className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                       <div>
-                         <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last Reporting</p>
-                         <p className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>{new Date(agent.last_seen).toLocaleString()}</p>
-                       </div>
+                    <div>
+                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Last Synchronized</p>
+                       <p className="text-base font-medium text-white flex items-center gap-2">
+                         <Clock className="w-4 h-4 text-slate-400" />
+                         {new Date(agent.last_seen).toLocaleString()}
+                       </p>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <Activity className="w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider transition-colors" style={{ color: 'var(--text-tertiary)' }}>Total Footprint</p>
-                        <p className="text-sm font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{events.length} Events</p>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Telemetry Volume</p>
+                      <div className="flex items-center gap-3">
+                        <p className="text-2xl font-black text-white">{events.length}</p>
+                        <span className="text-xs font-medium bg-white/10 px-2 py-1 rounded-md text-slate-300">Events Recorded</span>
                       </div>
                     </div>
                   </div>
@@ -297,17 +306,17 @@ export default function DeviceDetailsPage() {
                     const wifiEvent = events.find(e => e.event_type === 'wifi_status');
                     if (wifiEvent) {
                       return (
-                        <div className="p-4 bg-cyan-500/5 rounded-xl border border-cyan-500/10 flex items-center gap-4">
-                          <div className="bg-cyan-500/10 p-2.5 rounded-lg border border-cyan-500/20">
-                            <Globe className="w-5 h-5 text-cyan-400" />
+                        <div className="p-5 mt-4 bg-gradient-to-r from-cyan-950/40 to-blue-900/20 rounded-xl border border-cyan-500/20 flex items-center gap-5">
+                          <div className="bg-cyan-500/20 p-3 rounded-xl border border-cyan-500/30 text-cyan-300">
+                            <Globe className="w-6 h-6" />
                           </div>
                           <div className="flex-1">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-500 mb-0.5">Network Context</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-500 mb-1">Network Context</p>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-bold text-white tracking-tight">{wifiEvent.metadata?.ssid || 'Wired/Other'}</span>
-                              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
-                                <Activity className="w-2.5 h-2.5 text-cyan-400" />
-                                <span className="text-[9px] font-bold text-cyan-300 uppercase">{wifiEvent.metadata?.signal || '100%'} Strength</span>
+                              <span className="text-lg font-bold text-white tracking-tight">{wifiEvent.metadata?.ssid || 'Wired/Other'}</span>
+                              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.1)]">
+                                <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
+                                <span className="text-xs font-bold text-cyan-300 uppercase">{wifiEvent.metadata?.signal || '100%'} Quality</span>
                               </div>
                             </div>
                           </div>
@@ -319,17 +328,24 @@ export default function DeviceDetailsPage() {
                 </div>
               </div>
 
-              {/* Individual Device Network Insights */}
-              <div className="border rounded-xl p-6 transition-colors h-full" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-xl font-bold transition-colors flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                    <Globe className="w-5 h-5 text-cyan-400" />
+              {/* Network Pulse Card */}
+              <div className="relative group bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 hover:border-blue-500/30 transition-all duration-500 overflow-hidden shadow-xl flex flex-col">
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                
+                <div className="flex items-center justify-between mb-8">
+                  <h2 className="text-xl font-bold flex items-center gap-3 text-white">
+                    <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20 text-blue-400">
+                      <Activity className="w-5 h-5" />
+                    </div>
                     Network Pulse
                   </h2>
-                  <span className="text-[10px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 rounded">LIVE</span>
+                  <div className="flex items-center gap-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-full">
+                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                    <span className="text-[10px] font-black tracking-widest uppercase">Live Scan</span>
+                  </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="flex-1 flex flex-col justify-center">
                   {(() => {
                     interface IpStat {
                       count: number;
@@ -351,36 +367,44 @@ export default function DeviceDetailsPage() {
 
                     const topIps = Object.entries(ipStats)
                       .sort((a, b) => b[1].count - a[1].count)
-                      .slice(0, 6);
+                      .slice(0, 5);
 
                     const uniqueIpsCount = Object.keys(ipStats).length;
 
                     return (
                       <>
-                        <div className="flex items-center justify-between bg-white/[0.02] p-4 rounded-lg border border-white/[0.05]">
-                          <span className="text-xs font-medium text-slate-400 uppercase tracking-widest">Unique Destinations</span>
-                          <span className="text-xl font-bold text-white tabular-nums">{uniqueIpsCount}</span>
+                        <div className="flex items-center justify-between bg-black/40 p-5 rounded-xl border border-white/5 mb-6">
+                          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Unique Destinations</span>
+                          <span className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 tabular-nums drop-shadow-md">
+                            {uniqueIpsCount}
+                          </span>
                         </div>
                         
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-2">Most Active External Connections</p>
-                          {topIps.length > 0 ? topIps.map(([ip, data]) => {
-                            const topProc = Object.entries(data.processes).sort((a: any, b: any) => b[1] - a[1])[0]?.[0];
-                            return (
-                              <div key={ip} className="flex flex-col space-y-1 group bg-white/[0.01] p-2 rounded-md hover:bg-white/[0.03] transition-colors">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-mono text-cyan-400 font-bold">{ip}</span>
-                                  <span className="text-[10px] font-mono text-slate-600 tabular-nums">{data.count} hits</span>
+                        <div className="flex-1 flex flex-col">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">Top External Connections</p>
+                          <div className="space-y-2.5 flex-1">
+                            {topIps.length > 0 ? topIps.map(([ip, data]) => {
+                              const topProc = Object.entries(data.processes).sort((a: any, b: any) => b[1] - a[1])[0]?.[0];
+                              return (
+                                <div key={ip} className="flex items-center justify-between group/row bg-white/[0.02] p-3 rounded-lg hover:bg-blue-500/5 border border-transparent hover:border-blue-500/20 transition-all">
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-sm font-mono text-blue-300 font-medium">{ip}</span>
+                                    <span className="text-[10px] text-slate-500 italic max-w-[150px] truncate">
+                                      via {topProc}
+                                    </span>
+                                  </div>
+                                  <div className="bg-black/50 px-2 py-1 rounded text-[11px] font-mono text-slate-400 border border-white/5">
+                                    {data.count} hits
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-1 rounded-full bg-cyan-500/40" />
-                                  <span className="text-[10px] text-slate-500 truncate max-w-[150px] italic">via {topProc}</span>
-                                </div>
+                              )
+                            }) : (
+                              <div className="h-full flex flex-col items-center justify-center text-center p-6 border border-dashed border-white/5 rounded-xl bg-white/[0.01]">
+                                <Globe className="w-8 h-8 text-slate-600 mb-3" />
+                                <p className="text-sm text-slate-400 font-medium">No external traffic recorded.</p>
                               </div>
-                            )
-                          }) : (
-                            <p className="text-xs text-slate-600 italic py-4">No external network traffic observed.</p>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </>
                     )
@@ -420,11 +444,16 @@ export default function DeviceDetailsPage() {
             />
 
             {/* Forensic Archives Section (Item 12) */}
-            <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>Weekly Forensic Vault</h2>
-                  <p className="text-sm text-slate-500 mt-1">Snapshot archives of historical telemetry (Auto-purged every 7 days)</p>
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
+              <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-violet-500/10 rounded-xl border border-violet-500/20 text-violet-400">
+                    <Database className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">Forensic Vault</h2>
+                    <p className="text-sm text-slate-400 mt-1">Snapshot archives of historical telemetry (Auto-purged every 7 days)</p>
+                  </div>
                 </div>
                 <button 
                   onClick={async () => {
@@ -441,9 +470,10 @@ export default function DeviceDetailsPage() {
                       }
                     }
                   }}
-                  className="px-4 py-2 bg-cyan-500/10 text-cyan-400 text-xs font-bold rounded-lg border border-cyan-500/20 hover:bg-cyan-500/20 transition-all uppercase tracking-wider"
+                  className="px-5 py-2.5 bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold rounded-xl shadow-[0_0_20px_rgba(139,92,246,0.3)] transition-all uppercase tracking-widest flex items-center gap-2"
                 >
-                  Request On-Demand Archive
+                  <Archive className="w-4 h-4" />
+                  Request Archive
                 </button>
               </div>
 
@@ -451,11 +481,19 @@ export default function DeviceDetailsPage() {
             </div>
 
             {/* General Telemetry Section */}
-            <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Full Event Observation Log</h2>
+            <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
+              <div className="flex items-center gap-4 mb-8 pb-6 border-b border-white/5">
+                <div className="p-3 bg-slate-800 rounded-xl border border-white/10 text-slate-300">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight">Event Observation Log</h2>
+                  <p className="text-sm text-slate-400 mt-1">Raw, unfiltered telemetry stream from the agent</p>
+                </div>
               </div>
-              <TelemetryExplorer initialAgentId={agentId as string} />
+              <div className="bg-[#020817] rounded-xl border border-white/5 overflow-hidden">
+                <TelemetryExplorer initialAgentId={agentId as string} />
+              </div>
             </div>
           </div>
         </main>

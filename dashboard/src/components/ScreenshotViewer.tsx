@@ -234,54 +234,48 @@ export default function ScreenshotViewer({
   }, [selectedScreenshot, imageUrl])
 
   return (
-    <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+    <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <div className="flex items-center space-x-4 flex-wrap gap-2">
-          <h2 className="text-xl font-semibold flex items-center transition-colors" style={{ color: 'var(--text-primary)' }}>
-            <Camera className="w-5 h-5 mr-2 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-            Screenshots ({screenshotEvents.length})
-          </h2>
+      <div className="flex items-center justify-between mb-8 pb-6 border-b border-white/5 flex-wrap gap-4">
+        <div className="flex items-center space-x-4 flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20 text-blue-400">
+              <Camera className="w-5 h-5" />
+            </div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Screenshots ({screenshotEvents.length})</h2>
+          </div>
           {/* Date Filter */}
-          <div className="flex items-center space-x-2">
-            <CalendarIcon className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-blue-500/30 transition-colors">
+            <CalendarIcon className="w-4 h-4 text-slate-400" />
             <input
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-1 border rounded-lg text-sm focus:outline-none transition-all"
-              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              onFocus={(e) => { e.target.style.borderColor = 'var(--accent-cyan)'; }}
-              onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; }}
+              className="px-2 py-1 bg-transparent border-none text-sm text-slate-300 focus:outline-none transition-all"
+              style={{ colorScheme: 'dark' }}
               title="Filter screenshots by date"
             />
             {dateFilter && (
               <button
                 onClick={() => setDateFilter('')}
-                className="px-2 py-1 rounded-lg text-xs transition-all"
-                style={{ backgroundColor: 'rgba(255, 107, 107, 0.2)', color: '#FF6B6B' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'; }}
+                className="p-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
                 title="Clear date filter"
               >
-                Clear
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
           {/* Sort Dropdown */}
-          <div className="flex items-center space-x-2">
-            <ArrowUpDown className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-blue-500/30 transition-colors">
+            <ArrowUpDown className="w-4 h-4 text-slate-400" />
             <select
               value={sortOrder}
               onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-              className="px-3 py-1 border rounded-lg text-sm focus:outline-none transition-all cursor-pointer"
-              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-              onFocus={(e) => { e.target.style.borderColor = 'var(--accent-cyan)'; }}
-              onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; }}
+              className="bg-transparent border-none text-sm text-slate-300 focus:outline-none cursor-pointer"
               title="Sort screenshots by date"
             >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
+              <option value="newest" className="bg-slate-900">Newest First</option>
+              <option value="oldest" className="bg-slate-900">Oldest First</option>
             </select>
           </div>
         </div>
@@ -289,10 +283,7 @@ export default function ScreenshotViewer({
           {clearTimestamp && onResetFilter && (
             <button
               onClick={onResetFilter}
-              className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
-              style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'; }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
               title="Show all screenshots (clear timestamp filter)"
             >
               Show All
@@ -300,11 +291,11 @@ export default function ScreenshotViewer({
           )}
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
-            style={autoRefresh
-              ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }
-              : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)', borderColor: 'transparent' }
-            }
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
+              autoRefresh
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.1)]'
+                : 'bg-black/40 text-slate-500 border-white/5 hover:text-slate-300'
+            }`}
           >
             Auto: {autoRefresh ? 'ON' : 'OFF'}
           </button>
@@ -312,18 +303,7 @@ export default function ScreenshotViewer({
             <button
               onClick={onClear}
               disabled={loading || screenshotEvents.length === 0}
-              className="p-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: 'var(--bg-tertiary)', color: '#FF6B6B' }}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'
-                }
-              }}
+              className="p-2 rounded-lg bg-black/40 border border-white/5 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="Clear displayed screenshots"
             >
               <Trash2 className="w-4 h-4" />
@@ -333,38 +313,27 @@ export default function ScreenshotViewer({
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="p-2 rounded-lg transition-all disabled:opacity-50"
-              style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)' }}
-              onMouseEnter={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.opacity = '0.8'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.opacity = '1'
-                }
-              }}
+              className="p-2 rounded-lg bg-black/40 border border-white/5 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all disabled:opacity-50"
               title="Refresh screenshots"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-300' : ''}`} />
             </button>
           )}
         </div>
       </div>
 
       {/* Screenshot Gallery */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[600px] overflow-y-auto">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
         {loading && sortedEvents.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-            <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading screenshots...</p>
+          <div className="col-span-full text-center py-16 bg-black/20 rounded-xl border border-white/5">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-slate-500" />
+            <p className="text-slate-400 font-medium">Loading screenshots...</p>
           </div>
         ) : sortedEvents.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <Camera className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.2)' }} />
-            <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>No screenshots found</p>
-            <p className="text-sm transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }}>
+          <div className="col-span-full text-center py-16 bg-black/20 rounded-xl border border-dashed border-white/10">
+            <Camera className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+            <p className="text-lg font-bold mb-2 text-slate-300">No screenshots found</p>
+            <p className="text-sm text-slate-500">
               {dateFilter
                 ? `No screenshots found for selected date`
                 : 'Screenshots will appear here when captured by the agent'}
@@ -372,10 +341,7 @@ export default function ScreenshotViewer({
             {clearTimestamp && onResetFilter && (
               <button
                 onClick={onResetFilter}
-                className="mt-4 px-4 py-2 rounded-lg transition-all"
-                style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'; }}
+                className="mt-6 px-5 py-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-bold text-xs uppercase tracking-wider"
               >
                 Show All Screenshots
               </button>
@@ -385,18 +351,15 @@ export default function ScreenshotViewer({
           sortedEvents.map((event) => (
             <div
               key={event.id}
-              className="border rounded-lg p-3 cursor-pointer transition-all group"
-              style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+              className="bg-black/40 border border-white/5 rounded-xl p-3 cursor-pointer hover:bg-white/[0.04] hover:border-blue-500/40 hover:-translate-y-1 hover:shadow-lg transition-all duration-300 group"
               onClick={() => loadScreenshotImage(event)}
             >
-              <div className="aspect-video rounded mb-2 flex items-center justify-center relative overflow-hidden transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+              <div className="aspect-video rounded-lg mb-3 flex items-center justify-center relative overflow-hidden bg-slate-950 border border-white/5 group-hover:border-blue-500/30 transition-colors">
                 {thumbnailUrls.has(event.id) ? (
                   <img
                     src={thumbnailUrls.get(event.id)}
                     alt={`Screenshot ${format(new Date(event.timestamp), 'HH:mm:ss')}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={() => {
                       setThumbnailErrors(prev => new Set(prev).add(event.id))
                       const url = thumbnailUrls.get(event.id)
@@ -412,34 +375,38 @@ export default function ScreenshotViewer({
                   />
                 ) : loadingThumbnails.has(event.id) ? (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <RefreshCw className="w-6 h-6 animate-spin transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }} />
+                    <RefreshCw className="w-6 h-6 animate-spin text-blue-500/50" />
                   </div>
                 ) : thumbnailErrors.has(event.id) ? (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <Camera className="w-8 h-8 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }} />
+                    <Camera className="w-8 h-8 text-rose-500/30" />
                   </div>
                 ) : event.metadata?.file_id ? (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <Camera className="w-8 h-8 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }} />
+                    <Camera className="w-8 h-8 text-blue-500/30" />
                   </div>
                 ) : (
-                  <Camera className="w-8 h-8 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }} />
+                  <Camera className="w-8 h-8 text-slate-600" />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#00D9FF]/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <ZoomIn className="w-6 h-6 transition-colors" style={{ color: 'var(--text-primary)' }} />
+                <div className="absolute inset-0 bg-gradient-to-t from-blue-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                  <ZoomIn className="w-8 h-8 text-white drop-shadow-lg" />
                 </div>
               </div>
-              <div className="text-xs space-y-1">
-                <p className="truncate font-medium transition-colors" style={{ color: 'var(--text-tertiary)' }}>{format(new Date(event.timestamp), 'MMM dd, yyyy')}</p>
-                <p className="truncate transition-colors" style={{ color: 'rgba(0, 217, 255, 0.6)' }}>{format(new Date(event.timestamp), 'HH:mm:ss')}</p>
-                <p className="transition-colors" style={{ color: 'rgba(0, 217, 255, 0.5)' }}>
-                  {event.metadata?.width && event.metadata?.height
-                    ? `${event.metadata.width}x${event.metadata.height}`
-                    : 'Unknown size'}
-                </p>
-                {event.metadata?.file_size && (
-                  <p className="transition-colors" style={{ color: 'rgba(0, 217, 255, 0.5)' }}>{formatFileSize(event.metadata.file_size)}</p>
-                )}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-white tracking-wider uppercase">{format(new Date(event.timestamp), 'MMM dd, yyyy')}</p>
+                  <p className="text-xs font-mono text-blue-400">{format(new Date(event.timestamp), 'HH:mm:ss')}</p>
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                  <span className="bg-white/5 px-1.5 py-0.5 rounded">
+                    {event.metadata?.width && event.metadata?.height
+                      ? `${event.metadata.width}x${event.metadata.height}`
+                      : 'Unknown'}
+                  </span>
+                  {event.metadata?.file_size && (
+                    <span className="text-emerald-400/70">{formatFileSize(event.metadata.file_size)}</span>
+                  )}
+                </div>
               </div>
             </div>
           ))
@@ -449,7 +416,7 @@ export default function ScreenshotViewer({
       {/* Screenshot Modal */}
       {selectedScreenshot && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => {
             setSelectedScreenshot(null)
             if (imageUrl) {
@@ -459,13 +426,13 @@ export default function ScreenshotViewer({
           }}
         >
           <div
-            className="border rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-auto transition-colors"
-            style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+            className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                Screenshot - {format(new Date(selectedScreenshot.timestamp), 'PPpp')}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
+              <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-3">
+                <Camera className="w-5 h-5 text-blue-400" />
+                Snapshot taken on <span className="text-blue-400">{format(new Date(selectedScreenshot.timestamp), 'PPpp')}</span>
               </h3>
               <button
                 onClick={() => {
@@ -475,78 +442,73 @@ export default function ScreenshotViewer({
                     setImageUrl(null)
                   }
                 }}
-                className="p-2 rounded-lg transition-colors"
-                style={{ color: 'var(--text-primary)' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all"
               >
-                <X className="w-5 h-5 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {errorMessage && (
-              <div className="mb-4 p-3 rounded-lg flex items-center bg-red-500/10 border border-red-500/20 text-red-500">
-                <span className="text-sm font-medium">{errorMessage}</span>
-                <button onClick={() => setErrorMessage(null)} className="ml-auto">
+              <div className="mb-6 p-4 rounded-xl flex items-center bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                <span className="text-sm font-bold">{errorMessage}</span>
+                <button onClick={() => setErrorMessage(null)} className="ml-auto hover:text-rose-300">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
 
             {loadingImage ? (
-              <div className="flex items-center justify-center py-12">
-                <RefreshCw className="w-8 h-8 animate-spin transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                <span className="ml-3 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading screenshot...</span>
+              <div className="flex flex-col items-center justify-center py-24 bg-black/40 rounded-xl border border-dashed border-white/10">
+                <RefreshCw className="w-10 h-10 animate-spin text-blue-500 mb-4" />
+                <span className="text-slate-400 font-medium">Decrypting and loading full resolution image...</span>
               </div>
             ) : imageUrl ? (
-              <div className="space-y-4">
-                <div className="rounded-lg p-4 flex items-center justify-center transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+              <div className="space-y-6">
+                <div className="rounded-xl p-2 bg-black border border-white/10 flex items-center justify-center group overflow-hidden relative">
                   <img
                     src={imageUrl}
                     alt="Screenshot"
-                    className="max-w-full max-h-[60vh] rounded-lg"
+                    className="max-w-full max-h-[60vh] rounded-lg shadow-2xl object-contain transition-transform duration-500 group-hover:scale-[1.02]"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="mb-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Resolution</p>
-                    <p className="transition-colors" style={{ color: 'var(--text-primary)' }}>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white/5 border border-white/5 rounded-xl p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Resolution</p>
+                    <p className="text-sm font-mono text-white">
                       {selectedScreenshot.metadata?.width}x{selectedScreenshot.metadata?.height || 'Unknown'}
                     </p>
                   </div>
-                  <div>
-                    <p className="mb-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>File Size</p>
-                    <p className="transition-colors" style={{ color: 'var(--text-primary)' }}>
+                  <div className="bg-white/5 border border-white/5 rounded-xl p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">File Size</p>
+                    <p className="text-sm font-mono text-emerald-400">
                       {selectedScreenshot.metadata?.file_size
                         ? formatFileSize(selectedScreenshot.metadata.file_size)
                         : 'Unknown'}
                     </p>
                   </div>
-                  <div>
-                    <p className="mb-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Format</p>
-                    <p className="transition-colors" style={{ color: 'var(--text-primary)' }}>{selectedScreenshot.metadata?.format || 'Unknown'}</p>
+                  <div className="bg-white/5 border border-white/5 rounded-xl p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Format</p>
+                    <p className="text-sm font-bold text-white uppercase">{selectedScreenshot.metadata?.format || 'Unknown'}</p>
                   </div>
-                  <div>
-                    <p className="mb-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>Captured</p>
-                    <p className="transition-colors" style={{ color: 'var(--text-primary)' }}>
+                  <div className="bg-white/5 border border-white/5 rounded-xl p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Time Elapsed</p>
+                    <p className="text-sm font-medium text-blue-400">
                       {formatDistanceToNow(new Date(selectedScreenshot.timestamp), { addSuffix: true })}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => handleDownload(selectedScreenshot)}
-                  className="w-full px-4 py-2 rounded-lg transition-all flex items-center justify-center space-x-2 font-medium"
-                  style={{ backgroundColor: 'var(--accent-cyan)', color: 'var(--bg-primary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#00B8E6'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-cyan)'; }}
+                  className="w-full px-6 py-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-black font-bold uppercase tracking-widest transition-all shadow-[0_0_20px_rgba(59,130,246,0.2)] hover:shadow-[0_0_30px_rgba(59,130,246,0.4)] hover:-translate-y-0.5 flex items-center justify-center space-x-3"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Download Screenshot</span>
+                  <Download className="w-5 h-5" />
+                  <span>Download Original Evidence</span>
                 </button>
               </div>
             ) : (
-              <div className="text-center py-12">
-                <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Failed to load screenshot</p>
+              <div className="text-center py-24 bg-black/40 rounded-xl border border-dashed border-white/10">
+                <Camera className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+                <p className="text-slate-400 font-medium">Failed to load screenshot data.</p>
               </div>
             )}
           </div>

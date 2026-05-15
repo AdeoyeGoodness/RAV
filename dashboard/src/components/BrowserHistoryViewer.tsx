@@ -190,183 +190,173 @@ export default function BrowserHistoryViewer({
 
 
   return (
-    <div className="rounded-2xl p-6 transition-colors overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Browser History</h2>
+    <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-indigo-400">
+            <Globe className="w-5 h-5" />
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Browser Forensics</h2>
+        </div>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className="px-3 py-1 rounded-lg text-sm font-medium transition-all border"
-            style={autoRefresh
-              ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)', borderColor: 'rgba(0, 217, 255, 0.3)' }
-              : { backgroundColor: 'var(--bg-tertiary)', color: 'var(--accent-cyan)', borderColor: 'transparent' }
-            }
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
+              autoRefresh
+                ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.1)]'
+                : 'bg-black/40 text-slate-500 border-white/5 hover:text-slate-300'
+            }`}
           >
             Auto: {autoRefresh ? 'ON' : 'OFF'}
           </button>
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-2 rounded-lg transition-all"
-              style={{
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'var(--accent-cyan)'
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.8'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+              className="p-2 rounded-lg bg-black/40 border border-white/5 text-indigo-400 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all disabled:opacity-50"
               title="Refresh"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-300' : ''}`} />
             </button>
           )}
         </div>
       </div>
 
       {/* Statistics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="rounded-lg p-4 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center space-x-2 mb-2">
-            <Eye className="w-4 h-4 transition-colors" style={{ color: '#FF9F43' }} />
-            <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Active Tabs</span>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div className="rounded-xl p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400 group-hover:scale-110 transition-transform">
+              <Eye className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Tabs</span>
           </div>
-          <p className="text-2xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{activeTabEvents.length}</p>
+          <p className="text-3xl font-light text-white font-mono">{activeTabEvents.length}</p>
         </div>
-        <div className="rounded-lg p-4 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center space-x-2 mb-2">
-            <Globe className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-            <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>History</span>
+        <div className="rounded-xl p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-110 transition-transform">
+              <Globe className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">History</span>
           </div>
-          <p className="text-2xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{historyEvents.length}</p>
+          <p className="text-3xl font-light text-white font-mono">{historyEvents.length}</p>
         </div>
-        <div className="rounded-lg p-4 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center space-x-2 mb-2">
-            <Download className="w-4 h-4 transition-colors" style={{ color: '#00FF88' }} />
-            <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Downloads</span>
+        <div className="rounded-xl p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-110 transition-transform">
+              <Download className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Downloads</span>
           </div>
-          <p className="text-2xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{downloadEvents.length}</p>
+          <p className="text-3xl font-light text-white font-mono">{downloadEvents.length}</p>
         </div>
-        <div className="rounded-lg p-4 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center space-x-2 mb-2">
-            <Search className="w-4 h-4 transition-colors" style={{ color: '#6C5CE7' }} />
-            <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Searches</span>
+        <div className="rounded-xl p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 rounded-lg bg-violet-500/10 text-violet-400 group-hover:scale-110 transition-transform">
+              <Search className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Searches</span>
           </div>
-          <p className="text-2xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{searchEvents.length}</p>
+          <p className="text-3xl font-light text-white font-mono">{searchEvents.length}</p>
         </div>
-        <div className="rounded-lg p-4 transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-          <div className="flex items-center space-x-2 mb-2">
-            <Globe className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-            <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Browsers</span>
+        <div className="rounded-xl p-4 bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all group">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 group-hover:scale-110 transition-transform">
+              <Globe className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Browsers</span>
           </div>
-          <p className="text-2xl font-bold transition-colors" style={{ color: 'var(--text-primary)' }}>{browsers.length}</p>
+          <p className="text-3xl font-light text-white font-mono">{browsers.length}</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-4 mb-6">
-        <div className="flex items-center space-x-2">
-          <Filter className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+      <div className="flex flex-wrap items-center gap-3 mb-8 bg-black/20 p-2 rounded-xl border border-white/5">
+        <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-indigo-500/30 transition-colors">
+          <Filter className="w-4 h-4 text-slate-400" />
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as any)}
-            className="px-3 py-2 rounded-lg text-sm transition-colors"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)'
-            }}
+            className="bg-transparent border-none text-sm text-slate-300 focus:outline-none cursor-pointer"
           >
-            <option value="all">All Events</option>
-            <option value="active_tab">Active Tabs</option>
-            <option value="history">History</option>
-            <option value="download">Downloads</option>
-            <option value="search">Searches</option>
+            <option value="all" className="bg-slate-900">All Events</option>
+            <option value="active_tab" className="bg-slate-900">Active Tabs</option>
+            <option value="history" className="bg-slate-900">History</option>
+            <option value="download" className="bg-slate-900">Downloads</option>
+            <option value="search" className="bg-slate-900">Searches</option>
           </select>
         </div>
 
         {browsers.length > 0 && (
-          <select
-            value={browserFilter}
-            onChange={(e) => setBrowserFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm transition-colors"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)'
-            }}
-          >
-            <option value="all">All Browsers</option>
-            {browsers.map(browser => (
-              <option key={browser} value={browser}>{browser.charAt(0).toUpperCase() + browser.slice(1)}</option>
-            ))}
-          </select>
+          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-indigo-500/30 transition-colors">
+            <Globe className="w-4 h-4 text-slate-400" />
+            <select
+              value={browserFilter}
+              onChange={(e) => setBrowserFilter(e.target.value)}
+              className="bg-transparent border-none text-sm text-slate-300 focus:outline-none cursor-pointer"
+            >
+              <option value="all" className="bg-slate-900">All Browsers</option>
+              {browsers.map(browser => (
+                <option key={browser} value={browser} className="bg-slate-900">{browser.charAt(0).toUpperCase() + browser.slice(1)}</option>
+              ))}
+            </select>
+          </div>
         )}
 
-        <div className="flex items-center space-x-2">
-          <Calendar className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+        <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-indigo-500/30 transition-colors">
+          <Calendar className="w-4 h-4 text-slate-400" />
           <input
             type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm transition-colors"
-            style={{
-              backgroundColor: 'var(--bg-tertiary)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-color)'
-            }}
+            className="bg-transparent border-none text-sm text-slate-300 focus:outline-none"
+            style={{ colorScheme: 'dark' }}
           />
         </div>
 
-        <input
-          type="text"
-          placeholder="Search URLs, titles, queries..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 rounded-lg text-sm transition-colors"
-          style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-color)'
-          }}
-        />
+        <div className="flex-1 min-w-[200px] flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-indigo-500/50 focus-within:shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all">
+          <Search className="w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search URLs, titles, queries..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-transparent border-none text-sm text-white placeholder:text-slate-500 focus:outline-none w-full"
+          />
+        </div>
 
-        <select
-          value={sortOrder}
-          onChange={(e) => setSortOrder(e.target.value as any)}
-          className="px-3 py-2 rounded-lg text-sm transition-colors"
-          style={{
-            backgroundColor: 'var(--bg-tertiary)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-color)'
-          }}
-        >
-          <option value="newest">Newest First</option>
-          <option value="oldest">Oldest First</option>
-        </select>
+        <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-indigo-500/30 transition-colors">
+          <select
+            value={sortOrder}
+            onChange={(e) => setSortOrder(e.target.value as any)}
+            className="bg-transparent border-none text-sm text-slate-300 focus:outline-none cursor-pointer"
+          >
+            <option value="newest" className="bg-slate-900">Newest First</option>
+            <option value="oldest" className="bg-slate-900">Oldest First</option>
+          </select>
+        </div>
       </div>
 
       {/* Events List */}
-      <div className="space-y-3 max-h-[600px] overflow-y-auto overflow-x-hidden">
+      <div className="space-y-4 max-h-[600px] overflow-y-auto overflow-x-hidden custom-scrollbar pr-2">
         {loading && sortedEvents.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-4 transition-colors" style={{ borderColor: 'var(--accent-cyan)' }} />
-            <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading browser history...</p>
+          <div className="text-center py-16 bg-black/20 rounded-xl border border-white/5">
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-slate-500" />
+            <p className="text-slate-400 font-medium">Loading browser forensics...</p>
           </div>
         ) : sortedEvents.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>No events match your filters</p>
+          <div className="text-center py-16 bg-black/20 rounded-xl border border-dashed border-white/10">
+            <Globe className="w-16 h-16 mx-auto mb-4 text-slate-600" />
+            <p className="text-lg font-bold mb-2 text-slate-300">No events match your filters</p>
           </div>
         ) : (
           sortedEvents.map((event) => (
             <div
               key={event.id}
-              className="rounded-lg p-4 transition-colors border"
-              style={{
-                backgroundColor: 'var(--bg-tertiary)',
-                borderColor: 'var(--border-color)'
-              }}
+              className="rounded-xl p-5 transition-all border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] hover:border-indigo-500/30 group"
             >
               <div className="flex items-start space-x-4">
-                <div className="mt-1">
+                <div className="p-2.5 rounded-lg bg-black/40 mt-0.5 border border-white/5 group-hover:border-indigo-500/20 transition-colors">
                   {getEventIcon(event.event_type)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -378,29 +368,28 @@ export default function BrowserHistoryViewer({
                           href={getSafeUrl(event.metadata?.url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-medium transition-colors hover:underline truncate block"
-                          style={{ color: '#FF9F43' }}
+                          className="font-bold text-orange-400 hover:text-orange-300 hover:underline truncate block"
                         >
                           {event.metadata?.title || formatUrl(event.metadata?.url || '')}
                         </a>
-                        <ExternalLink className="w-3 h-3 flex-shrink-0 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                        <ExternalLink className="w-3 h-3 flex-shrink-0 text-slate-500 group-hover:text-orange-400/50 transition-colors" />
                       </div>
-                      <p className="text-sm truncate transition-colors break-all" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-sm truncate text-slate-400 break-all">
                         {event.metadata?.url}
                       </p>
-                      <div className="flex items-center flex-wrap gap-2 mt-2 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span className="px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(255, 159, 67, 0.2)', color: '#FF9F43' }}>
+                      <div className="flex items-center flex-wrap gap-2 mt-3 text-[10px] font-mono text-slate-500">
+                        <span className="px-2 py-1 rounded bg-orange-500/10 text-orange-400 font-bold uppercase tracking-wider">
                           {event.event_type === 'browser_active_tab' ? 'TAB ACTIVATED' : 'TAB UPDATED'}
                         </span>
                         {event.metadata?.incognito && (
-                          <span className="px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgba(108, 92, 231, 0.2)', color: '#6C5CE7' }}>
+                          <span className="px-2 py-1 rounded bg-violet-500/10 text-violet-400 font-bold uppercase tracking-wider">
                             INCOGNITO
                           </span>
                         )}
-                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser) }}>
+                        <span className="px-2 py-1 rounded bg-black/50 text-white uppercase" style={{ color: getBrowserColor(event.metadata?.browser) }}>
                           {(event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="whitespace-nowrap">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
@@ -413,22 +402,21 @@ export default function BrowserHistoryViewer({
                           href={getSafeUrl(event.metadata?.url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="font-medium transition-colors hover:underline truncate block"
-                          style={{ color: 'var(--accent-cyan)' }}
+                          className="font-bold text-cyan-400 hover:text-cyan-300 hover:underline truncate block"
                         >
                           {event.metadata?.title || formatUrl(event.metadata?.url || '')}
                         </a>
-                        <ExternalLink className="w-3 h-3 flex-shrink-0 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                        <ExternalLink className="w-3 h-3 flex-shrink-0 text-slate-500 group-hover:text-cyan-400/50 transition-colors" />
                       </div>
-                      <p className="text-sm truncate transition-colors break-all" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-sm truncate text-slate-400 break-all">
                         {event.metadata?.url}
                       </p>
-                      <div className="flex items-center flex-wrap gap-2 mt-2 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span className="whitespace-nowrap">Visits: {event.metadata?.visit_count || 0}</span>
-                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
+                      <div className="flex items-center flex-wrap gap-2 mt-3 text-[10px] font-mono text-slate-500">
+                        <span className="px-2 py-1 rounded bg-white/5 text-slate-300">VISITS: {event.metadata?.visit_count || 0}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="whitespace-nowrap">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
@@ -436,63 +424,63 @@ export default function BrowserHistoryViewer({
                   {/* Download Events */}
                   {event.event_type.includes('download') && (
                     <>
-                      <div className="flex items-center space-x-2 mb-1 overflow-hidden">
-                        <span className="font-medium transition-colors truncate" style={{ color: 'var(--text-primary)' }}>
+                      <div className="flex items-center space-x-3 mb-1 overflow-hidden">
+                        <span className="font-bold text-white truncate">
                           {event.metadata?.file_name || event.metadata?.filename || 'Unknown File'}
                         </span>
                         {event.event_type === 'browser_download_completed' && (
-                          <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(0, 255, 136, 0.2)', color: '#00FF88' }}>
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold text-[10px] uppercase tracking-wider">
                             COMPLETED
                           </span>
                         )}
                         {event.event_type === 'browser_download_failed' && (
-                          <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(255, 107, 107, 0.2)', color: '#FF6B6B' }}>
+                          <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-bold text-[10px] uppercase tracking-wider">
                             FAILED
                           </span>
                         )}
                         {event.event_type === 'browser_download_started' && (
-                          <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}>
+                          <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold text-[10px] uppercase tracking-wider">
                             STARTED
                           </span>
                         )}
                       </div>
-                      <p className="text-sm transition-colors truncate break-all" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-sm text-slate-400 truncate break-all">
                         {event.metadata?.source_url || event.metadata?.target_path || event.metadata?.current_path || 'Unknown path'}
                       </p>
-                      <div className="flex items-center flex-wrap gap-2 mt-2 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span className="whitespace-nowrap">
+                      <div className="flex items-center flex-wrap gap-2 mt-3 text-[10px] font-mono text-slate-500">
+                        <span className="px-2 py-1 rounded bg-white/5 text-emerald-400 font-medium">
                           {event.metadata?.file_size
                             ? `${(event.metadata.file_size / 1024 / 1024).toFixed(2)} MB`
                             : event.metadata?.received_bytes
                               ? `${(event.metadata.received_bytes / 1024 / 1024).toFixed(2)} MB`
                               : 'Size unknown'}
                         </span>
-                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
+                        <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="whitespace-nowrap">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
 
                   {event.event_type === 'browser_search_query' && (
                     <>
-                      <div className="flex items-center space-x-2 mb-1 overflow-hidden">
-                        <span className="font-medium transition-colors truncate" style={{ color: 'var(--text-primary)' }}>
+                      <div className="flex items-center space-x-3 mb-1 overflow-hidden">
+                        <span className="font-bold text-white text-lg tracking-tight truncate">
                           "{event.metadata?.query || 'Unknown query'}"
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: 'rgba(108, 92, 231, 0.2)', color: '#6C5CE7' }}>
+                        <span className="px-2 py-0.5 rounded bg-violet-500/10 text-violet-400 font-bold text-[10px] uppercase tracking-wider">
                           {(event.metadata?.search_engine || 'search').toUpperCase()}
                         </span>
                       </div>
-                      <p className="text-sm transition-colors truncate break-all" style={{ color: 'var(--text-tertiary)' }}>
+                      <p className="text-sm text-slate-400 truncate break-all">
                         {event.metadata?.url}
                       </p>
-                      <div className="flex items-center flex-wrap gap-2 mt-2 text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                        <span className="whitespace-nowrap" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
+                      <div className="flex items-center flex-wrap gap-2 mt-3 text-[10px] font-mono text-slate-500">
+                        <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="whitespace-nowrap">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
