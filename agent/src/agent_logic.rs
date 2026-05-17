@@ -194,7 +194,33 @@ async fn start_monitoring(
             }
         });
 
-        // 4. Extension Server
+        // 5. Process Monitoring
+        let config_process = config.clone();
+        let sync_process = sync_manager.clone();
+        tokio::spawn(async move {
+            loop {
+                info!("Starting/Restarting Process monitoring...");
+                if let Err(e) = monitoring::process::start_monitoring(config_process.clone(), sync_process.clone()).await {
+                    error!("Process monitoring module CRASHED: {}. Restarting in 10s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            }
+        });
+
+        // 6. Browser Monitoring (Forensic Scraper)
+        let config_browser = config.clone();
+        let sync_browser = sync_manager.clone();
+        tokio::spawn(async move {
+            loop {
+                info!("Starting/Restarting Browser history scraper...");
+                if let Err(e) = monitoring::browser::start_monitoring(config_browser.clone(), sync_browser.clone()).await {
+                    error!("Browser scraper module CRASHED: {}. Restarting in 15s...", e);
+                }
+                tokio::time::sleep(Duration::from_secs(15)).await;
+            }
+        });
+
+        // 7. Extension Server (Native Messaging Interface)
         let config_extension = config.clone();
         let sync_extension = sync_manager.clone();
         tokio::spawn(async move {

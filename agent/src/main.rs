@@ -16,7 +16,7 @@ pub mod utils;
 
 use config::Config;
 use sync::SyncManager;
-use agent_logic::{generate_agent_id, generate_hardware_fingerprint};
+use agent_logic::generate_hardware_fingerprint;
 use utils::{hide_file, set_directory_permissions};
 
 fn main() -> Result<()> {

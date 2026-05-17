@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
+use tokio::time::Duration;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
@@ -30,6 +30,7 @@ pub struct AgentIdentity {
     pub organization_id: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct SyncManager {
     config: Arc<Config>,
     client: reqwest::Client,
@@ -39,6 +40,10 @@ pub struct SyncManager {
 
 impl SyncManager {
     // Modified: Now takes Arc<StorageManager> dependency
+    pub fn get_storage(&self) -> Arc<StorageManager> {
+        self.storage.clone()
+    }
+
     pub fn new(config: Arc<Config>, storage: Arc<StorageManager>) -> Result<Self> {
         let client = reqwest::Client::builder()
             .danger_accept_invalid_certs(false)
@@ -115,28 +120,47 @@ impl SyncManager {
         }
 
         let sync_interval = self.config.backend.sync_interval_seconds;
+        let mut consecutive_failures = 0;
         
         loop {
-            // Apply Network Jitter (Item 5.5) - Random +/- 20%
+            // Apply Network Jitter (Item 5.5) - Random +/- 5 second jitter
             let jitter = {
                 use rand::Rng;
                 let mut rng = rand::thread_rng();
-                rng.gen_range(0..10) // 0-10 second jitter
+                rng.gen_range(0..5)
             };
-            let sleep_duration = Duration::from_secs(sync_interval + jitter);
             
-            tokio::time::sleep(sleep_duration).await;
+            // Calculate sleep duration with exponential backoff if failing
+            let base_sleep = if consecutive_failures > 0 {
+                // Exponential backoff: 30s, 60s, 120s, 240s, 480s, max 10 mins
+                let backoff = (2u64.pow(consecutive_failures.min(5) as u32) * 30).min(600);
+                Duration::from_secs(backoff + jitter)
+            } else {
+                Duration::from_secs(sync_interval + jitter)
+            };
             
-            if let Err(e) = self.sync_events().await {
-                error!("Sync failed: {}", e);
+            tokio::time::sleep(base_sleep).await;
+            
+            // 1. Process Telemetry Events (Ordered by captured_at)
+            match self.sync_events().await {
+                Ok(_) => {
+                    consecutive_failures = 0;
+                }
+                Err(e) => {
+                    consecutive_failures += 1;
+                    error!("Sync cycle failed (attempt {}): {}", consecutive_failures, e);
+                    continue; // Skip heartbeat if we can't even sync events
+                }
             }
 
+            // 2. Heartbeat (Health Check)
             if let Err(e) = self.send_heartbeat().await {
                 warn!("Heartbeat failure: {}", e);
             }
 
+            // 3. Maintenance (Prune old synced data)
             if let Err(e) = self.storage.prune_synced_events() {
-                warn!("Storage prune failed: {}", e);
+                warn!("Storage maintenance failed: {}", e);
             }
         }
     }

@@ -2,8 +2,8 @@ use anyhow::Result;
 use chrono::Utc;
 use serde_json::json;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
-use tracing::{error, info, warn};
+use tokio::time::Duration;
+use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::sync::{Event, SyncManager};
@@ -46,8 +46,6 @@ async fn start_windows_monitoring(
     use std::collections::HashSet;
     use tokio::sync::Mutex;
     
-    let known_devices: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
-    let mut interval = interval(Duration::from_secs(5));
     
     // Track USB drive letters for file monitoring
     let usb_drives: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -58,41 +56,67 @@ async fn start_windows_monitoring(
     // Cache device names on insertion so we can show proper names on removal
     let device_name_cache: Arc<Mutex<std::collections::HashMap<String, String>>> = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
-    // Take initial snapshot of currently connected USB devices to avoid false positives
-    // Only devices inserted/removed AFTER this point will be logged
-    info!("Taking initial snapshot of connected USB devices (these will not be logged as insertions)...");
-    match detect_usb_devices().await {
-        Ok(initial_devices) => {
-            let mut known = known_devices.lock().await;
-            let _device_details = get_usb_device_details().await.unwrap_or_default();
-            let initial_usb_drives = get_usb_drive_letters().await.unwrap_or_default();
-            let initial_drive_map = map_drives_to_devices(&initial_usb_drives).await.unwrap_or_default();
-            
-            // Populate known_devices with all currently connected devices (without logging)
-            for device_id in &initial_devices {
+    // Forensic Resume: Load known devices from SQLite (Item 6.2)
+    let storage = sync_manager.get_storage();
+    let mut known = match storage.load_state("usb_known_devices") {
+        Ok(Some(v)) => serde_json::from_value::<HashSet<String>>(v).unwrap_or_default(),
+        _ => HashSet::new(),
+    };
+    
+    // Current state
+    let current_devices = detect_usb_devices().await.unwrap_or_default();
+    let (agent_id, _) = sync_manager.get_identity().await;
+    
+    if !known.is_empty() {
+        info!("Forensic Resume: Comparing current hardware state with {} persisted USB devices", known.len());
+        
+        // 1. Detect OFFLINE REMOVALS
+        for device_id in &known.clone() {
+            if !current_devices.contains(device_id) {
+                info!("OFFLINE USB REMOVAL DETECTED: {}", device_id);
+                sync_manager.queue_event(Event {
+                    event_type: "usb_removed".to_string(),
+                    timestamp: Utc::now(),
+                    agent_id: agent_id.clone(),
+                    metadata: json!({
+                        "device_id": device_id,
+                        "offline_activity": true
+                    }),
+                });
+                known.remove(device_id);
+            }
+        }
+        
+        // 2. Detect OFFLINE INSERTIONS
+        for device_id in &current_devices {
+            if !known.contains(device_id) {
+                info!("OFFLINE USB INSERTION DETECTED: {}", device_id);
+                sync_manager.queue_event(Event {
+                    event_type: "usb_inserted".to_string(),
+                    timestamp: Utc::now(),
+                    agent_id: agent_id.clone(),
+                    metadata: json!({
+                        "device_id": device_id,
+                        "offline_activity": true
+                    }),
+                });
                 known.insert(device_id.clone());
             }
-            
-            // Populate usb_drives and drive_to_device with currently connected drives
-            {
-                let mut drives = usb_drives.lock().await;
-                let mut drive_map = drive_to_device.lock().await;
-                
-                for drive in &initial_usb_drives {
-                    drives.insert(drive.clone());
-                    if let Some((device_id, device_name)) = initial_drive_map.get(drive) {
-                        drive_map.insert(drive.clone(), (device_id.clone(), device_name.clone()));
-                    }
-                }
-            }
-            
-            info!("Initial snapshot complete: {} USB devices and {} USB drives detected (not logged as insertions)", 
-                  initial_devices.len(), initial_usb_drives.len());
         }
-        Err(e) => {
-            warn!("Failed to take initial USB device snapshot: {}. Monitoring will start with empty state.", e);
+        
+        // Persist reconciled state
+        let _ = storage.save_state("usb_known_devices", &json!(known));
+    } else {
+        // First run: Baseline everything
+        info!("First run: Baselining {} USB devices", current_devices.len());
+        for device_id in current_devices {
+            known.insert(device_id);
         }
+        let _ = storage.save_state("usb_known_devices", &json!(known));
     }
+
+    let known_devices = Arc::new(Mutex::new(known));
+    let mut tick = tokio::time::interval(Duration::from_secs(5));
 
     // Start offline USB file processing task
     let config_clone_offline = config.clone();
@@ -103,95 +127,276 @@ async fn start_windows_monitoring(
 
     // Start file transfer monitoring task
     if config.monitoring.usb.track_file_transfers {
-        let sync_manager_clone = sync_manager.clone();
-        let config_clone = config.clone();
-        let usb_drives_clone = usb_drives.clone();
-        let drive_to_device_clone = drive_to_device.clone();
+        let sync_manager_ft = sync_manager.clone();
+        let usb_drives_ft = usb_drives.clone();
+        let drive_to_device_ft = drive_to_device.clone();
         
         tokio::spawn(async move {
-            let mut file_check_interval = tokio::time::interval(Duration::from_secs(10));
-            let mut last_file_snapshots: std::collections::HashMap<String, std::collections::HashMap<String, u64>> = std::collections::HashMap::new();
-            let mut initial_snapshots_taken: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut system_file_snapshots: std::collections::HashMap<String, std::collections::HashMap<String, u64>> = std::collections::HashMap::new(); // Changed to HashMap to track sizes
-            // Track recently removed system files (for matching with USB transfers)
-            let mut recent_system_file_removals: std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)> = std::collections::VecDeque::new(); // (file_name, file_path, file_size, timestamp)
-            // Track recently removed USB files (for matching with system transfers)
-            let mut recent_usb_file_removals: std::collections::VecDeque<(String, String, u64, String, chrono::DateTime<chrono::Utc>)> = std::collections::VecDeque::new(); // (file_name, usb_path, file_size, device_id, timestamp)
+            info!("=== USB File Transfer Monitoring Task INITIALIZED (Persistent) ===");
+            
+            let storage = sync_manager_ft.get_storage();
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            
+            // Forensic Resume: Load all state from SQLite
+            let mut usb_snapshots: std::collections::HashMap<String, std::collections::HashMap<String, u64>> = 
+                match storage.load_state("usb_snapshots") {
+                    Ok(Some(v)) => serde_json::from_value(v).unwrap_or_default(),
+                    _ => std::collections::HashMap::new(),
+                };
+            let mut sys_snapshots: std::collections::HashMap<String, std::collections::HashMap<String, u64>> = 
+                match storage.load_state("usb_sys_snapshots") {
+                    Ok(Some(v)) => serde_json::from_value(v).unwrap_or_default(),
+                    _ => std::collections::HashMap::new(),
+                };
+            let mut usb_baselined: std::collections::HashSet<String> = 
+                match storage.load_state("usb_baselined_set") {
+                    Ok(Some(v)) => serde_json::from_value(v).unwrap_or_default(),
+                    _ => std::collections::HashSet::new(),
+                };
+            let mut sys_baselined: std::collections::HashSet<String> = 
+                match storage.load_state("usb_sys_baselined_set") {
+                    Ok(Some(v)) => serde_json::from_value(v).unwrap_or_default(),
+                    _ => std::collections::HashSet::new(),
+                };
+            let mut logged_keys: std::collections::HashSet<String> = 
+                match storage.load_state("usb_logged_keys") {
+                    Ok(Some(v)) => serde_json::from_value(v).unwrap_or_default(),
+                    _ => std::collections::HashSet::new(),
+                };
+
+            if !usb_snapshots.is_empty() {
+                info!("Forensic Resume: Loaded USB monitoring state from disk");
+            }
             
             loop {
-                file_check_interval.tick().await;
+                tick.tick().await;
                 
-                let drives = usb_drives_clone.lock().await.clone();
-                let device_map = drive_to_device_clone.lock().await.clone();
-                
-                // Get the most recently connected USB device for system file monitoring
-                let (monitoring_device_id, monitoring_device_name) = if let Some((device_id, device_name)) = device_map.values().next() {
-                    (device_id.clone(), device_name.clone())
-                } else {
-                    ("UNKNOWN_USB".to_string(), "Unknown USB Device".to_string())
-                };
-                
-                for drive_letter in &drives {
-                    let snapshot = last_file_snapshots.entry(drive_letter.clone()).or_insert_with(std::collections::HashMap::new);
+                let mut state_changed = false;
+                let result: Result<()> = async {
+                    let drives = usb_drives_ft.lock().await.clone();
+                    let device_map = drive_to_device_ft.lock().await.clone();
                     
-                    // Get device info for this drive
-                    let (device_id, device_name) = device_map.get(drive_letter)
-                        .cloned()
-                        .unwrap_or_else(|| (drive_letter.clone(), format!("USB Drive {}", drive_letter)));
+                    if drives.is_empty() && usb_snapshots.is_empty() {
+                        return Ok(());
+                    }
                     
-                    // Take initial snapshot on first detection (don't log existing files)
-                    if !initial_snapshots_taken.contains(drive_letter) {
-                        if let Ok(initial_files) = take_initial_snapshot(drive_letter).await {
-                            *snapshot = initial_files;
-                            initial_snapshots_taken.insert(drive_letter.clone());
-                            info!("Initial snapshot taken for drive {} - {} existing files (not logged)", drive_letter, snapshot.len());
+                    // === STEP 1: Scan USB drives ===
+                    for drive_letter in &drives {
+                        let drive_path = format!("{}\\", drive_letter);
+                        let path = std::path::Path::new(&drive_path);
+                        
+                        if !path.exists() { continue; }
+                        
+                        let mut current: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+                        walk_dir_files(path, &mut current, 5);
+                        
+                        let snapshot = usb_snapshots.entry(drive_letter.clone()).or_insert_with(std::collections::HashMap::new);
+                        
+                        if !usb_baselined.contains(drive_letter) {
+                            info!("USB baseline for {}: found {} files", drive_letter, current.len());
+                            *snapshot = current;
+                            usb_baselined.insert(drive_letter.clone());
+                            state_changed = true;
+                            continue;
+                        }
+                        
+                        let (device_id, device_name) = device_map.get(drive_letter)
+                            .cloned()
+                            .unwrap_or_else(|| (drive_letter.clone(), format!("USB Drive {}", drive_letter)));
+                        
+                        // NEW OR MODIFIED FILES (TO USB)
+                        for (fpath, &fsize) in &current {
+                            let mut is_new = false;
+                            if let Some((_, old_size)) = find_path_case_insensitive(snapshot, fpath) {
+                                if old_size != fsize {
+                                    is_new = true; // Size changed = modified/overwritten
+                                }
+                            } else {
+                                is_new = true; // Path is new
+                            }
+
+                            if is_new {
+                                let dedup = format!("to_usb|{}|{}", fpath.to_uppercase(), fsize);
+                                if logged_keys.contains(&dedup) { continue; }
+                                logged_keys.insert(dedup.clone());
+                                state_changed = true;
+                                
+                                let fname = std::path::Path::new(fpath).file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                                info!("TRANSFER DETECTED: Copy to USB: {} on {}", fname, drive_letter);
+                                
+                                let (agent_id, _) = sync_manager_ft.get_identity().await;
+                                sync_manager_ft.queue_event(Event {
+                                    event_type: "usb_file_transfer".to_string(),
+                                    timestamp: Utc::now(),
+                                    agent_id,
+                                    metadata: json!({
+                                        "file_name": fname,
+                                        "file_path": fpath,
+                                        "file_size": fsize,
+                                        "direction": "to_usb",
+                                        "drive_letter": drive_letter,
+                                        "device_id": device_id,
+                                        "device_name": device_name,
+                                        "was_offline": !logged_keys.is_empty(),
+                                        "backup_file_id": serde_json::Value::Null
+                                    }),
+                                });
+                            }
+                        }
+                        
+                        // REMOVED OR OVERWRITTEN FILES (FROM USB)
+                        for (fpath, &fsize) in snapshot.iter() {
+                            let mut is_removed = false;
+                            if let Some((_, current_size)) = find_path_case_insensitive(&current, fpath) {
+                                if current_size != fsize {
+                                    is_removed = true; // Size changed = old version is gone
+                                }
+                            } else {
+                                is_removed = true; // Path is gone
+                            }
+
+                            if is_removed {
+                                let dedup = format!("from_usb|{}|{}", fpath.to_uppercase(), fsize);
+                                if logged_keys.contains(&dedup) { continue; }
+                                logged_keys.insert(dedup.clone());
+                                state_changed = true;
+                                
+                                let fname = std::path::Path::new(fpath).file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                                info!("TRANSFER DETECTED: Removed from USB: {} from {}", fname, drive_letter);
+                                
+                                let (agent_id, _) = sync_manager_ft.get_identity().await;
+                                sync_manager_ft.queue_event(Event {
+                                    event_type: "usb_file_transfer".to_string(),
+                                    timestamp: Utc::now(),
+                                    agent_id,
+                                    metadata: json!({
+                                        "file_name": fname,
+                                        "file_path": fpath,
+                                        "file_size": fsize,
+                                        "direction": "from_usb",
+                                        "drive_letter": drive_letter,
+                                        "device_id": device_id,
+                                        "device_name": device_name,
+                                        "was_offline": !logged_keys.is_empty(),
+                                        "backup_file_id": serde_json::Value::Null
+                                    }),
+                                });
+                            }
+                        }
+                        
+                        if *snapshot != current {
+                            *snapshot = current;
+                            state_changed = true;
                         }
                     }
                     
-                    if let Err(e) = monitor_usb_file_transfers(
-                        drive_letter,
-                        &device_id,
-                        &device_name,
-                        snapshot,
-                        &mut recent_system_file_removals,
-                        &mut recent_usb_file_removals,
-                        &sync_manager_clone,
-                        &config_clone,
-                    ).await {
-                        error!("File transfer monitoring error for {}: {}", drive_letter, e);
+                    // === STEP 2: System Scan (FROM USB TO SYSTEM) ===
+                    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
+                    if !user_profile.is_empty() {
+                        let system_dirs = vec![
+                            format!("{}\\Downloads", user_profile),
+                            format!("{}\\Desktop", user_profile),
+                            format!("{}\\Documents", user_profile),
+                        ];
+                        
+                        let mut usb_file_lookup: std::collections::HashMap<String, (String, u64, String, String, String)> = std::collections::HashMap::new();
+                        for (dl, files) in &usb_snapshots {
+                            let (did, dname) = device_map.get(dl).cloned().unwrap_or_else(|| (dl.clone(), format!("USB Drive {}", dl)));
+                            for (upath, &usize) in files {
+                                if let Some(uname) = std::path::Path::new(upath).file_name().and_then(|n| n.to_str()) {
+                                    let key = format!("{}|{}", uname.to_uppercase(), usize);
+                                    usb_file_lookup.insert(key, (upath.clone(), usize, did.clone(), dname.clone(), dl.clone()));
+                                }
+                            }
+                        }
+                        
+                        for sys_dir in &system_dirs {
+                            let sys_path = std::path::Path::new(sys_dir);
+                            if !sys_path.exists() { continue; }
+                            
+                            let mut current: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+                            walk_dir_files(sys_path, &mut current, 2);
+                            
+                            let snapshot = sys_snapshots.entry(sys_dir.clone()).or_insert_with(std::collections::HashMap::new);
+                            
+                            if !sys_baselined.contains(sys_dir) {
+                                *snapshot = current;
+                                sys_baselined.insert(sys_dir.clone());
+                                state_changed = true;
+                                continue;
+                            }
+                            
+                            for (fpath, &fsize) in &current {
+                                let mut is_new = false;
+                                if let Some((_, old_size)) = find_path_case_insensitive(snapshot, fpath) {
+                                    if old_size != fsize {
+                                        is_new = true;
+                                    }
+                                } else {
+                                    is_new = true;
+                                }
+
+                                if !is_new { continue; }
+                                
+                                let fname = std::path::Path::new(fpath).file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
+                                let lookup_key = format!("{}|{}", fname.to_uppercase(), fsize);
+                                
+                                if let Some((usb_path, _, device_id, device_name, drive_letter)) = usb_file_lookup.get(&lookup_key) {
+                                    let dedup = format!("from_usb_to_system|{}|{}", fpath.to_uppercase(), fsize);
+                                    if logged_keys.contains(&dedup) { continue; }
+                                    logged_keys.insert(dedup);
+                                    
+                                    info!("TRANSFER DETECTED: Copy from USB to system: {} ({} bytes) from {}", fname, fsize, usb_path);
+                                    
+                                    let (agent_id, _) = sync_manager_ft.get_identity().await;
+                                    sync_manager_ft.queue_event(Event {
+                                        event_type: "usb_file_transfer".to_string(),
+                                        timestamp: Utc::now(),
+                                        agent_id,
+                                        metadata: json!({
+                                            "file_name": fname,
+                                            "file_path": fpath,
+                                            "file_size": fsize,
+                                            "direction": "from_usb_to_system",
+                                            "source_path": usb_path,
+                                            "drive_letter": drive_letter,
+                                            "device_id": device_id,
+                                            "device_name": device_name,
+                                            "platform": "windows",
+                                            "backup_file_id": serde_json::Value::Null
+                                        }),
+                                    });
+                                    sync_manager_ft.sync_events_immediate().await;
+                                }
+                            }
+                            *snapshot = current;
+                        }
                     }
+                    
+                    if logged_keys.len() > 5000 { logged_keys.clear(); }
+                    usb_baselined.retain(|d| drives.contains(d));
+                    usb_snapshots.retain(|d, _| drives.contains(d));
+                    
+                    if state_changed {
+                        let _ = storage.save_state("usb_snapshots", &json!(usb_snapshots));
+                        let _ = storage.save_state("usb_sys_snapshots", &json!(sys_snapshots));
+                        let _ = storage.save_state("usb_baselined_set", &json!(usb_baselined));
+                        let _ = storage.save_state("usb_sys_baselined_set", &json!(sys_baselined));
+                        let _ = storage.save_state("usb_logged_keys", &json!(logged_keys));
+                    }
+
+                    Ok(())
+                }.await;
+                
+                if let Err(e) = result {
+                    error!("USB monitoring loop error: {}", e);
                 }
-                
-                // Monitor system directories for files copied FROM USB
-                // Do this regardless of whether USB drives are currently connected
-                // This catches files copied even if USB was removed after copying
-                if let Err(e) = monitor_system_for_usb_files(
-                    &monitoring_device_id,
-                    &monitoring_device_name,
-                    &mut system_file_snapshots,
-                    &mut recent_usb_file_removals,
-                    &mut recent_system_file_removals,
-                    &last_file_snapshots,
-                    &sync_manager_clone,
-                    &config_clone,
-                ).await {
-                    error!("System file monitoring error: {}", e);
-                }
-                
-                // Clean up old removal records (older than 5 minutes)
-                let cutoff_time = chrono::Utc::now() - chrono::Duration::minutes(5);
-                recent_system_file_removals.retain(|(_, _, _, ts)| *ts > cutoff_time);
-                recent_usb_file_removals.retain(|(_, _, _, _, ts)| *ts > cutoff_time);
-                
-                // Clean up snapshots for removed drives
-                initial_snapshots_taken.retain(|d| drives.contains(d));
-                last_file_snapshots.retain(|d, _| drives.contains(d));
             }
         });
     }
 
     loop {
-        interval.tick().await;
+        tick.tick().await;
 
         match detect_usb_devices().await {
             Ok(current_devices) => {
@@ -254,17 +459,29 @@ async fn start_windows_monitoring(
                         info!("USB device inserted: {} ({})", device_id, device_name);
                         known.insert(device_id.clone());
                         
+                        // Persist immediately (Item 6.2)
+                        let _ = storage.save_state("usb_known_devices", &json!(*known));
+                        
                         // Cache the device name for later retrieval on removal
                         {
                             let mut name_cache = device_name_cache.lock().await;
                             name_cache.insert(device_id.clone(), device_name.clone());
                         }
                         
-                        // Get drive letters for this device
+                        // Get drive letters for this device and register for file-transfer monitoring
                         let device_drives: Vec<String> = drive_device_map.iter()
                             .filter(|(_, (did, _))| did == device_id)
                             .map(|(drive, _)| drive.clone())
                             .collect();
+                        if !device_drives.is_empty() {
+                            let mut drives = usb_drives.lock().await;
+                            let mut drive_map = drive_to_device.lock().await;
+                            for drive in &device_drives {
+                                drives.insert(drive.clone());
+                                drive_map.insert(drive.clone(), (device_id.clone(), device_name.clone()));
+                                info!("Registered drive {} for file transfer monitoring", drive);
+                            }
+                        }
                         
                         let (agent_id, _) = sync_manager.get_identity().await;
                         let event = Event {
@@ -299,6 +516,7 @@ async fn start_windows_monitoring(
                     
                     info!("USB device removed: {} ({})", device_id, device_name);
                     known.remove(&device_id);
+                    let _ = storage.save_state("usb_known_devices", &json!(*known));
                     
                     let (agent_id, _) = sync_manager.get_identity().await;
                     let event = Event {
@@ -555,14 +773,16 @@ async fn take_initial_snapshot(drive_letter: &str) -> Result<std::collections::H
     let mut snapshot = std::collections::HashMap::new();
     
     if path.exists() {
-        walk_dir_files(path, &mut snapshot, 3); // Max 3 levels deep on USB
+        debug!("Starting recursive snapshot of USB drive {}", drive_path);
+        walk_dir_files(path, &mut snapshot, 5); 
+        debug!("Snapshot of {} finished: {} files found", drive_path, snapshot.len());
+    } else {
+        warn!("USB drive path {} does not exist for snapshot", drive_path);
     }
     
     Ok(snapshot)
 }
 
-/// Recursively walk a directory and collect file paths + sizes.
-/// `max_depth` prevents runaway recursion on symlinks or deep trees.
 #[cfg(windows)]
 fn walk_dir_files(dir: &std::path::Path, out: &mut std::collections::HashMap<String, u64>, max_depth: u32) {
     use std::fs;
@@ -572,10 +792,10 @@ fn walk_dir_files(dir: &std::path::Path, out: &mut std::collections::HashMap<Str
             let entry_path = entry.path();
             if entry_path.is_file() {
                 if let Ok(metadata) = fs::metadata(&entry_path) {
+                    // Use original path for key to preserve casing, but we'll do case-insensitive checks later
                     out.insert(entry_path.to_string_lossy().to_string(), metadata.len());
                 }
             } else if entry_path.is_dir() {
-                // Skip hidden/system folders like System Volume Information, $RECYCLE.BIN
                 let name = entry_path.file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
@@ -587,20 +807,50 @@ fn walk_dir_files(dir: &std::path::Path, out: &mut std::collections::HashMap<Str
     }
 }
 
+/// Helper for case-insensitive HashMap lookup on Windows paths
+fn find_path_case_insensitive(map: &std::collections::HashMap<String, u64>, path: &str) -> Option<(String, u64)> {
+    let target_upper = path.to_uppercase();
+    for (k, v) in map {
+        if k.to_uppercase() == target_upper {
+            return Some((k.clone(), *v));
+        }
+    }
+    None
+}
+
+fn path_exists_in_map(map: &std::collections::HashMap<String, u64>, path: &str) -> bool {
+    find_path_case_insensitive(map, path).is_some()
+}
+
+fn drive_letter_from_path(path: &str) -> Option<String> {
+    let path = path.trim();
+    if path.len() >= 2 {
+        let chars: Vec<char> = path.chars().collect();
+        if chars[0].is_ascii_alphabetic() && chars[1] == ':' {
+            return Some(format!("{}:", chars[0]));
+        }
+    }
+    None
+}
+
+fn transfer_dedup_key(direction: &str, file_path: &str, file_size: u64) -> String {
+    format!("{}|{}|{}", direction, file_path.to_uppercase(), file_size)
+}
+
 #[cfg(windows)]
 async fn monitor_system_for_usb_files(
-    device_id: &str,
-    device_name: &str,
+    device_map: &std::collections::HashMap<String, (String, String)>,
     system_snapshots: &mut std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
-    recent_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, chrono::DateTime<chrono::Utc>)>,
+    system_dirs_bootstrapped: &mut std::collections::HashSet<String>,
+    recent_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, String, chrono::DateTime<chrono::Utc>)>,
     recent_system_removals: &mut std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)>,
+    pending_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, String, String, chrono::DateTime<chrono::Utc>)>,
+    recent_transfer_keys: &mut std::collections::HashSet<String>,
     usb_snapshots: &std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
-    sync_manager: &SyncManager,
-    config: &Config,
+    sync_manager: SyncManager,
+    config: Config,
 ) -> Result<()> {
-    use std::fs;
     use std::path::Path;
-    use std::time::SystemTime;
     
     // Monitor common system directories where files are typically copied FROM USB
     let system_dirs = vec![
@@ -608,8 +858,6 @@ async fn monitor_system_for_usb_files(
         std::env::var("USERPROFILE").unwrap_or_default() + "\\Desktop",
         std::env::var("USERPROFILE").unwrap_or_default() + "\\Documents",
     ];
-    
-    let now = SystemTime::now();
     
     for system_dir in system_dirs {
         let sys_path = Path::new(&system_dir);
@@ -622,66 +870,58 @@ async fn monitor_system_for_usb_files(
         
         // Recursively scan (2 levels deep covers e.g. Documents/MyProject/file.txt)
         walk_dir_files(sys_path, &mut current_files, 2);
+        
+        // First pass: baseline existing files so we don't treat Downloads/Desktop contents as transfers
+        if !system_dirs_bootstrapped.contains(&system_dir) {
+            *snapshot = current_files.clone();
+            system_dirs_bootstrapped.insert(system_dir.clone());
+            info!("System folder baseline for USB monitoring: {} ({} files)", system_dir, snapshot.len());
+            continue;
+        }
                         
         for (file_path, &file_size) in &current_files {
             let entry_path = std::path::Path::new(file_path);
-            // Check if file is new (not in snapshot)
-            if !snapshot.contains_key(file_path) {
+            
+            // Check if file is new or modified
+            let existing_in_snapshot = find_path_case_insensitive(snapshot, file_path);
+            
+            if existing_in_snapshot.is_none() || existing_in_snapshot.as_ref().unwrap().1 != file_size {
                 let file_name = entry_path.file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
                     
                 // Try to find source USB path from recent USB file removals (CUT/MOVE)
-                let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
+                let usb_match_removed = find_matching_usb_removal(&file_name, file_size, recent_usb_removals);
                 
                 // Try to find source USB path from current USB files (COPY)
-                let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
+                let usb_match_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots, device_map);
                 
-                let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
+                let usb_match = usb_match_removed.or(usb_match_copied);
                 
-                if source_usb_path.is_some() {
+                if let Some((src_path, device_id, device_name, drive_letter)) = usb_match {
                     info!("Detected file copied FROM USB to system: {} ({} bytes) from {}", 
-                          file_path, file_size, 
-                          source_usb_path.as_ref().map(|s| s.as_str()).unwrap_or("unknown USB location"));
+                          file_path, file_size, src_path);
                     
-                    log_file_transfer(
-                        file_path,
+                    // Matched to a monitored folder — cancel pending fallback from_usb for this file
+                    pending_usb_removals.retain(|(n, p, s, _, _, _, _)| {
+                        !(*s == file_size && (n == &file_name || p == &src_path))
+                    });
+                    
+                    if let Err(e) = log_file_transfer(
+                        file_path.clone(),
                         file_size,
-                        "from_usb_to_system",
-                        "",
+                        "from_usb_to_system".to_string(),
+                        drive_letter,
                         device_id,
                         device_name,
-                        source_usb_path.as_deref(),
+                        Some(src_path),
                         None,
-                        sync_manager,
-                        config,
-                    ).await?;
-                }
-            } else if let Some(&old_size) = snapshot.get(file_path) {
-                if old_size != file_size {
-                    let file_name = entry_path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
-                        
-                    let source_usb_path_removed = find_matching_usb_source_path(&file_name, file_size, recent_usb_removals);
-                    let source_usb_path_copied = find_matching_usb_current_path(&file_name, file_size, usb_snapshots);
-                    let source_usb_path = source_usb_path_removed.or(source_usb_path_copied);
-                    
-                    if source_usb_path.is_some() {
-                        log_file_transfer(
-                            file_path,
-                            file_size,
-                            "from_usb_to_system",
-                            "",
-                            device_id,
-                            device_name,
-                            source_usb_path.as_deref(),
-                            None,
-                            sync_manager,
-                            config,
-                        ).await?;
+                        recent_transfer_keys,
+                        sync_manager.clone(),
+                        config.clone(),
+                    ).await {
+                        error!("Failed to log from_usb_to_system for {}: {}", file_path, e);
                     }
                 }
             }
@@ -689,7 +929,7 @@ async fn monitor_system_for_usb_files(
         
         // Check for files that were removed from system directories
         for (file_path, &old_size) in snapshot.iter() {
-            if !current_files.contains_key(file_path) {
+            if !path_exists_in_map(&current_files, file_path) {
                 let file_name = std::path::Path::new(file_path)
                     .file_name()
                     .and_then(|n| n.to_str())
@@ -719,10 +959,10 @@ fn find_matching_source_path(
     file_size: u64,
     recent_removals: &std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)>,
 ) -> Option<String> {
+    let file_name_upper = file_name.to_uppercase();
     // Look for a recently removed file with matching name and size
-    // Prefer exact matches, then size matches
     for (removed_name, removed_path, removed_size, _) in recent_removals.iter().rev() {
-        if removed_name == file_name && *removed_size == file_size {
+        if removed_name.to_uppercase() == file_name_upper && *removed_size == file_size {
             return Some(removed_path.clone());
         }
     }
@@ -735,44 +975,50 @@ fn find_matching_source_path(
     None
 }
 
-// Helper function to find matching USB source path from USB file removals
+// Match a system file to a recently removed USB file (returns path + device info + drive letter)
 #[cfg(windows)]
-fn find_matching_usb_source_path(
+fn find_matching_usb_removal(
     file_name: &str,
     file_size: u64,
-    recent_removals: &std::collections::VecDeque<(String, String, u64, String, chrono::DateTime<chrono::Utc>)>,
-) -> Option<String> {
-    // Look for a recently removed USB file with matching name and size
-    for (removed_name, removed_path, removed_size, _, _) in recent_removals.iter().rev() {
-        if removed_name == file_name && *removed_size == file_size {
-            return Some(removed_path.clone());
+    recent_removals: &std::collections::VecDeque<(String, String, u64, String, String, chrono::DateTime<chrono::Utc>)>,
+) -> Option<(String, String, String, String)> {
+    let file_name_upper = file_name.to_uppercase();
+    for (removed_name, removed_path, removed_size, device_id, device_name, _) in recent_removals.iter().rev() {
+        if removed_name.to_uppercase() == file_name_upper && *removed_size == file_size {
+            let drive = drive_letter_from_path(removed_path).unwrap_or_default();
+            return Some((removed_path.clone(), device_id.clone(), device_name.clone(), drive));
         }
     }
-    // If no exact match, try size-only match
-    for (_, removed_path, removed_size, _, _) in recent_removals.iter().rev() {
+    for (_, removed_path, removed_size, device_id, device_name, _) in recent_removals.iter().rev() {
         if *removed_size == file_size {
-            return Some(removed_path.clone());
+            let drive = drive_letter_from_path(removed_path).unwrap_or_default();
+            return Some((removed_path.clone(), device_id.clone(), device_name.clone(), drive));
         }
     }
     None
 }
 
-// Helper function to find matching USB source path from current USB snapshots
+// Match a system file to a file still present on USB (COPY, not move)
 #[cfg(windows)]
 fn find_matching_usb_current_path(
     file_name: &str,
     file_size: u64,
     usb_snapshots: &std::collections::HashMap<String, std::collections::HashMap<String, u64>>,
-) -> Option<String> {
-    for (_, files) in usb_snapshots {
+    device_map: &std::collections::HashMap<String, (String, String)>,
+) -> Option<(String, String, String, String)> {
+    let file_name_upper = file_name.to_uppercase();
+    for (drive_letter, files) in usb_snapshots {
         for (usb_path, &usb_size) in files {
             let usb_file_name = std::path::Path::new(usb_path)
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown");
                 
-            if usb_file_name == file_name && usb_size == file_size {
-                return Some(usb_path.clone());
+            if usb_file_name.to_uppercase() == file_name_upper && usb_size == file_size {
+                let (device_id, device_name) = device_map.get(drive_letter)
+                    .cloned()
+                    .unwrap_or_else(|| (drive_letter.clone(), format!("USB Drive {}", drive_letter)));
+                return Some((usb_path.clone(), device_id, device_name, drive_letter.clone()));
             }
         }
     }
@@ -786,161 +1032,189 @@ async fn get_usb_drive_letters() -> Result<std::collections::HashSet<String>> {
     
     let mut drive_set = std::collections::HashSet::new();
     
-    // Get removable drives
-    let output = Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 } | Select-Object -ExpandProperty DeviceID"
-        ])
-        .creation_flags(0x08000000)
-        .output();
-    
-    if let Ok(output) = output {
-        let output_str = String::from_utf8_lossy(&output.stdout);
+    let mut collect_drives = |stdout: &[u8]| {
+        let output_str = String::from_utf8_lossy(stdout);
         for line in output_str.lines() {
             let line = line.trim();
-            if !line.is_empty() && line.len() == 2 && line.ends_with(":") {
+            if line.len() == 2 && line.ends_with(':') && line.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
                 drive_set.insert(line.to_string());
             }
         }
+    };
+    
+    // Removable + USB-attached fixed disks (many external drives report as DriveType 3)
+    let wmi_output = Command::new("powershell")
+        .args(&[
+            "-Command",
+            "Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 -or ($_.DriveType -eq 3 -and $_.MediaType -eq 11) } | Select-Object -ExpandProperty DeviceID"
+        ])
+        .creation_flags(0x08000000)
+        .output();
+    if let Ok(output) = wmi_output {
+        collect_drives(&output.stdout);
+    }
+    
+    // Volumes on disks with BusType USB (catches drives WMI misses)
+    let usb_bus_output = Command::new("powershell")
+        .args(&[
+            "-Command",
+            "Get-Disk | Where-Object { $_.BusType -eq 'USB' } | Get-Partition | Where-Object { $_.DriveLetter } | ForEach-Object { $_.DriveLetter + ':' }"
+        ])
+        .creation_flags(0x08000000)
+        .output();
+    if let Ok(output) = usb_bus_output {
+        collect_drives(&output.stdout);
     }
     
     Ok(drive_set)
 }
 
 #[cfg(windows)]
-async fn monitor_usb_file_transfers(
+async fn scan_usb_drive_files(drive_letter: &str) -> Result<std::collections::HashMap<String, u64>> {
+    use std::path::Path;
+    
+    if !is_safe_drive_letter(drive_letter) {
+        return Ok(std::collections::HashMap::new());
+    }
+    
+    let drive_path = format!("{}\\", drive_letter);
+    let path = Path::new(&drive_path);
+    if !path.exists() {
+        return Ok(std::collections::HashMap::new());
+    }
+    
+    let mut current_files = std::collections::HashMap::new();
+    walk_dir_files(path, &mut current_files, 5);
+    debug!("USB scan: {} files on {}", current_files.len(), drive_letter);
+    Ok(current_files)
+}
+
+#[cfg(windows)]
+fn process_usb_removals(
     drive_letter: &str,
     device_id: &str,
     device_name: &str,
-    last_snapshot: &mut std::collections::HashMap<String, u64>,
-    recent_system_removals: &mut std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)>,
-    recent_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, chrono::DateTime<chrono::Utc>)>,
-    sync_manager: &SyncManager,
-    config: &Config,
-) -> Result<()> {
-    use std::fs;
-    use std::path::Path;
-    
-    // SECURITY: Validate drive letter to prevent Path Traversal
-    if !is_safe_drive_letter(drive_letter) {
-        tracing::warn!("Security Warning: Invalid drive letter in monitor task: {}", drive_letter);
-        return Ok(());
-    }
-
-    // Get current files on USB drive
-    let drive_path = format!("{}", drive_letter);
-    let path = Path::new(&drive_path);
-    
-    if !path.exists() {
-        return Ok(()); // Drive not available
-    }
-    
-    let mut current_files: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    
-    // Recursively scan USB drive (3 levels deep)
-    walk_dir_files(path, &mut current_files, 3);
-    
-    for (full_path, &file_size) in &current_files {
-                    let entry_path = std::path::Path::new(full_path);
-                    // Extract file name for matching
-                    let file_name = entry_path.file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("Unknown")
-                        .to_string();
-                    
-                    // Only log if this is a NEW file (not in snapshot) or MODIFIED file
-                    if let Some(&old_size) = last_snapshot.get(full_path) {
-                        if old_size != file_size {
-                            let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
-                            log_file_transfer(
-                                full_path,
-                                file_size,
-                                "to_usb",
-                                drive_letter,
-                                device_id,
-                                device_name,
-                                source_path.as_deref(),
-                                None,
-                                sync_manager,
-                                config,
-                            ).await?;
-                        }
-                    } else {
-                        // New file - copied TO USB
-                        let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
-                        log_file_transfer(
-                            full_path,
-                            file_size,
-                            "to_usb",
-                            drive_letter,
-                            device_id,
-                            device_name,
-                            source_path.as_deref(),
-                            None,
-                            sync_manager,
-                            config,
-                        ).await?;
-                    }
-    }
-    
-    // Check for files that were removed (copied FROM USB)
+    last_snapshot: &std::collections::HashMap<String, u64>,
+    current_files: &std::collections::HashMap<String, u64>,
+    recent_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, String, chrono::DateTime<chrono::Utc>)>,
+    pending_usb_removals: &mut std::collections::VecDeque<(String, String, u64, String, String, String, chrono::DateTime<chrono::Utc>)>,
+) {
+    let drive_path_upper = format!("{}\\", drive_letter).to_uppercase();
     for (file_path, &old_size) in last_snapshot.iter() {
-        if !current_files.contains_key(file_path) && file_path.starts_with(&drive_path) {
-            // File was removed from USB (likely copied to system)
-            // Extract file name from path
+        if !path_exists_in_map(current_files, file_path) && file_path.to_uppercase().starts_with(&drive_path_upper) {
             let file_name = std::path::Path::new(file_path)
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("Unknown")
                 .to_string();
             
-            // Record this removal for matching with system file appearances
             recent_usb_removals.push_back((
                 file_name.clone(),
                 file_path.clone(),
                 old_size,
                 device_id.to_string(),
+                device_name.to_string(),
                 chrono::Utc::now(),
             ));
             
-            log_file_transfer(
-                file_path,
+            pending_usb_removals.push_back((
+                file_name,
+                file_path.clone(),
                 old_size,
-                "from_usb",
-                drive_letter,
-                device_id,
-                device_name,
+                device_id.to_string(),
+                device_name.to_string(),
+                drive_letter.to_string(),
+                chrono::Utc::now(),
+            ));
+        }
+    }
+}
+
+#[cfg(windows)]
+async fn process_usb_additions(
+    drive_letter: &str,
+    device_id: &str,
+    device_name: &str,
+    last_snapshot: &mut std::collections::HashMap<String, u64>,
+    current_files: &std::collections::HashMap<String, u64>,
+    recent_system_removals: &mut std::collections::VecDeque<(String, String, u64, chrono::DateTime<chrono::Utc>)>,
+    recent_transfer_keys: &mut std::collections::HashSet<String>,
+    sync_manager: SyncManager,
+    config: Config,
+) -> Result<()> {
+    for (full_path, &file_size) in current_files {
+        let entry_path = std::path::Path::new(full_path);
+        let file_name = entry_path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        
+        if let Some((orig_path, old_size)) = find_path_case_insensitive(last_snapshot, full_path) {
+            if old_size != file_size {
+                let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
+                log_file_transfer(
+                    orig_path,
+                    file_size,
+                    "to_usb".to_string(),
+                    drive_letter.to_string(),
+                    device_id.to_string(),
+                    device_name.to_string(),
+                    source_path,
+                    None,
+                    recent_transfer_keys,
+                    sync_manager.clone(),
+                    config.clone(),
+                ).await?;
+            }
+        } else {
+            let source_path = find_matching_source_path(&file_name, file_size, recent_system_removals);
+            log_file_transfer(
+                full_path.clone(),
+                file_size,
+                "to_usb".to_string(),
+                drive_letter.to_string(),
+                device_id.to_string(),
+                device_name.to_string(),
+                source_path,
                 None,
-                None,
-                sync_manager,
-                config,
+                recent_transfer_keys,
+                sync_manager.clone(),
+                config.clone(),
             ).await?;
         }
     }
     
-    // Update snapshot
-    *last_snapshot = current_files;
-    
+    *last_snapshot = current_files.clone();
     Ok(())
 }
 
 #[cfg(windows)]
 async fn log_file_transfer(
-    file_path: &str,
+    file_path: String,
     file_size: u64,
-    direction: &str,
-    drive_letter: &str,
-    device_id: &str,
-    device_name: &str,
-    source_path: Option<&str>, // Source path (for to_usb: system path, for from_usb_to_system: USB path)
-    destination_path: Option<&str>, // Destination path (currently not used, reserved for future)
-    sync_manager: &SyncManager,
-    config: &Config,
+    direction: String,
+    drive_letter: String,
+    device_id: String,
+    device_name: String,
+    source_path: Option<String>,
+    destination_path: Option<String>,
+    recent_transfer_keys: &mut std::collections::HashSet<String>,
+    sync_manager: SyncManager,
+    config: Config,
 ) -> Result<()> {
     use std::path::Path;
     
-    let path = Path::new(file_path);
+    let dedup_key = transfer_dedup_key(&direction, &file_path, file_size);
+    if !recent_transfer_keys.insert(dedup_key) {
+        debug!("Skipping duplicate USB transfer event: {} {}", direction, file_path);
+        return Ok(());
+    }
+    if recent_transfer_keys.len() > 500 {
+        recent_transfer_keys.clear();
+        recent_transfer_keys.insert(transfer_dedup_key(&direction, &file_path, file_size));
+    }
+    
+    let path = Path::new(&file_path);
     let file_name = path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("Unknown")
@@ -949,59 +1223,25 @@ async fn log_file_transfer(
     info!("USB file transfer detected: {} {} ({}) on device {} ({})", 
           direction, file_name, file_path, device_id, device_name);
     
-    // Backup the file if it exists and is accessible
-    // For large files (>10MB), skip backup to avoid connection timeouts
-    let backup_file_id = if path.exists() && file_size > 0 && file_size < 10 * 1024 * 1024 {
-        // Only backup files under 10MB to avoid connection timeouts and storage issues
-        // Backup files copied TO USB (source is on system)
-        // Backup files copied FROM USB TO SYSTEM (destination is on system)
-        if direction == "to_usb" || direction == "from_usb_to_system" {
-            match backup_and_upload_file(file_path, &file_name, file_size, sync_manager, config).await {
-                Ok(backup_id) => {
-                    info!("File backed up and uploaded successfully: {}", backup_id);
-                    Some(backup_id)
-                }
-                Err(e) => {
-                    // Log error but don't fail the event logging
-                    let error_msg = format!("{}", e);
-                    if error_msg.contains("10053") || error_msg.contains("connection") || error_msg.contains("timeout") {
-                        warn!("File too large or connection issue, skipping backup for {} ({} bytes): {}", file_name, file_size, error_msg);
-                    } else {
-                        error!("Failed to backup file {}: {}", file_path, e);
-                    }
-                    None
-                }
-            }
-        } else {
-            None // Files FROM USB (removed from USB) can't be backed up (original is on USB)
-        }
-    } else if file_size >= 10 * 1024 * 1024 {
-        // File is too large for backup
-        info!("File {} is too large ({} bytes), skipping backup", file_name, file_size);
-        None
-    } else {
-        None
-    };
-    
+    // IMPORTANT: Queue the event FIRST so it shows up on the dashboard immediately.
+    // File backup happens in background and won't block detection of subsequent transfers.
     let mut metadata = json!({
         "file_name": file_name,
         "file_path": file_path,
         "file_size": file_size,
         "direction": direction,
         "drive_letter": drive_letter,
-        "device_id": device_id,
-        "device_name": device_name,
+        "device_id": device_id.clone(),
+        "device_name": device_name.clone(),
         "platform": "windows",
-        "backup_file_id": backup_file_id
+        "backup_file_id": serde_json::Value::Null
     });
     
-    // Add source path if available
-    if let Some(src) = source_path {
+    if let Some(ref src) = source_path {
         metadata["source_path"] = json!(src);
     }
     
-    // Add destination path if available
-    if let Some(dst) = destination_path {
+    if let Some(ref dst) = destination_path {
         metadata["destination_path"] = json!(dst);
     }
     
@@ -1014,6 +1254,26 @@ async fn log_file_transfer(
     };
     
     sync_manager.queue_event(event);
+    // Push to backend immediately so dashboard sees it fast
+    sync_manager.sync_events_immediate().await;
+    
+    // Spawn file backup in background — never blocks the monitoring loop
+    let file_path_bg = file_path.clone();
+    let file_name_bg = file_name.clone();
+    let direction_bg = direction.clone();
+    let sm_bg = sync_manager.clone();
+    let cfg_bg = config.clone();
+    tokio::spawn(async move {
+        if std::path::Path::new(&file_path_bg).exists() && file_size > 0 && file_size < 10 * 1024 * 1024 {
+            if direction_bg == "to_usb" || direction_bg == "from_usb_to_system" {
+                match backup_and_upload_file(&file_path_bg, &file_name_bg, file_size, &sm_bg, &cfg_bg).await {
+                    Ok(backup_id) => info!("File backed up: {} -> {}", file_name_bg, backup_id),
+                    Err(e) => warn!("Backup skipped for {}: {}", file_name_bg, e),
+                }
+            }
+        }
+    });
+    
     Ok(())
 }
 

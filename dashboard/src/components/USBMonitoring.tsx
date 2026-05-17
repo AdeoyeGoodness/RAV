@@ -62,14 +62,13 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
   // Separate active transfers from existing files (if we add metadata flag later)
   // For now, all transfers are shown together
 
-  const getEventIcon = (eventType: string) => {
+  const getEventIcon = (eventType: string, direction?: string) => {
     switch (eventType) {
       case 'usb_inserted':
         return <Usb className="w-5 h-5 text-[#00FF88]" />
       case 'usb_removed':
         return <X className="w-5 h-5 text-[#FF6B6B]" />
       case 'usb_file_transfer':
-        const direction = filteredEvents.find(e => e.id === filteredEvents[0]?.id)?.metadata?.direction
         return direction === 'to_usb' 
           ? <Upload className="w-5 h-5 text-[#00D9FF]" />
           : <Download className="w-5 h-5 text-[#6C5CE7]" />
@@ -96,7 +95,11 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
       const metadata = event.metadata || {}
       const fileName = metadata.file_name || 'Unknown File'
       const filePath = metadata.file_path || ''
-      const direction = metadata.direction === 'to_usb' ? 'Copied TO USB' : 'Copied FROM USB'
+      const direction = metadata.direction === 'to_usb'
+        ? 'Copied TO USB'
+        : metadata.direction === 'from_usb_to_system'
+          ? 'Copied FROM USB (to system)'
+          : 'Copied FROM USB'
       const deviceName = metadata.device_name || metadata.device_id || 'Unknown Device'
       
       return {
@@ -291,7 +294,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
                 <div className="flex items-start justify-between">
                   <div className="flex items-start space-x-4 flex-1">
                     <div className={`p-2.5 rounded-lg bg-black/40 ${getEventColor(event.event_type).split(' ')[0]}`}>
-                      {getEventIcon(event.event_type)}
+                      {getEventIcon(event.event_type, event.metadata?.direction)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-bold mb-1 text-white">
