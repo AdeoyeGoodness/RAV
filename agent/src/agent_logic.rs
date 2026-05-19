@@ -2,10 +2,12 @@ use anyhow::Result;
 use std::sync::Arc;
 use tracing::{info, error, warn};
 use std::future::Future;
+use chrono::Utc;
+use serde_json::json;
 
 use crate::config::Config;
 use crate::encryption;
-use crate::sync::SyncManager;
+use crate::sync::{Event, SyncManager};
 use crate::monitoring;
 use crate::storage;
 use tokio::time::Duration;
@@ -33,9 +35,16 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
     // Init Persistence
     let storage = Arc::new(storage::StorageManager::new(config_arc.agent.data_dir.clone())?);
     
-    let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage)?);
+    let sync_manager = Arc::new(SyncManager::new(config_arc.clone(), storage.clone())?);
 
     info!("Sync manager initialized");
+
+    // =========================================================================
+    // TELEMETRY GAP DETECTION (fixes.md §5)
+    // Detect if the agent was offline and emit an AGENT_OFFLINE_PERIOD event
+    // so investigators know there's a blind spot in the timeline.
+    // =========================================================================
+    detect_and_emit_offline_gap(&storage, &sync_manager).await;
 
     // Start monitoring modules
     let monitoring_handle = start_monitoring(config_arc.clone(), sync_manager.clone()).await?;
@@ -64,9 +73,28 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
         }
     });
 
+    // Periodically update the "last alive" timestamp so gap detection works
+    // even if the agent is killed ungracefully (SIGKILL, BSOD, power loss).
+    let storage_heartbeat = storage.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let _ = storage_heartbeat.save_state(
+                "last_alive_at",
+                &json!(Utc::now().to_rfc3339()),
+            );
+        }
+    });
+
     // Wait for shutdown signal
     shutdown_signal.await;
     info!("Shutdown signal received, stopping agent...");
+
+    // =========================================================================
+    // GRACEFUL SHUTDOWN: Persist state for next startup's gap detection
+    // =========================================================================
+    persist_shutdown_state(&storage, &sync_manager).await;
 
     // Graceful shutdown
     monitoring_handle.abort();
@@ -74,6 +102,162 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
 
     info!("RAV Agent stopped");
     Ok(())
+}
+
+/// Detect if the agent was previously running and went offline.
+/// If a gap is found, emit an AGENT_OFFLINE_PERIOD event with
+/// the duration and any state changes (e.g., WiFi network changed).
+async fn detect_and_emit_offline_gap(
+    storage: &Arc<storage::StorageManager>,
+    sync_manager: &Arc<SyncManager>,
+) {
+    let now = Utc::now();
+
+    // Try to read the last known alive timestamp.
+    // We check both "last_shutdown_at" (graceful) and "last_alive_at" (periodic heartbeat).
+    // Use whichever is more recent — covers both graceful shutdown and crashes.
+    let last_timestamp = {
+        let shutdown_ts = storage.load_state("last_shutdown_at")
+            .ok()
+            .flatten()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
+        let alive_ts = storage.load_state("last_alive_at")
+            .ok()
+            .flatten()
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc));
+
+        match (shutdown_ts, alive_ts) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    };
+
+    let last_ts = match last_timestamp {
+        Some(ts) => ts,
+        None => {
+            // First ever run — no previous state to compare against
+            info!("Telemetry Gap: No previous shutdown state found (first run or fresh install)");
+            return;
+        }
+    };
+
+    let gap_seconds = (now - last_ts).num_seconds();
+
+    // Only emit a gap event if the agent was offline for more than 2 minutes.
+    // Shorter gaps are normal service restarts / reboots.
+    if gap_seconds < 120 {
+        info!("Telemetry Gap: Agent was offline for {}s (below threshold, not logging)", gap_seconds);
+        return;
+    }
+
+    // Load the network state that was saved before shutdown
+    let state_before = storage.load_state("shutdown_network_state")
+        .ok()
+        .flatten()
+        .unwrap_or(json!({"ssid": "unknown", "bssid": "unknown"}));
+
+    // Get current network state for comparison
+    let state_after = get_current_network_state().await;
+
+    let (agent_id, _) = sync_manager.get_identity().await;
+
+    let gap_event = Event {
+        event_type: "AGENT_OFFLINE_PERIOD".to_string(),
+        timestamp: now,
+        agent_id,
+        metadata: json!({
+            "offline_from": last_ts.to_rfc3339(),
+            "offline_to": now.to_rfc3339(),
+            "duration_seconds": gap_seconds,
+            "state_before_offline": state_before,
+            "state_after_restart": state_after,
+            "transitions_observed": 0,
+            "note": if state_before != state_after {
+                "State change detected after restart. Intermediate transitions not observable."
+            } else {
+                "Agent was offline. No state change detected on restart."
+            }
+        }),
+    };
+
+    info!(
+        "Telemetry Gap: Agent was OFFLINE for {} seconds ({} → {}). Emitting gap event.",
+        gap_seconds,
+        last_ts.format("%Y-%m-%d %H:%M:%S"),
+        now.format("%Y-%m-%d %H:%M:%S")
+    );
+
+    sync_manager.queue_event(gap_event);
+}
+
+/// Save the current timestamp and network state to SQLite before shutting down.
+/// The next startup will read this to detect and measure the offline gap.
+async fn persist_shutdown_state(
+    storage: &Arc<storage::StorageManager>,
+    _sync_manager: &Arc<SyncManager>,
+) {
+    let now = Utc::now();
+
+    // Save shutdown timestamp
+    if let Err(e) = storage.save_state("last_shutdown_at", &json!(now.to_rfc3339())) {
+        error!("Failed to persist shutdown timestamp: {}", e);
+    }
+
+    // Save current network state so we can compare on next startup
+    let network_state = get_current_network_state().await;
+    if let Err(e) = storage.save_state("shutdown_network_state", &network_state) {
+        error!("Failed to persist shutdown network state: {}", e);
+    }
+
+    info!("Shutdown state persisted (timestamp + network state)");
+}
+
+/// Get the current WiFi/network state for gap event metadata.
+async fn get_current_network_state() -> serde_json::Value {
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let output = Command::new("netsh")
+            .args(&["wlan", "show", "interfaces"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+
+        if let Ok(output) = output {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            let mut ssid = "Disconnected".to_string();
+            let mut bssid = "00:00:00:00:00:00".to_string();
+
+            for line in out_str.lines() {
+                let line = line.trim();
+                if let Some((key, value)) = line.split_once(':') {
+                    let key = key.trim();
+                    let value = value.trim();
+                    match key {
+                        "SSID" => ssid = value.to_string(),
+                        "BSSID" => bssid = value.to_string(),
+                        _ => {}
+                    }
+                }
+            }
+            return json!({ "ssid": ssid, "bssid": bssid });
+        }
+        json!({ "ssid": "unknown", "bssid": "unknown" })
+    }
+
+    #[cfg(not(windows))]
+    {
+        json!({ "ssid": "unknown", "bssid": "unknown" })
+    }
 }
 
 pub fn generate_agent_id() -> String {

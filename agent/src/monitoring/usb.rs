@@ -63,8 +63,9 @@ async fn start_windows_monitoring(
         _ => HashSet::new(),
     };
     
-    // Current state
-    let current_devices = detect_usb_devices().await.unwrap_or_default();
+    // Current state — use canonical detection for clean IDs
+    let current_storage_devices = detect_usb_storage_devices().await.unwrap_or_default();
+    let current_device_ids: HashSet<String> = current_storage_devices.keys().cloned().collect();
     let (agent_id, _) = sync_manager.get_identity().await;
     
     if !known.is_empty() {
@@ -72,7 +73,7 @@ async fn start_windows_monitoring(
         
         // 1. Detect OFFLINE REMOVALS
         for device_id in &known.clone() {
-            if !current_devices.contains(device_id) {
+            if !current_device_ids.contains(device_id) {
                 info!("OFFLINE USB REMOVAL DETECTED: {}", device_id);
                 sync_manager.queue_event(Event {
                     event_type: "usb_removed".to_string(),
@@ -80,6 +81,7 @@ async fn start_windows_monitoring(
                     agent_id: agent_id.clone(),
                     metadata: json!({
                         "device_id": device_id,
+                        "device_name": device_id, // Best effort — device is gone
                         "offline_activity": true
                     }),
                 });
@@ -88,19 +90,21 @@ async fn start_windows_monitoring(
         }
         
         // 2. Detect OFFLINE INSERTIONS
-        for device_id in &current_devices {
-            if !known.contains(device_id) {
-                info!("OFFLINE USB INSERTION DETECTED: {}", device_id);
+        for (canonical_id, dev) in &current_storage_devices {
+            if !known.contains(canonical_id) {
+                info!("OFFLINE USB INSERTION DETECTED: {}", dev.friendly_name);
                 sync_manager.queue_event(Event {
                     event_type: "usb_inserted".to_string(),
                     timestamp: Utc::now(),
                     agent_id: agent_id.clone(),
                     metadata: json!({
-                        "device_id": device_id,
+                        "device_id": canonical_id,
+                        "device_name": dev.friendly_name,
+                        "drive_letters": dev.drive_letters,
                         "offline_activity": true
                     }),
                 });
-                known.insert(device_id.clone());
+                known.insert(canonical_id.clone());
             }
         }
         
@@ -108,8 +112,8 @@ async fn start_windows_monitoring(
         let _ = storage.save_state("usb_known_devices", &json!(known));
     } else {
         // First run: Baseline everything
-        info!("First run: Baselining {} USB devices", current_devices.len());
-        for device_id in current_devices {
+        info!("First run: Baselining {} USB storage devices", current_device_ids.len());
+        for device_id in current_device_ids {
             known.insert(device_id);
         }
         let _ = storage.save_state("usb_known_devices", &json!(known));
@@ -398,128 +402,76 @@ async fn start_windows_monitoring(
     loop {
         tick.tick().await;
 
-        match detect_usb_devices().await {
-            Ok(current_devices) => {
+        match detect_usb_storage_devices().await {
+            Ok(current_storage) => {
                 let mut known = known_devices.lock().await;
+                let current_ids: std::collections::HashSet<String> = current_storage.keys().cloned().collect();
                 
-                // Get device details for better identification (moved inside loop)
-                let device_details = get_usb_device_details().await.unwrap_or_default();
-                
-                // Get USB drive letters and map them to devices
-                let current_usb_drives = get_usb_drive_letters().await.unwrap_or_default();
-                let drive_device_map = map_drives_to_devices(&current_usb_drives).await.unwrap_or_default();
-                
+                // Update drive letter tracking for file transfer monitoring
                 {
                     let mut drives = usb_drives.lock().await;
                     let mut drive_map = drive_to_device.lock().await;
                     
-                    for drive in &current_usb_drives {
-                        if !drives.contains(drive) {
-                            info!("USB drive mounted: {}", drive);
-                            drives.insert(drive.clone());
-                            
-                            // Map this drive to its USB device
-                            if let Some((device_id, device_name)) = drive_device_map.get(drive) {
-                                drive_map.insert(drive.clone(), (device_id.clone(), device_name.clone()));
-                                info!("Mapped drive {} to USB device: {} ({})", drive, device_id, device_name);
+                    for (canonical_id, dev) in &current_storage {
+                        for dl in &dev.drive_letters {
+                            if !drives.contains(dl) {
+                                info!("USB drive mounted: {} ({})", dl, dev.friendly_name);
+                                drives.insert(dl.clone());
+                                drive_map.insert(dl.clone(), (canonical_id.clone(), dev.friendly_name.clone()));
                             }
                         }
                     }
                     // Remove drives that are no longer available
-                    drives.retain(|d| current_usb_drives.contains(d));
-                    drive_map.retain(|d, _| current_usb_drives.contains(d));
+                    let all_current_drives: std::collections::HashSet<String> = current_storage.values()
+                        .flat_map(|d| d.drive_letters.iter().cloned())
+                        .collect();
+                    drives.retain(|d| all_current_drives.contains(d));
+                    drive_map.retain(|d, _| all_current_drives.contains(d));
                 }
                 
-                // Detect new devices
-                for device_id in &current_devices {
-                    if !known.contains(device_id) {
-                        // Try to get friendly name from device details
-                        let device_name = device_details.get(device_id)
-                            .cloned()
-                            .unwrap_or_else(|| "Unknown Device".to_string());
-                        
-                        // Filter: Skip boring USB devices (hubs, controllers, root hubs)
-                        let device_id_lower = device_id.to_lowercase();
-                        if device_id_lower.contains("hub") || 
-                           device_id_lower.contains("controller") ||
-                           device_id_lower.contains("root_hub") ||
-                           device_name.to_lowercase().contains("hub") ||
-                           device_name.to_lowercase().contains("controller") {
-                            known.insert(device_id.clone());
-                            continue; // Skip logging for USB hubs/controllers
-                        }
-                        
-                        // Also skip internal USB devices that aren't user-visible
-                        if device_name == "Unknown Device" && !device_id.starts_with("USB_DRIVE_") {
-                            // Skip devices we can't identify and aren't storage devices
-                            known.insert(device_id.clone());
-                            continue;
-                        }
-                        
-                        info!("USB device inserted: {} ({})", device_id, device_name);
-                        known.insert(device_id.clone());
-                        
-                        // Persist immediately (Item 6.2)
+                // Detect NEW devices (one event per physical device)
+                for (canonical_id, dev) in &current_storage {
+                    if !known.contains(canonical_id) {
+                        info!("USB device inserted: {}", dev.friendly_name);
+                        known.insert(canonical_id.clone());
                         let _ = storage.save_state("usb_known_devices", &json!(*known));
                         
-                        // Cache the device name for later retrieval on removal
+                        // Cache name for removal
                         {
                             let mut name_cache = device_name_cache.lock().await;
-                            name_cache.insert(device_id.clone(), device_name.clone());
-                        }
-                        
-                        // Get drive letters for this device and register for file-transfer monitoring
-                        let device_drives: Vec<String> = drive_device_map.iter()
-                            .filter(|(_, (did, _))| did == device_id)
-                            .map(|(drive, _)| drive.clone())
-                            .collect();
-                        if !device_drives.is_empty() {
-                            let mut drives = usb_drives.lock().await;
-                            let mut drive_map = drive_to_device.lock().await;
-                            for drive in &device_drives {
-                                drives.insert(drive.clone());
-                                drive_map.insert(drive.clone(), (device_id.clone(), device_name.clone()));
-                                info!("Registered drive {} for file transfer monitoring", drive);
-                            }
+                            name_cache.insert(canonical_id.clone(), dev.friendly_name.clone());
                         }
                         
                         let (agent_id, _) = sync_manager.get_identity().await;
-                        let event = Event {
+                        sync_manager.queue_event(Event {
                             event_type: "usb_inserted".to_string(),
                             timestamp: Utc::now(),
                             agent_id,
                             metadata: json!({
-                                "device_id": device_id,
-                                "device_name": device_name,
-                                "platform": "windows",
-                                "drive_letters": device_drives
+                                "device_id": canonical_id,
+                                "device_name": dev.friendly_name,
+                                "drive_letters": dev.drive_letters,
+                                "volume_name": dev.volume_name,
+                                "platform": "windows"
                             }),
-                        };
-                        sync_manager.queue_event(event);
+                        });
                     }
                 }
 
-                // Detect removed devices
-                let removed: Vec<String> = known.difference(&current_devices).cloned().collect();
+                // Detect REMOVED devices
+                let removed: Vec<String> = known.difference(&current_ids).cloned().collect();
                 for device_id in removed {
-                    // Use cached name from insertion (since device is now gone from Windows)
                     let device_name = {
                         let mut name_cache = device_name_cache.lock().await;
-                        name_cache.remove(&device_id).unwrap_or_else(|| "Unknown Device".to_string())
+                        name_cache.remove(&device_id).unwrap_or_else(|| device_id.clone())
                     };
                     
-                    // Skip removal events for devices we never logged an insertion for
-                    if device_name == "Unknown Device" {
-                        known.remove(&device_id);
-                        continue;
-                    }
-                    
-                    info!("USB device removed: {} ({})", device_id, device_name);
+                    info!("USB device removed: {}", device_name);
                     known.remove(&device_id);
                     let _ = storage.save_state("usb_known_devices", &json!(*known));
                     
                     let (agent_id, _) = sync_manager.get_identity().await;
-                    let event = Event {
+                    sync_manager.queue_event(Event {
                         event_type: "usb_removed".to_string(),
                         timestamp: Utc::now(),
                         agent_id,
@@ -528,13 +480,7 @@ async fn start_windows_monitoring(
                             "device_name": device_name,
                             "platform": "windows"
                         }),
-                    };
-                    sync_manager.queue_event(event);
-                }
-                
-                // Log current device count for debugging (only if there's a change)
-                if current_devices.len() != known.len() {
-                    info!("USB monitoring: {} current devices detected, {} known devices tracked", current_devices.len(), known.len());
+                    });
                 }
             }
             Err(e) => {
@@ -544,100 +490,134 @@ async fn start_windows_monitoring(
     }
 }
 
+/// Represents a single physical USB storage device (canonical, deduplicated).
 #[cfg(windows)]
-async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
+#[derive(Debug, Clone)]
+struct UsbStorageDevice {
+    /// Canonical key: e.g. "GENERAL_UDISK_5.00" (vendor+product+rev)
+    canonical_id: String,
+    /// Human-readable name: e.g. "SanDisk Ultra (D:)" or "General UDisk (D:)"
+    friendly_name: String,
+    /// Drive letters associated with this device
+    drive_letters: Vec<String>,
+    /// Raw USBSTOR PnP device ID (for internal tracking)
+    raw_device_id: String,
+    /// Volume label if available
+    volume_name: String,
+}
+
+/// Detect USB storage devices as ONE canonical entry per physical device.
+/// Returns a HashMap of canonical_id -> UsbStorageDevice.
+#[cfg(windows)]
+async fn detect_usb_storage_devices() -> Result<std::collections::HashMap<String, UsbStorageDevice>> {
     use std::process::Command;
     use std::os::windows::process::CommandExt;
-    
-    // Query multiple sources to catch all USB devices:
-    // 1. PnP USB devices (controllers, hubs, etc.)
-    // 2. Removable storage devices (flash drives, external drives)
-    // 3. USB-connected devices via WMI
-    
-    let mut device_set = std::collections::HashSet::new();
-    
-    // Method 1: Get PnP USB devices
-    let pnp_output = Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Get-PnpDevice -Class USB,WPD -Status OK | Select-Object -ExpandProperty InstanceId | Where-Object { $_ -ne $null }"
-        ])
-        .creation_flags(0x08000000)
-        .output();
-    
-    if let Ok(output) = pnp_output {
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            let line = line.trim();
-            if !line.is_empty() && !line.starts_with("InstanceId") && !line.starts_with("---") {
-                device_set.insert(line.to_string());
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let mut devices = std::collections::HashMap::new();
+
+    // Single comprehensive PowerShell query:
+    // Get USB disks, their partitions, volumes, AND friendly names — all in one shot.
+    let ps_script = r#"
+        $results = @()
+        $usbDisks = Get-Disk | Where-Object { $_.BusType -eq 'USB' -or $_.BusType -eq 'SD' }
+        foreach ($disk in $usbDisks) {
+            $partitions = Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue
+            $driveLetters = @()
+            $volumeName = ''
+            foreach ($part in $partitions) {
+                if ($part.DriveLetter) {
+                    $driveLetters += "$($part.DriveLetter):"
+                    $vol = Get-Volume -DriveLetter $part.DriveLetter -ErrorAction SilentlyContinue
+                    if ($vol -and $vol.FileSystemLabel) { $volumeName = $vol.FileSystemLabel }
+                }
+            }
+            $pnp = Get-PnpDevice -FriendlyName $disk.FriendlyName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $results += [PSCustomObject]@{
+                DiskNumber  = $disk.Number
+                FriendlyName = $disk.FriendlyName
+                SerialNumber = $disk.SerialNumber
+                Size = $disk.Size
+                DriveLetters = ($driveLetters -join ',')
+                VolumeName = $volumeName
+                PnpInstanceId = if ($pnp) { $pnp.InstanceId } else { '' }
+                Model = $disk.Model
             }
         }
-    }
-    
-    // Method 2: Get removable storage devices (flash drives, external drives)
-    let disk_output = Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Get-Disk | Where-Object { $_.BusType -eq 'USB' -or $_.BusType -eq 'SD' } | ForEach-Object { $_.Path }"
-        ])
-        .creation_flags(0x08000000)
+        $results | ConvertTo-Json -Compress
+    "#;
+
+    let output = Command::new("powershell")
+        .args(&["-Command", ps_script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output();
-    
-    if let Ok(output) = disk_output {
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            let line = line.trim();
-            if !line.is_empty() {
-                // Extract device ID from path if possible
-                if let Some(device_id) = extract_device_id_from_path(line) {
-                    device_set.insert(device_id);
+
+    if let Ok(output) = output {
+        let output_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !output_str.is_empty() {
+            // Parse JSON — could be a single object or an array
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&output_str) {
+                let items: Vec<&serde_json::Value> = if let Some(arr) = json_val.as_array() {
+                    arr.iter().collect()
+                } else {
+                    vec![&json_val]
+                };
+
+                for item in items {
+                    let friendly = item.get("FriendlyName").and_then(|v| v.as_str()).unwrap_or("USB Device");
+                    let serial = item.get("SerialNumber").and_then(|v| v.as_str()).unwrap_or("");
+                    let model = item.get("Model").and_then(|v| v.as_str()).unwrap_or("");
+                    let drive_str = item.get("DriveLetters").and_then(|v| v.as_str()).unwrap_or("");
+                    let volume_name = item.get("VolumeName").and_then(|v| v.as_str()).unwrap_or("");
+                    let pnp_id = item.get("PnpInstanceId").and_then(|v| v.as_str()).unwrap_or("");
+                    let size = item.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
+
+                    let drive_letters: Vec<String> = drive_str
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+
+                    // Build canonical ID from serial (unique per physical device)
+                    // Fallback to model+size if serial is empty
+                    let canonical_id = if !serial.is_empty() && serial.len() > 4 {
+                        format!("USB_{}", serial.trim())
+                    } else if !model.is_empty() {
+                        format!("USB_{}_{}", model.trim().replace(' ', "_"), size / (1024 * 1024))
+                    } else {
+                        format!("USB_{}_{}", friendly.trim().replace(' ', "_"), size / (1024 * 1024))
+                    };
+
+                    // Build a clean human-readable name
+                    let display_name = if !volume_name.is_empty() && !drive_letters.is_empty() {
+                        format!("{} — {} ({})", volume_name, friendly, drive_letters.join(", "))
+                    } else if !drive_letters.is_empty() {
+                        format!("{} ({})", friendly, drive_letters.join(", "))
+                    } else {
+                        friendly.to_string()
+                    };
+
+                    devices.insert(canonical_id.clone(), UsbStorageDevice {
+                        canonical_id,
+                        friendly_name: display_name,
+                        drive_letters,
+                        raw_device_id: pnp_id.to_string(),
+                        volume_name: volume_name.to_string(),
+                    });
                 }
             }
         }
     }
-    
-    // Method 3: Get USB devices via WMI (more comprehensive)
-    let wmi_output = Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Get-WmiObject Win32_USBControllerDevice | ForEach-Object { [wmi]$_.Dependent } | Select-Object -ExpandProperty PNPDeviceID | Where-Object { $_ -ne $null }"
-        ])
-        .creation_flags(0x08000000)
-        .output();
-    
-    if let Ok(output) = wmi_output {
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            let line = line.trim();
-            if !line.is_empty() && line.starts_with("USB\\") {
-                device_set.insert(line.to_string());
-            }
-        }
-    }
-    
-    // Method 4: Get logical drives on USB devices
-    let logical_output = Command::new("powershell")
-        .args(&[
-            "-Command",
-            "Get-WmiObject Win32_LogicalDisk | Where-Object { $_.DriveType -eq 2 -or ($_.DriveType -eq 3 -and $_.MediaType -eq 11) } | ForEach-Object { $_.DeviceID }"
-        ])
-        .creation_flags(0x08000000)
-        .output();
-    
-    if let Ok(output) = logical_output {
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        for line in output_str.lines() {
-            let line = line.trim();
-            if !line.is_empty() && line.len() == 2 && line.ends_with(":") {
-                // Try to get the USB device ID for this drive
-                let device_id = format!("USB_DRIVE_{}", line.replace(":", ""));
-                device_set.insert(device_id);
-            }
-        }
-    }
 
-    Ok(device_set)
+    Ok(devices)
+}
+
+/// Legacy detect_usb_devices — now wraps the canonical detection and returns
+/// just the set of canonical IDs for backward compatibility with the known_devices set.
+#[cfg(windows)]
+async fn detect_usb_devices() -> Result<std::collections::HashSet<String>> {
+    let devices = detect_usb_storage_devices().await?;
+    Ok(devices.keys().cloned().collect())
 }
 
 #[cfg(windows)]

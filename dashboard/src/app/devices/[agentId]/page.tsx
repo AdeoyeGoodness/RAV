@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert } from 'lucide-react'
 import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive } from '@/lib/api'
@@ -45,6 +45,7 @@ export default function DeviceDetailsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (user) {
@@ -52,7 +53,11 @@ export default function DeviceDetailsPage() {
     }
   }, [agentId, user])
 
-  const loadDeviceData = async (isInitial = false) => {
+  const loadDeviceData = useCallback(async (isInitial = false) => {
+    // Preserve scroll position on non-initial (refresh) loads
+    const scrollContainer = mainRef.current
+    const savedScroll = scrollContainer?.scrollTop ?? 0
+
     if (isInitial) setLoading(true)
     try {
       const [agentsData, eventsData] = await Promise.all([
@@ -98,8 +103,14 @@ export default function DeviceDetailsPage() {
       console.error('Failed to load device data:', error)
     } finally {
       setLoading(false)
+      // Restore scroll position after render
+      if (!isInitial && scrollContainer) {
+        requestAnimationFrame(() => {
+          scrollContainer.scrollTop = savedScroll
+        })
+      }
     }
-  }
+  }, [agentId, clearTimestamp, user])
 
   const clearData = () => {
     if (confirm('Clear all displayed data? Only NEW events after this point will be shown. Old data will be hidden.')) {
@@ -214,7 +225,7 @@ export default function DeviceDetailsPage() {
         <Header />
         <ExpiryBanner />
         
-        <main className="flex-1 overflow-y-auto p-8 pt-24 custom-scrollbar">
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-8 pt-24 custom-scrollbar">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-white/5">
