@@ -372,9 +372,6 @@ export default function AdminPage() {
                 </div>
             )}
 
-                </div>
-            )}
-            
             {/* Credentials Hand-off Modal */}
             {createdCredentials && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
