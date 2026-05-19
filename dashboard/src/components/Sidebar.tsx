@@ -12,7 +12,7 @@ interface Agent {
 export default function Sidebar() {
   const pathname = usePathname()
   const { user, logout, isLoading } = useAuth()
-  const [expandedTeams, setExpandedTeams] = useState<string[]>(['ProductStudio'])
+  const [expandedTeams, setExpandedTeams] = useState<string[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [org, setOrg] = useState<OrgType | null>(null)
   const [copied, setCopied] = useState(false)
