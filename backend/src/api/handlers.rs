@@ -249,12 +249,21 @@ pub async fn enroll_agent(
         r#"
         SELECT t.token_id, t.org_id, t.max_agents, t.expires_at, t.revoked,
                o.name as org_name, o.status as org_status,
-               (SELECT COUNT(*) FROM agents WHERE enrollment_token_id = t.token_id AND deleted_at IS NULL) as "current_agents!"
+               COALESCE(o.max_agents, 1000) as "org_max_agents!",
+               (SELECT COUNT(*) FROM agents WHERE enrollment_token_id = t.token_id AND deleted_at IS NULL) as "current_agents!",
+               (SELECT COUNT(*) FROM agents WHERE organization_id = t.org_id AND deleted_at IS NULL) as "org_current_agents!",
+               EXISTS(
+                   SELECT 1 FROM agents
+                   WHERE organization_id = t.org_id
+                     AND hardware_fingerprint = $2
+                     AND deleted_at IS NULL
+               ) as "is_reinstall!"
         FROM enrollment_tokens t
         JOIN organizations o ON t.org_id = o.id
         WHERE t.token_hash = $1
         "#,
-        token_hash
+        token_hash,
+        payload.hardware_fingerprint
     )
     .fetch_optional(&mut *lookup_tx)
     .await
@@ -316,11 +325,27 @@ pub async fn enroll_agent(
         }
     }
 
-    if let Some(max_agents) = token.max_agents {
-        if token.current_agents >= max_agents as i64 {
-            tracing::warn!("Enrollment blocked: Token reached limit of {} agents", max_agents);
-            log_rejection!(Some(token.token_id), "rejected_max");
+    // Cap checks. Reinstalls (same hardware_fingerprint already enrolled in
+    // this org and not soft-deleted) bypass both caps since they don't grow
+    // the agent count. New machines must clear the org-wide cap first
+    // (broader problem — bumping the per-token cap won't help) and then the
+    // per-token cap.
+    if !token.is_reinstall {
+        if token.org_current_agents >= token.org_max_agents as i64 {
+            tracing::warn!(
+                "Enrollment blocked: Org '{}' at agent cap ({}/{})",
+                token.org_name, token.org_current_agents, token.org_max_agents
+            );
+            log_rejection!(Some(token.token_id), "rejected_org_max");
             return Err(StatusCode::FORBIDDEN);
+        }
+
+        if let Some(max_agents) = token.max_agents {
+            if token.current_agents >= max_agents as i64 {
+                tracing::warn!("Enrollment blocked: Token reached limit of {} agents", max_agents);
+                log_rejection!(Some(token.token_id), "rejected_max");
+                return Err(StatusCode::FORBIDDEN);
+            }
         }
     }
 
