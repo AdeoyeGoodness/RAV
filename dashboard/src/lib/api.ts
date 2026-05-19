@@ -62,6 +62,7 @@ export interface User {
   email: string
   role: 'super_admin' | 'org_admin' | 'user'
   status: 'active' | 'suspended'
+  must_change_password?: boolean
 }
 
 export interface Archive {
