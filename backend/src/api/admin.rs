@@ -16,14 +16,19 @@ use axum::extract::Query;
 #[derive(Debug, Deserialize)]
 pub struct CreateOrganization {
     pub name: String,
-    pub enrollment_token: String,
-    pub max_agents: Option<i32>,
-    pub token_expiry: Option<chrono::DateTime<Utc>>,
+    pub admin_email: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateStatus {
     pub status: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateOrgResponse {
+    pub organization: Organization,
+    pub admin_email: String,
+    pub temporary_password: Option<String>,
 }
 
 pub async fn list_organizations(
@@ -78,24 +83,18 @@ pub async fn list_organizations(
         .collect();
 
     Ok(Json(result))
-
-
 }
+
 
 pub async fn create_organization(
     claims: Claims,
     State(state): State<AppState>,
     Json(payload): Json<CreateOrganization>,
-) -> Result<Json<Organization>, StatusCode> {
+) -> Result<Json<CreateOrgResponse>, StatusCode> {
     info!("Create organization '{}' request from user: {} (role: {})", payload.name, claims.sub, claims.role);
     if claims.role != "super_admin" {
         info!("Access denied: user {} has role {}, expected super_admin", claims.sub, claims.role);
         return Err(StatusCode::FORBIDDEN);
-    }
-
-    let expiry = payload.token_expiry.ok_or(StatusCode::BAD_REQUEST)?;
-    if expiry <= Utc::now() {
-        return Err(StatusCode::BAD_REQUEST);
     }
 
     let pool = state.db.pool();
@@ -103,6 +102,9 @@ pub async fn create_organization(
         tracing::error!("Failed to start transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // We no longer use this token, but we insert a dummy one because the schema still requires it
+    let dummy_token = format!("legacy-{}", Uuid::new_v4());
 
     let org = sqlx::query_as!(
         Organization,
@@ -113,9 +115,9 @@ pub async fn create_organization(
         "#,
         Uuid::new_v4(),
         payload.name,
-        payload.enrollment_token,
-        payload.max_agents.unwrap_or(1000),
-        payload.token_expiry
+        dummy_token,
+        1000,
+        None as Option<chrono::DateTime<Utc>>
     )
     .fetch_one(&mut *tx)
     .await
@@ -124,28 +126,59 @@ pub async fn create_organization(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Auto-generate temporary password for the Org Admin
+    use rand::{Rng, thread_rng};
+    use rand::distributions::Alphanumeric;
+    
+    let temp_password: String = thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect();
+
+    let password_hash = bcrypt::hash(&temp_password, 10).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let user_id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO users (id, organization_id, email, password_hash, role, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        user_id,
+        org.id,
+        payload.admin_email,
+        password_hash,
+        "org_admin",
+        "active",
+        Utc::now(),
+        Utc::now()
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create org admin user: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     log_audit(
         &mut tx,
         ActorType::SuperAdmin,
         Some(claims.sub),
-        None, // Global action (technically target is the new org)
+        None, // Global action
         "ORG_CREATED",
         "ORGANIZATION",
         Some(org.id.to_string()),
-        serde_json::json!({ "name": org.name }),
-        None, // IP TODO
-        None  // UA TODO
-    ).await.map_err(|e| {
-        tracing::error!("Failed to audit log: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+        serde_json::json!({ "name": org.name, "admin_email": payload.admin_email }),
+        None, None
+    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!("Failed to commit transaction: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(Json(org))
+    Ok(Json(CreateOrgResponse {
+        organization: org,
+        admin_email: payload.admin_email,
+        temporary_password: Some(temp_password),
+    }))
 }
 
 #[derive(Debug, Deserialize)]

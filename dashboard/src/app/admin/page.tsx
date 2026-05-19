@@ -19,7 +19,8 @@ export default function AdminPage() {
 
     // Org Creation State
     const [isModalOpen, setIsModalOpen] = useState(false)
-    const [newOrg, setNewOrg] = useState({ name: '', enrollment_token: '', max_agents: 1000, token_expiry: '' })
+    const [newOrg, setNewOrg] = useState({ name: '', admin_email: '' })
+    const [createdCredentials, setCreatedCredentials] = useState<{ orgName: string, email: string, password: string } | null>(null)
 
     // Admin Creation State
     const [isAdminModalOpen, setIsAdminModalOpen] = useState(false)
@@ -51,21 +52,13 @@ export default function AdminPage() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault()
         try {
-            // Calculate expiry time: Selected Date + Current Time
-            let finalExpiry: string | undefined = undefined;
-            if (newOrg.token_expiry) {
-                const now = new Date();
-                const selectedDate = new Date(newOrg.token_expiry);
-                // Set the time of the selected date to match the current time
-                selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
-                finalExpiry = selectedDate.toISOString();
-            }
-
-            await createOrganization({
-                ...newOrg,
-                token_expiry: finalExpiry
+            const res = await createOrganization(newOrg)
+            setCreatedCredentials({
+                orgName: res.organization.name,
+                email: res.admin_email,
+                password: res.temporary_password
             })
-            setNewOrg({ name: '', enrollment_token: '', max_agents: 1000, token_expiry: '' })
+            setNewOrg({ name: '', admin_email: '' })
             setIsModalOpen(false)
             loadData()
         } catch (error) {
@@ -160,26 +153,10 @@ export default function AdminPage() {
         }, 2000)
     }
 
-    const generateToken = () => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-        let token = 'RAV-'
-        for (let i = 0; i < 16; i++) {
-            if (i > 0 && i % 4 === 0) token += '-'
-            token += chars.charAt(Math.floor(Math.random() * chars.length))
-        }
-        setNewOrg(prev => ({ ...prev, enrollment_token: token }))
-    }
-
-    // Auto-generate token when modal opens
-    useEffect(() => {
-        if (isModalOpen) {
-            generateToken()
-        }
-    }, [isModalOpen])
+    // Removed token generation function since it's no longer needed in super admin view
 
     const filteredOrgs = organizations.filter(org =>
-        org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        org.enrollment_token.toLowerCase().includes(searchQuery.toLowerCase())
+        org.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     if (isLoading || !user || user.role !== 'super_admin') {
@@ -264,8 +241,6 @@ export default function AdminPage() {
                                     <thead className="bg-[#080A14]/40 border-b border-white/[0.04]">
                                         <tr>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Organization Name</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Quota</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Expiry</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Created At</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -288,12 +263,6 @@ export default function AdminPage() {
                                                         </div>
                                                         <span className="font-medium text-sm text-slate-200">{org.name}</span>
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-[11px] text-slate-400">
-                                                    {org.max_agents} Agents
-                                                </td>
-                                                <td className={`px-6 py-4 text-[11px] font-mono ${org.token_expiry && new Date(org.token_expiry) < new Date() ? 'text-rose-400' : 'text-slate-400'}`}>
-                                                    {org.token_expiry ? new Date(org.token_expiry).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
                                                 </td>
                                                 <td className="px-6 py-4 text-[11px] font-mono text-slate-400">
                                                     {new Date(org.created_at_ms).toLocaleString('en-NG', {
@@ -325,13 +294,7 @@ export default function AdminPage() {
                                                         >
                                                             {org.status === 'active' ? 'Pause' : 'Activate'}
                                                         </button>
-                                                        <button
-                                                            onClick={() => copyToClipboard(org.enrollment_token, org.id)}
-                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-white/[0.03] text-slate-400 hover:text-slate-300 transition-colors"
-                                                            title="Copy Enrollment Token"
-                                                        >
-                                                            {copiedTokenIds.has(org.id) ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                                        </button>
+
                                                         <button
                                                             onClick={() => handleDelete(org)}
                                                             className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
@@ -375,49 +338,19 @@ export default function AdminPage() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Enrollment Token</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Org Admin Email</label>
                                 <div className="relative flex items-center">
-                                    <Key className="absolute left-3 w-4 h-4 text-slate-500" />
+                                    <Mail className="absolute left-3 w-4 h-4 text-slate-500" />
                                     <input
-                                        type="text"
+                                        type="email"
                                         required
-                                        value={newOrg.enrollment_token}
-                                        onChange={(e) => setNewOrg({ ...newOrg, enrollment_token: e.target.value })}
-                                        className="w-full pl-10 pr-12 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm font-mono text-slate-200"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={generateToken}
-                                        className="absolute right-3 p-1 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-sky-400 transition-colors"
-                                        title="Regenerate Token"
-                                    >
-                                        <Activity className="w-4 h-4" />
-                                    </button>
-                                </div>
-                                <p className="text-[10px] mt-1.5 text-slate-600">Auto-generated secure token for agent enrollment.</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Max Agents</label>
-                                    <input
-                                        type="number"
-                                        value={newOrg.max_agents}
-                                        onChange={(e) => setNewOrg({ ...newOrg, max_agents: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
+                                        value={newOrg.admin_email}
+                                        onChange={(e) => setNewOrg({ ...newOrg, admin_email: e.target.value })}
+                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
+                                        placeholder="admin@organization.com"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Expiry</label>
-                                    <input
-                                        type="date"
-                                        required
-                                        min={new Date().toISOString().split('T')[0]}
-                                        value={newOrg.token_expiry}
-                                        onChange={(e) => setNewOrg({ ...newOrg, token_expiry: e.target.value })}
-                                        style={{ colorScheme: 'dark' }}
-                                        className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                    />
-                                </div>
+                                <p className="text-[10px] mt-1.5 text-slate-600">A temporary password will be securely generated.</p>
                             </div>
                             <div className="flex space-x-3 mt-8 pt-2">
                                 <button
@@ -439,70 +372,50 @@ export default function AdminPage() {
                 </div>
             )}
 
-            {/* Create Admin Modal */}
-            {isAdminModalOpen && selectedOrg && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-white/[0.06] p-8 shadow-2xl">
+                </div>
+            )}
+            
+            {/* Credentials Hand-off Modal */}
+            {createdCredentials && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-emerald-500/30 p-8 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-emerald-800" />
+                        
                         <div className="mb-6">
-                            <h2 className="text-xl font-bold text-slate-200">Onboard Tenant Admin</h2>
-                            <p className="text-xs mt-1 text-slate-500">Set up the primary administrator for <span className="text-slate-300 font-semibold">{selectedOrg.name}</span></p>
+                            <h2 className="text-xl font-bold text-slate-200">Organization Created</h2>
+                            <p className="text-xs mt-1 text-slate-400">Securely hand off these one-time credentials to the Organizational Admin of <span className="text-slate-300 font-semibold">{createdCredentials.orgName}</span>. They will be forced to rotate this password upon their first login.</p>
                         </div>
-                        <form onSubmit={handleCreateAdmin} className="space-y-4">
+                        
+                        <div className="space-y-4 mb-8">
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Full Name</label>
-                                <div className="relative">
-                                    <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="text"
-                                        required
-                                        value={newAdmin.full_name}
-                                        onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                    />
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Admin Email</label>
+                                <div className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] text-sm text-slate-300 font-mono">
+                                    {createdCredentials.email}
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Email Address</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Temporary Password</label>
                                 <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="email"
-                                        required
-                                        value={newAdmin.email}
-                                        onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                    />
+                                    <div className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] text-sm text-emerald-400 font-mono">
+                                        {createdCredentials.password}
+                                    </div>
+                                    <button
+                                        onClick={() => copyToClipboard(`URL: https://rav.local/login\nEmail: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`, 'creds')}
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-emerald-400 transition-colors"
+                                        title="Copy All Credentials"
+                                    >
+                                        {copiedTokenIds.has('creds') ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                                    </button>
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Initial Password</label>
-                                <div className="relative">
-                                    <Key className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                    <input
-                                        type="password"
-                                        required
-                                        value={newAdmin.password}
-                                        onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex space-x-3 mt-8 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAdminModalOpen(false)}
-                                    className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50"
-                                >
-                                    Create Account
-                                </button>
-                            </div>
-                        </form>
+                        </div>
+
+                        <button
+                            onClick={() => setCreatedCredentials(null)}
+                            className="w-full py-3 rounded-xl font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors border border-white/[0.06]"
+                        >
+                            I have securely copied these credentials
+                        </button>
                     </div>
                 </div>
             )}

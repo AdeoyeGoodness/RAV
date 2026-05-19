@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy, Archive } from 'lucide-react'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy, Archive, Key } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAgents, getOrgDetails, Organization as OrgType } from '@/lib/api'
 
@@ -117,6 +117,10 @@ export default function Sidebar() {
                     <Bell className={iconClass('/settings/notifications')} />
                     <span className="font-medium text-sm">Forensic Alerts</span>
                   </a>
+                  <a href="/settings/enrollment" className={navItemClass('/settings/enrollment')}>
+                    <Key className={iconClass('/settings/enrollment')} />
+                    <span className="font-medium text-sm">Deployment Tokens</span>
+                  </a>
                 </>
               )}
 
@@ -193,31 +197,9 @@ export default function Sidebar() {
                   <div className={`w-2 h-2 rounded-full ${org.status === 'active' ? 'bg-emerald-500/80' : 'bg-rose-500/80'}`} />
                 </div>
 
-                <h4 className="text-sm font-semibold text-slate-200 mb-4 whitespace-nowrap overflow-hidden text-ellipsis">
+                <h4 className="text-sm font-semibold text-slate-200 whitespace-nowrap overflow-hidden text-ellipsis">
                   {org.name}
                 </h4>
-
-                <div className="space-y-2">
-                  <div className="p-3 rounded-lg bg-[#050510] border border-white/[0.04]">
-                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1.5 font-bold">Enrollment Token</p>
-                    <div className="flex items-center justify-between">
-                      <code className="text-xs font-mono text-slate-400">
-                        {org.enrollment_token.substring(0, 8)}••••
-                      </code>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(org.enrollment_token);
-                          setCopied(true);
-                          setTimeout(() => setCopied(false), 2000);
-                        }}
-                        className="p-1.5 rounded-md hover:bg-white/[0.06] transition-colors text-slate-500 hover:text-slate-300"
-                        title="Copy Token"
-                      >
-                        {copied ? <ShieldCheckIcon className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
           </>

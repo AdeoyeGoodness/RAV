@@ -209,3 +209,30 @@ pub struct UpdateOrganizationSettings {
     pub smtp_enabled: Option<bool>,
     pub verify_password: String, // Required to save sensitive data
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct EnrollmentToken {
+    pub token_id: Uuid,
+    pub org_id: Uuid,
+    pub label: Option<String>,
+    pub max_agents: Option<i32>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateEnrollmentToken {
+    pub label: Option<String>,
+    pub max_agents: Option<i32>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnrollmentTokenResponse {
+    pub token_id: Uuid,
+    pub raw_token: Option<String>, // ONLY returned once upon creation
+    pub label: Option<String>,
+    pub max_agents: Option<i32>,
+    pub expires_at: Option<DateTime<Utc>>,
+}

@@ -9,6 +9,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
+use sha2::Digest;
 
 use crate::db::models::{CreateAgent, CreateEvent, Event, ActorType};
 use crate::services::audit::log_audit;
@@ -206,43 +207,89 @@ pub async fn enroll_agent(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let pool = state.db.pool();
 
-    // 1. Look up organization by enrollment token
-    let org = sqlx::query!(
+    // 1. Hash the incoming token
+    let mut hasher = sha2::Sha256::new();
+    sha2::Digest::update(&mut hasher, payload.enrollment_token.as_bytes());
+    let token_hash = hex::encode(hasher.finalize());
+
+    // 2. Look up token in the secure enrollment_tokens table
+    let token_info = sqlx::query!(
         r#"
-        SELECT id, name, token_expiry, max_agents,
-        (SELECT COUNT(*) FROM agents WHERE organization_id = organizations.id AND deleted_at IS NULL) as "current_agents!"
-        FROM organizations 
-        WHERE enrollment_token = $1 AND status = 'active'
+        SELECT t.token_id, t.org_id, t.max_agents, t.expires_at, t.revoked, 
+               o.name as org_name, o.status as org_status,
+               (SELECT COUNT(*) FROM agents WHERE enrollment_token_id = t.token_id AND deleted_at IS NULL) as "current_agents!"
+        FROM enrollment_tokens t
+        JOIN organizations o ON t.org_id = o.id
+        WHERE t.token_hash = $1
         "#,
-        payload.enrollment_token
+        token_hash
     )
     .fetch_optional(pool)
     .await
     .map_err(|e| {
-        tracing::error!("Enrollment: Failed to query organization: {}", e);
+        tracing::error!("Enrollment: Failed to query token: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let org_info = org.ok_or_else(|| {
-        tracing::warn!("Enrollment attempt with invalid/inactive token: {}", payload.enrollment_token);
-        StatusCode::UNAUTHORIZED
-    })?;
+    // Helper to log rejection attempt before returning
+    macro_rules! log_rejection {
+        ($token_id:expr, $outcome:expr) => {
+            let _ = sqlx::query!(
+                r#"
+                INSERT INTO enrollment_attempts 
+                (token_id, machine_fingerprint, hostname, os_type, outcome)
+                VALUES ($1, $2, $3, $4, $5)
+                "#,
+                $token_id,
+                payload.hardware_fingerprint,
+                payload.hostname,
+                payload.os_version,
+                $outcome
+            )
+            .execute(pool)
+            .await;
+        };
+    }
 
-    // HARDENING: Check token expiry
-    if let Some(expiry) = org_info.token_expiry {
+    let token = match token_info {
+        Some(t) => t,
+        None => {
+            tracing::warn!("Enrollment attempt with unknown token hash");
+            log_rejection!(None as Option<Uuid>, "rejected_unknown");
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    };
+
+    if token.org_status != "active" {
+        tracing::warn!("Enrollment attempt for inactive Org: {}", token.org_name);
+        log_rejection!(Some(token.token_id), "rejected_org_inactive");
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if token.revoked {
+        tracing::warn!("Enrollment attempt with revoked token for Org: {}", token.org_name);
+        log_rejection!(Some(token.token_id), "rejected_revoked");
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if let Some(expiry) = token.expires_at {
         if Utc::now() > expiry {
-            tracing::warn!("Enrollment attempt with expired token for Org: {}", org_info.name);
+            tracing::warn!("Enrollment attempt with expired token for Org: {}", token.org_name);
+            log_rejection!(Some(token.token_id), "rejected_expired");
             return Err(StatusCode::UNAUTHORIZED);
         }
     }
 
-    // HARDENING: Check max agents
-    let current_count = org_info.current_agents;
-    let max_agents = org_info.max_agents.unwrap_or(1000);
-    if current_count >= max_agents as i64 {
-        tracing::warn!("Enrollment blocked: Org {} reached limit of {} agents", org_info.name, max_agents);
-        return Err(StatusCode::FORBIDDEN);
+    if let Some(max_agents) = token.max_agents {
+        if token.current_agents >= max_agents as i64 {
+            tracing::warn!("Enrollment blocked: Token reached limit of {} agents", max_agents);
+            log_rejection!(Some(token.token_id), "rejected_max");
+            return Err(StatusCode::FORBIDDEN);
+        }
     }
+
+    // Attempt is accepted, we will log 'enrolled' or 'reinstall' later
+
 
     // 2. Enroll agent (Insert or update seen timestamp)
     let mut tx = pool.begin().await.map_err(|e| {
@@ -250,30 +297,57 @@ pub async fn enroll_agent(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    sqlx::query!(
+    let insert_result = sqlx::query!(
         r#"
-        INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO agents (id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at, enrollment_token_id, os_version, enrolled_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (agent_id) DO UPDATE
         SET updated_at = EXCLUDED.updated_at,
             last_seen = EXCLUDED.last_seen,
             hostname = EXCLUDED.hostname,
             hardware_fingerprint = EXCLUDED.hardware_fingerprint,
-            organization_id = EXCLUDED.organization_id
+            organization_id = EXCLUDED.organization_id,
+            os_version = EXCLUDED.os_version
+        RETURNING (xmax = 0) AS "inserted!"
         "#,
         Uuid::new_v4(),
-        org_info.id,
+        token.org_id,
         payload.agent_id,
         payload.hardware_fingerprint,
         payload.hostname,
         Utc::now(),
         Utc::now(),
+        Utc::now(),
+        token.token_id,
+        payload.os_version,
         Utc::now()
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Enrollment: Failed to insert/update agent: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let outcome = if insert_result.inserted { "enrolled" } else { "reinstall" };
+
+    // Log attempt success
+    sqlx::query!(
+        r#"
+        INSERT INTO enrollment_attempts 
+        (token_id, machine_fingerprint, hostname, os_type, outcome)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+        token.token_id,
+        payload.hardware_fingerprint,
+        payload.hostname,
+        payload.os_version,
+        outcome
     )
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        tracing::error!("Enrollment: Failed to insert/update agent: {}", e);
+        tracing::error!("Enrollment: Failed to log attempt: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -282,14 +356,14 @@ pub async fn enroll_agent(
         &mut tx,
         ActorType::System, // Enrollment is a SYSTEM action authorized by a token
         None, 
-        Some(org_info.id),
+        Some(token.org_id),
         "AGENT_ENROLLED",
         "AGENT",
         Some(payload.agent_id.clone()),
         serde_json::json!({ 
             "hostname": payload.hostname,
             "os_version": payload.os_version,
-            "enrollment_token": payload.enrollment_token, // Log which token was used
+            "token_id": token.token_id,
             "fingerprint": payload.hardware_fingerprint 
         }),
         None, // IP TODO: Extract from headers if possible (needs request parts)
@@ -304,13 +378,13 @@ pub async fn enroll_agent(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    info!("Agent enrolled: {} for Organization: {}", payload.agent_id, org_info.name);
+    tracing::info!("Agent enrolled: {} for Organization: {}", payload.agent_id, token.org_name);
 
     Ok(Json(serde_json::json!({
         "status": "success",
         "agent_id": payload.agent_id,
-        "organization_id": org_info.id,
-        "organization_name": org_info.name
+        "organization_id": token.org_id,
+        "organization_name": token.org_name
     })))
 }
 

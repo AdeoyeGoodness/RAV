@@ -115,3 +115,141 @@ pub async fn list_org_audit_logs(
 
     Ok(Json(logs))
 }
+
+use rand::Rng;
+use sha2::Digest;
+use axum::extract::Path;
+use crate::db::models::{CreateEnrollmentToken, EnrollmentTokenResponse, EnrollmentToken};
+
+pub async fn create_enrollment_token(
+    claims: Claims,
+    State(state): State<AppState>,
+    Json(payload): Json<CreateEnrollmentToken>,
+) -> Result<Json<EnrollmentTokenResponse>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    
+    // Generate a secure random raw token
+    let random_bytes: [u8; 32] = rand::thread_rng().gen();
+    let raw_token = format!("rav-{}", hex::encode(random_bytes));
+
+    // Hash the token
+    let mut hasher = sha2::Sha256::new();
+    sha2::Digest::update(&mut hasher, raw_token.as_bytes());
+    let token_hash = hex::encode(hasher.finalize());
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let token_id = Uuid::new_v4();
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO enrollment_tokens (token_id, org_id, token_hash, label, max_agents, expires_at, created_by, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+        token_id,
+        org_id,
+        token_hash,
+        payload.label,
+        payload.max_agents,
+        payload.expires_at,
+        claims.sub,
+        now
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create token: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    crate::services::audit::log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "TOKEN_CREATED",
+        "ENROLLMENT_TOKEN",
+        Some(token_id.to_string()),
+        serde_json::json!({ "label": payload.label }),
+        None, None
+    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(EnrollmentTokenResponse {
+        token_id,
+        raw_token: Some(raw_token), // Only return this ONCE!
+        label: payload.label,
+        max_agents: payload.max_agents,
+        expires_at: payload.expires_at,
+    }))
+}
+
+pub async fn list_enrollment_tokens(
+    claims: Claims,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<EnrollmentToken>>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let tokens = sqlx::query_as!(
+        EnrollmentToken,
+        r#"
+        SELECT token_id, org_id, label, max_agents, expires_at, revoked, created_at 
+        FROM enrollment_tokens 
+        ORDER BY created_at DESC
+        "#
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list tokens: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(tokens))
+}
+
+pub async fn revoke_enrollment_token(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(token_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let result = sqlx::query!(
+        "UPDATE enrollment_tokens SET revoked = true, revoked_at = NOW() WHERE token_id = $1 AND revoked = false",
+        token_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to revoke token: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    crate::services::audit::log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "TOKEN_REVOKED",
+        "ENROLLMENT_TOKEN",
+        Some(token_id.to_string()),
+        serde_json::json!({}),
+        None, None
+    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
+}
+

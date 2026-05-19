@@ -142,6 +142,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/settings/verify", post(handlers::verify_identity))
         .route("/api/v1/org/settings/test", post(handlers::test_org_settings))
         .route("/api/v1/org/audits", get(api::org::list_org_audit_logs))
+        .route("/api/v1/org/enrollment-tokens", get(api::org::list_enrollment_tokens).post(api::org::create_enrollment_token))
+        .route("/api/v1/org/enrollment-tokens/:token_id", delete(api::org::revoke_enrollment_token))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))

@@ -198,13 +198,45 @@ export async function getOrgDetails(): Promise<Organization> {
   return response.data
 }
 
-export async function createOrganization(org: { name: string, enrollment_token: string, max_agents?: number, token_expiry?: string }): Promise<Organization> {
+export async function createOrganization(org: { name: string, admin_email: string }): Promise<{ organization: Organization, admin_email: string, temporary_password: string }> {
   const response = await api.post('/api/v1/admin/organizations', org)
   return response.data
 }
 
 export async function updateOrganizationStatus(orgId: string, status: string): Promise<void> {
   await api.patch(`/api/v1/admin/organizations/${orgId}/status`, { status })
+}
+
+export interface EnrollmentToken {
+  token_id: string
+  org_id: string
+  label: string | null
+  max_agents: number | null
+  expires_at: string | null
+  revoked: boolean
+  created_at: string
+}
+
+export interface EnrollmentTokenResponse {
+  token_id: string
+  raw_token: string | null
+  label: string | null
+  max_agents: number | null
+  expires_at: string | null
+}
+
+export async function getEnrollmentTokens(): Promise<EnrollmentToken[]> {
+  const response = await api.get('/api/v1/org/enrollment-tokens')
+  return response.data
+}
+
+export async function createEnrollmentToken(data: { label?: string, max_agents?: number, expires_at?: string }): Promise<EnrollmentTokenResponse> {
+  const response = await api.post('/api/v1/org/enrollment-tokens', data)
+  return response.data
+}
+
+export async function revokeEnrollmentToken(tokenId: string): Promise<void> {
+  await api.delete(`/api/v1/org/enrollment-tokens/${tokenId}`)
 }
 
 export async function updateOrganization(orgId: string, org: { name?: string, max_agents?: number, token_expiry?: string, status?: string }): Promise<Organization> {
