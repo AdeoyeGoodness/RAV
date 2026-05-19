@@ -63,6 +63,21 @@ async fn start_windows_monitoring(
         _ => HashSet::new(),
     };
     
+    // FORMAT MIGRATION: If the persisted state contains old-format PnP IDs
+    // (from the previous 4-query detection), wipe it and re-baseline.
+    // Old format IDs look like "USB\VID_...", "SWD\WPDBUSENUM\...", "USB_DRIVE_D", "usbstor#..."
+    // New canonical IDs always start with "USB_" followed by serial/model.
+    if !known.is_empty() {
+        let has_old_format = known.iter().any(|id| {
+            id.contains('\\') || id.contains('#') || id.starts_with("SWD") || id.starts_with("USB_DRIVE_")
+        });
+        if has_old_format {
+            info!("USB state migration: Clearing {} old-format device IDs, will re-baseline", known.len());
+            known.clear();
+            let _ = storage.save_state("usb_known_devices", &json!(known));
+        }
+    }
+    
     // Current state — use canonical detection for clean IDs
     let current_storage_devices = detect_usb_storage_devices().await.unwrap_or_default();
     let current_device_ids: HashSet<String> = current_storage_devices.keys().cloned().collect();

@@ -47,12 +47,6 @@ export default function DeviceDetailsPage() {
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
   const mainRef = useRef<HTMLElement>(null)
 
-  useEffect(() => {
-    if (user) {
-      loadDeviceData(true)
-    }
-  }, [agentId, user])
-
   const loadDeviceData = useCallback(async (isInitial = false) => {
     // Preserve scroll position on non-initial (refresh) loads
     const scrollContainer = mainRef.current
@@ -69,32 +63,24 @@ export default function DeviceDetailsPage() {
       if (foundAgent) {
         setAgent(foundAgent)
       } else {
-        setAgent(null) // Explicitly set to null if truly not found
+        setAgent(null)
       }
 
-      // Filter events to only show those after clear timestamp
       const filteredEvents = clearTimestamp
         ? eventsData.filter(event => new Date(event.timestamp) > clearTimestamp)
         : eventsData
 
-      // If clearTimestamp is set, replace all events (don't merge with old ones)
-      // Otherwise, merge new events with existing ones to prevent data loss on refresh
       if (clearTimestamp) {
-        // When cleared, only show events after the clear timestamp
-        // Deduplicate by ID to ensure consistency
         const uniqueEvents = Array.from(
           new Map(filteredEvents.map(e => [e.id, e])).values()
         )
         setEvents(uniqueEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
       } else {
-        // Merge new events with existing ones to prevent data loss on refresh
-        // Use Map to ensure proper deduplication by event ID
         setEvents(prevEvents => {
           const existingEventMap = new Map(prevEvents.map(e => [e.id, e]))
           filteredEvents.forEach(event => {
             existingEventMap.set(event.id, event)
           })
-          // Convert back to array and ensure proper sorting
           const mergedEvents = Array.from(existingEventMap.values())
           return mergedEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         })
@@ -103,7 +89,6 @@ export default function DeviceDetailsPage() {
       console.error('Failed to load device data:', error)
     } finally {
       setLoading(false)
-      // Restore scroll position after render
       if (!isInitial && scrollContainer) {
         requestAnimationFrame(() => {
           scrollContainer.scrollTop = savedScroll
@@ -111,6 +96,21 @@ export default function DeviceDetailsPage() {
       }
     }
   }, [agentId, clearTimestamp, user])
+
+  useEffect(() => {
+    if (user) {
+      loadDeviceData(true)
+    }
+  }, [agentId, user, loadDeviceData])
+
+  // Centralized auto-refresh — one single interval instead of 3 competing ones
+  useEffect(() => {
+    if (!user) return
+    const interval = setInterval(() => {
+      loadDeviceData(false)
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [user, loadDeviceData])
 
   const clearData = () => {
     if (confirm('Clear all displayed data? Only NEW events after this point will be shown. Old data will be hidden.')) {
@@ -314,7 +314,7 @@ export default function DeviceDetailsPage() {
                   </div>
                   
                   {(() => {
-                    const wifiEvent = events.find(e => e.event_type === 'wifi_status');
+                    const wifiEvent = events.find(e => e.event_type === 'wifi_changed');
                     if (wifiEvent) {
                       return (
                         <div className="p-5 mt-4 bg-gradient-to-r from-cyan-950/40 to-blue-900/20 rounded-xl border border-cyan-500/20 flex items-center gap-5">
@@ -324,7 +324,7 @@ export default function DeviceDetailsPage() {
                           <div className="flex-1">
                             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-500 mb-1">Network Context</p>
                             <div className="flex items-center justify-between">
-                              <span className="text-lg font-bold text-white tracking-tight">{wifiEvent.metadata?.ssid || 'Wired/Other'}</span>
+                              <span className="text-lg font-bold text-white tracking-tight">{wifiEvent.metadata?.current_ssid || wifiEvent.metadata?.ssid || 'Wired/Other'}</span>
                               <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.1)]">
                                 <Activity className="w-3 h-3 text-cyan-400 animate-pulse" />
                                 <span className="text-xs font-bold text-cyan-300 uppercase">{wifiEvent.metadata?.signal || '100%'} Quality</span>
