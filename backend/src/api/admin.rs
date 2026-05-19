@@ -275,17 +275,17 @@ pub async fn get_platform_stats(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let pool = state.db.pool();
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     let org_count = sqlx::query!("SELECT COUNT(*) FROM organizations")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .count
         .unwrap_or(0);
 
     let agent_count = sqlx::query!("SELECT COUNT(*) FROM agents WHERE deleted_at IS NULL")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .count
@@ -295,7 +295,7 @@ pub async fn get_platform_stats(
         "SELECT COUNT(*) FROM agents WHERE last_seen > $1 AND deleted_at IS NULL",
         Utc::now() - chrono::Duration::hours(24)
     )
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .count
@@ -361,8 +361,7 @@ pub async fn delete_organization(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let pool = state.db.pool();
-    let mut tx = pool.begin().await.map_err(|e| {
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
         tracing::error!("Failed to start transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -469,10 +468,8 @@ pub async fn restore_organization_data(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let pool = state.db.pool();
-
-    // Transaction for atomic restoration
-    let mut tx = pool.begin().await.map_err(|e| {
+    // Transaction for atomic restoration with bypass
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
         tracing::error!("Failed to start transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
