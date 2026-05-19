@@ -217,13 +217,17 @@ pub async fn list_enrollment_tokens(
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // enrollment_tokens has no RLS policy (migration 014 skipped it), so the
+    // WHERE org_id filter is the actual isolation guarantee here.
     let tokens = sqlx::query_as!(
         EnrollmentToken,
         r#"
-        SELECT token_id, org_id, label, max_agents, expires_at, revoked, created_at 
-        FROM enrollment_tokens 
+        SELECT token_id, org_id, label, max_agents, expires_at, revoked, created_at
+        FROM enrollment_tokens
+        WHERE org_id = $1
         ORDER BY created_at DESC
-        "#
+        "#,
+        org_id
     )
     .fetch_all(&mut *tx)
     .await
@@ -245,9 +249,13 @@ pub async fn revoke_enrollment_token(
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // enrollment_tokens has no RLS policy, so scope the UPDATE to the caller's
+    // org explicitly — without this, any org_admin could revoke any token
+    // system-wide by guessing the UUID.
     let result = sqlx::query!(
-        "UPDATE enrollment_tokens SET revoked = true, revoked_at = NOW() WHERE token_id = $1 AND revoked = false",
-        token_id
+        "UPDATE enrollment_tokens SET revoked = true, revoked_at = NOW() WHERE token_id = $1 AND org_id = $2 AND revoked = false",
+        token_id,
+        org_id
     )
     .execute(&mut *tx)
     .await
