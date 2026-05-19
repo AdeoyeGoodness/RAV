@@ -78,7 +78,6 @@ pub async fn ingest_events(
     State(state): State<AppState>,
     Json(events): Json<Vec<CreateEvent>>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let pool = state.db.pool();
     let events_count = events.len();
 
     if events.is_empty() {
@@ -88,12 +87,17 @@ pub async fn ingest_events(
         })));
     }
 
+    // Look up the agent's org in BYPASS mode (agents table has FORCE RLS from migration 014).
     let first_agent_id = &events[0].agent_id;
+    let mut lookup_tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Ingest: Failed to begin bypass tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let org_id = sqlx::query!(
-        "SELECT organization_id FROM agents WHERE agent_id = $1",
+        "SELECT organization_id FROM agents WHERE agent_id = $1 AND deleted_at IS NULL",
         first_agent_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *lookup_tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to query agent organization: {}", e);
@@ -103,6 +107,16 @@ pub async fn ingest_events(
     .ok_or_else(|| {
         tracing::warn!("Agent not found for ingestion: {}", first_agent_id);
         StatusCode::UNAUTHORIZED
+    })?;
+    lookup_tx.commit().await.map_err(|e| {
+        tracing::error!("Ingest: Failed to commit lookup tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Insert events under the resolved org's RLS context.
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|e| {
+        tracing::error!("Ingest: Failed to begin RLS tx for org {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
     for event in events {
@@ -121,7 +135,7 @@ pub async fn ingest_events(
             event.category.as_deref().unwrap_or("system"),
             Utc::now()
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
 
         if let Err(e) = result {
@@ -129,6 +143,11 @@ pub async fn ingest_events(
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Ingest: Failed to commit event tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(serde_json::json!({
         "status": "success",
@@ -297,7 +316,9 @@ pub async fn enroll_agent(
 
 
     // 2. Enroll agent (Insert or update seen timestamp)
-    let mut tx = pool.begin().await.map_err(|e| {
+    // Use RLS-bound tx scoped to the token's org so the INSERT into agents
+    // and audit_logs satisfies the row-level security policy from migration 014.
+    let mut tx = state.db.begin_rls_tx(token.org_id).await.map_err(|e| {
         tracing::error!("Enrollment: Failed to start transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -406,13 +427,16 @@ pub async fn heartbeat(
     headers: HeaderMap,
     Json(heartbeat): Json<crate::db::models::Heartbeat>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let pool = state.db.pool();
-
     let org_id = headers
         .get("X-Organization-Id")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|e| {
+        tracing::error!("Heartbeat: Failed to begin RLS tx for org {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let result = sqlx::query!(
         r#"
@@ -425,17 +449,27 @@ pub async fn heartbeat(
         &heartbeat.agent_id,
         org_id
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(res) if res.rows_affected() > 0 => Ok(Json(serde_json::json!({"status": "success"}))),
-        Ok(_) => Err(StatusCode::NOT_FOUND),
+    let res = match result {
+        Ok(r) => r,
         Err(e) => {
             tracing::error!("Failed to update heartbeat: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
+    };
+
+    if res.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
     }
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Heartbeat: Failed to commit tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({"status": "success"})))
 }
 
 pub async fn list_agents(
@@ -531,23 +565,39 @@ pub async fn upload_file(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let pool = state.db.pool();
-    let org_id = sqlx::query!("SELECT organization_id FROM agents WHERE agent_id = $1", agent_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map(|r| r.organization_id)
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    
+    // Look up the agent's org in BYPASS mode (agents has FORCE RLS).
+    let mut lookup_tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Upload: Failed to begin bypass tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let org_id = sqlx::query!(
+        "SELECT organization_id FROM agents WHERE agent_id = $1 AND deleted_at IS NULL",
+        agent_id
+    )
+    .fetch_optional(&mut *lookup_tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map(|r| r.organization_id)
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+    lookup_tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let data = file_data.unwrap();
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|e| {
+        tracing::error!("Upload: Failed to begin RLS tx for org {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     sqlx::query!(
         "INSERT INTO files (file_id, organization_id, agent_id, file_name, file_size) VALUES ($1, $2, $3, $4, $5)",
         file_id, org_id, agent_id, file_name, data.len() as i64
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to record file in DB: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Upload: Failed to commit file insert tx: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     
