@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2, Undo2, AlertCircle } from 'lucide-react'
-import { getOrganizations, createOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization } from '@/lib/api'
+import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2, Undo2, AlertCircle, Pencil, Server } from 'lucide-react'
+import { getOrganizations, createOrganization, updateOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
@@ -118,6 +118,37 @@ export default function AdminPage() {
         org: Organization | null;
         inputValue: string;
     }>({ isOpen: false, org: null, inputValue: '' })
+
+    // Edit Max Agents Modal State
+    const [editAgentsModal, setEditAgentsModal] = useState<{
+        isOpen: boolean;
+        org: Organization | null;
+        value: number;
+        submitting: boolean;
+    }>({ isOpen: false, org: null, value: 0, submitting: false })
+
+    const openEditMaxAgents = (org: Organization) => {
+        setEditAgentsModal({ isOpen: true, org, value: org.max_agents, submitting: false })
+    }
+
+    const confirmEditMaxAgents = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!editAgentsModal.org) return
+        if (!Number.isFinite(editAgentsModal.value) || editAgentsModal.value < 1) {
+            alert('Max agents must be a positive number.')
+            return
+        }
+        setEditAgentsModal(s => ({ ...s, submitting: true }))
+        try {
+            await updateOrganization(editAgentsModal.org.id, { max_agents: editAgentsModal.value })
+            setEditAgentsModal({ isOpen: false, org: null, value: 0, submitting: false })
+            loadData()
+        } catch (err: any) {
+            console.error(err)
+            alert(err?.response?.data?.message || 'Failed to update max agents.')
+            setEditAgentsModal(s => ({ ...s, submitting: false }))
+        }
+    }
 
     const handleDelete = (org: Organization) => {
         setDeleteModal({ isOpen: true, org, inputValue: '' })
@@ -249,13 +280,14 @@ export default function AdminPage() {
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Organization Name</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Created At</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Max Agents</th>
                                             <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/[0.04]">
                                         {loading ? (
                                             <tr>
-                                                <td colSpan={6} className="px-6 py-12 text-center">
+                                                <td colSpan={5} className="px-6 py-12 text-center">
                                                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-500" />
                                                     <p className="text-xs text-slate-500">Loading organizations...</p>
                                                 </td>
@@ -285,6 +317,12 @@ export default function AdminPage() {
                                                         {org.status}
                                                     </span>
                                                 </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-2 text-slate-300">
+                                                        <Server className="w-3.5 h-3.5 text-slate-500" />
+                                                        <span className="text-sm font-mono">{org.max_agents}</span>
+                                                    </div>
+                                                </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex items-center justify-end space-x-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
                                                         <button
@@ -293,6 +331,13 @@ export default function AdminPage() {
                                                             title="Onboard Organization Admin"
                                                         >
                                                             <UserPlus className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openEditMaxAgents(org)}
+                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-violet-500/10 hover:border-violet-500/20 text-slate-400 hover:text-violet-400 transition-colors"
+                                                            title="Edit Max Agents Limit"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5" />
                                                         </button>
                                                         <button
                                                             onClick={() => toggleStatus(org.id, org.status)}
@@ -485,6 +530,74 @@ export default function AdminPage() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Edit Max Agents Modal */}
+            {editAgentsModal.isOpen && editAgentsModal.org && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <form
+                        onSubmit={confirmEditMaxAgents}
+                        className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-violet-500/30 p-8 shadow-2xl relative overflow-hidden"
+                    >
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 to-violet-800" />
+
+                        <div className="mb-6 flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-violet-500/10 flex items-center justify-center border border-violet-500/20">
+                                <Server className="w-5 h-5 text-violet-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-200">Update Max Agents</h2>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Adjust the agent quota for <strong className="text-slate-300">{editAgentsModal.org.name}</strong>.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mb-6 space-y-4">
+                            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/[0.04] bg-[#05050A]">
+                                <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Current Limit</span>
+                                <span className="text-sm font-mono text-slate-300">{editAgentsModal.org.max_agents}</span>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">New Max Agents</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min={1}
+                                    autoFocus
+                                    value={Number.isFinite(editAgentsModal.value) ? editAgentsModal.value : ''}
+                                    onChange={(e) => setEditAgentsModal(s => ({ ...s, value: parseInt(e.target.value) || 0 }))}
+                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-violet-500/50 outline-none transition-all text-sm text-slate-200 font-mono"
+                                />
+                                <p className="text-[10px] mt-1.5 text-slate-600">
+                                    Existing enrollment tokens won't change — but the org admin can't issue new tokens above this cap.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex space-x-3">
+                            <button
+                                type="button"
+                                onClick={() => setEditAgentsModal({ isOpen: false, org: null, value: 0, submitting: false })}
+                                className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={editAgentsModal.submitting || editAgentsModal.value === editAgentsModal.org.max_agents || editAgentsModal.value < 1}
+                                className={`flex-1 py-3 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
+                                    editAgentsModal.submitting || editAgentsModal.value === editAgentsModal.org.max_agents || editAgentsModal.value < 1
+                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/[0.02]'
+                                        : 'bg-violet-600 hover:bg-violet-500 shadow-[0_0_15px_rgba(139,92,246,0.3)] border border-violet-500/50'
+                                }`}
+                            >
+                                {editAgentsModal.submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                                Update Limit
+                            </button>
+                        </div>
+                    </form>
                 </div>
             )}
         </div>
