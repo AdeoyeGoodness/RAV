@@ -250,12 +250,13 @@ pub async fn me(
     State(state): State<AppState>,
 ) -> Result<Json<UserResponse>, StatusCode> {
     let pool = state.db.pool();
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_row = sqlx::query(
         "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at FROM users WHERE id = $1 AND status = 'active'"
     )
     .bind(claims.sub)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Me query failed: {}", e);
