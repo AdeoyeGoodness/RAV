@@ -334,12 +334,15 @@ pub async fn change_password(
     let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_row = sqlx::query(
-        "SELECT password_hash FROM users WHERE id =  AND status = 'active'"
+        "SELECT password_hash FROM users WHERE id = $1 AND status = 'active'"
     )
     .bind(claims.sub)
     .fetch_optional(&mut *tx)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|e| {
+        tracing::error!("Failed to fetch user for password change: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
     .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let current_hash: String = user_row.get(0);
@@ -354,22 +357,28 @@ pub async fn change_password(
     let new_hash = hash(&payload.new_password, DEFAULT_COST).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     sqlx::query(
-        "UPDATE users SET password_hash = , must_change_password = false, password_changed_at = NOW() WHERE id = "
+        "UPDATE users SET password_hash = $1, must_change_password = false, password_changed_at = NOW() WHERE id = $2"
     )
     .bind(new_hash)
     .bind(claims.sub)
     .execute(&mut *tx)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|e| {
+        tracing::error!("Failed to update user password: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     if let Some(org_id) = claims.org_id {
         sqlx::query(
-            "UPDATE organizations SET admin_verified = true WHERE id = "
+            "UPDATE organizations SET admin_verified = true WHERE id = $1"
         )
         .bind(org_id)
         .execute(&mut *tx)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            tracing::error!("Failed to verify organization admin: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     }
 
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
