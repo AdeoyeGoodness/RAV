@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react'
 import { Key, Plus, Copy, Check, Trash2, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
-import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken } from '@/lib/api'
+import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails, Organization } from '@/lib/api'
 
 export default function EnrollmentTokensPage() {
   const [tokens, setTokens] = useState<EnrollmentToken[]>([])
+  const [orgMaxAgents, setOrgMaxAgents] = useState<number>(100)
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
@@ -25,16 +26,21 @@ export default function EnrollmentTokensPage() {
     tmr.setDate(tmr.getDate() + 1)
     setNewToken(prev => ({ ...prev, expires_at: tmr.toISOString().split('T')[0] }))
     
-    fetchTokens()
+    fetchData()
   }, [])
 
-  const fetchTokens = async () => {
+  const fetchData = async () => {
     setIsLoading(true)
     try {
-      const data = await getEnrollmentTokens()
-      setTokens(data)
+      const [tokensData, orgData] = await Promise.all([
+          getEnrollmentTokens(),
+          getOrgDetails()
+      ])
+      setTokens(tokensData)
+      setOrgMaxAgents(orgData.max_agents)
+      setNewToken(prev => ({ ...prev, max_agents: orgData.max_agents }))
     } catch (err) {
-      console.error("Failed to load tokens:", err)
+      console.error("Failed to load data:", err)
     } finally {
       setIsLoading(false)
     }
@@ -58,11 +64,11 @@ export default function EnrollmentTokensPage() {
       })
       
       setGeneratedToken(res.raw_token)
-      setNewToken({ ...newToken, label: '' })
-      fetchTokens()
-    } catch (error) {
+      setNewToken({ ...newToken, label: '', max_agents: orgMaxAgents })
+      fetchData()
+    } catch (error: any) {
       console.error(error)
-      alert('Failed to generate token')
+      alert(error?.response?.data?.message || 'Failed to generate token (Limit exceeded?)')
     }
   }
 
@@ -71,7 +77,7 @@ export default function EnrollmentTokensPage() {
     
     try {
       await revokeEnrollmentToken(tokenId)
-      fetchTokens()
+      fetchData()
     } catch (error) {
       alert('Failed to revoke token')
     }
@@ -211,12 +217,20 @@ export default function EnrollmentTokensPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Max Enrollments</label>
+                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">
+                                    Max Enrollments (Limit: {orgMaxAgents})
+                                </label>
                                 <input
                                     type="number"
                                     min="1"
+                                    max={orgMaxAgents}
                                     value={newToken.max_agents}
-                                    onChange={(e) => setNewToken({ ...newToken, max_agents: parseInt(e.target.value) })}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value);
+                                        if (val <= orgMaxAgents) {
+                                            setNewToken({ ...newToken, max_agents: val })
+                                        }
+                                    }}
                                     className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                 />
                             </div>

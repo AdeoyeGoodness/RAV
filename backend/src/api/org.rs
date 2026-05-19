@@ -125,9 +125,14 @@ pub async fn create_enrollment_token(
     claims: Claims,
     State(state): State<AppState>,
     Json(payload): Json<CreateEnrollmentToken>,
-) -> Result<Json<EnrollmentTokenResponse>, StatusCode> {
-    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
-    
+) -> Result<Json<EnrollmentTokenResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let err = |status: StatusCode, msg: &str| -> (StatusCode, Json<serde_json::Value>) {
+        (status, Json(serde_json::json!({ "message": msg })))
+    };
+    let internal = || err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
+
+    let org_id = claims.org_id.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Unauthorized."))?;
+
     // Generate a secure random raw token
     let random_bytes: [u8; 32] = rand::thread_rng().gen();
     let raw_token = format!("rav-{}", hex::encode(random_bytes));
@@ -137,7 +142,26 @@ pub async fn create_enrollment_token(
     sha2::Digest::update(&mut hasher, raw_token.as_bytes());
     let token_hash = hex::encode(hasher.finalize());
 
-    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| internal())?;
+
+    let org = sqlx::query!(
+        "SELECT COALESCE(max_agents, 1000) as max_agents FROM organizations WHERE id = $1",
+        org_id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| internal())?;
+
+    let org_max = org.max_agents.unwrap_or(1000);
+    let requested_max = payload.max_agents.ok_or_else(|| {
+        err(StatusCode::BAD_REQUEST, "max_agents is required.")
+    })?;
+    if requested_max > org_max {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            &format!("Max enrollments cannot exceed your organization's limit of {}.", org_max),
+        ));
+    }
 
     let token_id = Uuid::new_v4();
     let now = Utc::now();
@@ -160,7 +184,7 @@ pub async fn create_enrollment_token(
     .await
     .map_err(|e| {
         tracing::error!("Failed to create token: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        internal()
     })?;
 
     crate::services::audit::log_audit(
@@ -173,9 +197,9 @@ pub async fn create_enrollment_token(
         Some(token_id.to_string()),
         serde_json::json!({ "label": payload.label }),
         None, None
-    ).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ).await.map_err(|_| internal())?;
 
-    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await.map_err(|_| internal())?;
 
     Ok(Json(EnrollmentTokenResponse {
         token_id,

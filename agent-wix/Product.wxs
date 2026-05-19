@@ -113,14 +113,14 @@
         <!-- Unpacked Extension Bundle -->
         <Directory Id="ExtensionFolder" Name="extension">
           <Component Id="ExtensionSource" Guid="C3D4E5F6-A7B8-9012-CDEF-1234567890AB" Bitness="always64">
-            <File Id="ExtManifest" Source="..\extension\manifest.json" KeyPath="yes" />
-            <File Id="ExtBackground" Source="..\extension\background.js" />
-            <File Id="ExtCollectors" Source="..\extension\collectors.js" />
-            <File Id="ExtAgentClient" Source="..\extension\agent-client.js" />
-            <File Id="ExtUtils" Source="..\extension\utils.js" />
-            <File Id="ExtTypes" Source="..\extension\types.js" />
-            <File Id="ExtPopupHtml" Source="..\extension\popup.html" />
-            <File Id="ExtPopupJs" Source="..\extension\popup.js" />
+            <File Id="ExtManifest" Source="..\extension\dist\manifest.json" KeyPath="yes" />
+            <File Id="ExtBackground" Source="..\extension\dist\background.js" />
+            <File Id="ExtCollectors" Source="..\extension\dist\collectors.js" />
+            <File Id="ExtAgentClient" Source="..\extension\dist\agent-client.js" />
+            <File Id="ExtUtils" Source="..\extension\dist\utils.js" />
+            <File Id="ExtTypes" Source="..\extension\dist\types.js" />
+            <File Id="ExtPopupHtml" Source="..\extension\dist\popup.html" />
+            <File Id="ExtPopupJs" Source="..\extension\dist\popup.js" />
           </Component>
           <Directory Id="ExtIconsFolder" Name="icons">
             <Component Id="ExtensionIcons" Guid="D4E5F6A7-B890-1234-CAD6-234567890ABC" Bitness="always64">
