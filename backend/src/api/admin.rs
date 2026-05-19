@@ -98,8 +98,8 @@ pub async fn create_organization(
     }
 
     let pool = state.db.pool();
-    let mut tx = pool.begin().await.map_err(|e| {
-        tracing::error!("Failed to start transaction: {}", e);
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
