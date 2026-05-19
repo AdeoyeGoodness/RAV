@@ -422,7 +422,7 @@ pub async fn delete_organization(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // 5. Delete agents
+    // 5. Delete agents (clears agents.enrollment_token_id FK refs)
     sqlx::query!("DELETE FROM agents WHERE organization_id = $1", org_id)
         .execute(&mut *tx)
         .await
@@ -431,7 +431,38 @@ pub async fn delete_organization(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // 4. Delete users
+    // 6. Delete enrollment_attempts for this org's tokens (FK to enrollment_tokens, NO ACTION).
+    //    enrollment_rules cascade automatically via ON DELETE CASCADE in migration 013.
+    sqlx::query!(
+        "DELETE FROM enrollment_attempts WHERE token_id IN (SELECT token_id FROM enrollment_tokens WHERE org_id = $1)",
+        org_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to delete enrollment attempts: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // 7. Delete enrollment_tokens (FK to organizations(id) and to users(id) via created_by).
+    sqlx::query!("DELETE FROM enrollment_tokens WHERE org_id = $1", org_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete enrollment tokens: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 8. Delete deletion_requests (FK to organizations(id) and to users(id) via requested_by/cancelled_by).
+    sqlx::query!("DELETE FROM deletion_requests WHERE org_id = $1", org_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to delete deletion requests: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // 9. Delete users
     sqlx::query!("DELETE FROM users WHERE organization_id = $1", org_id)
         .execute(&mut *tx)
         .await
@@ -440,7 +471,7 @@ pub async fn delete_organization(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // 5. Delete organization
+    // 10. Delete organization
     let result = sqlx::query!("DELETE FROM organizations WHERE id = $1", org_id)
         .execute(&mut *tx)
         .await

@@ -19,7 +19,7 @@ export default function AdminPage() {
 
     // Org Creation State
     const [isModalOpen, setIsModalOpen] = useState(false)
-    const [newOrg, setNewOrg] = useState({ name: '', admin_email: '', max_agents: 1000, token_expiry: '' })
+    const [newOrg, setNewOrg] = useState({ name: '', admin_email: '', max_agents: 1000 })
     const [createdCredentials, setCreatedCredentials] = useState<{ orgName: string, email: string, password: string } | null>(null)
 
     // Admin Creation State
@@ -56,7 +56,7 @@ export default function AdminPage() {
                 name: newOrg.name,
                 admin_email: newOrg.admin_email,
                 max_agents: newOrg.max_agents,
-                token_expiry: newOrg.token_expiry ? new Date(newOrg.token_expiry).toISOString() : null
+                token_expiry: null,
             }
             const res = await createOrganization(payload)
             setCreatedCredentials({
@@ -64,7 +64,7 @@ export default function AdminPage() {
                 email: res.admin_email,
                 password: res.temporary_password
             })
-            setNewOrg({ name: '', admin_email: '', max_agents: 1000, token_expiry: '' })
+            setNewOrg({ name: '', admin_email: '', max_agents: 1000 })
             setIsModalOpen(false)
             loadData()
         } catch (error) {
@@ -368,15 +368,6 @@ export default function AdminPage() {
                                     className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                     placeholder="1000"
                                     min="1"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Subscription Expiry Date (Optional)</label>
-                                <input
-                                    type="datetime-local"
-                                    value={newOrg.token_expiry}
-                                    onChange={(e) => setNewOrg({ ...newOrg, token_expiry: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
                                 />
                             </div>
                             <div className="flex space-x-3 mt-8 pt-2">
