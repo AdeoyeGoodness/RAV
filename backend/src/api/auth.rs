@@ -383,5 +383,34 @@ pub async fn change_password(
 
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(StatusCode::OK)
+    let exp = Utc::now()
+        .checked_add_signed(Duration::hours(24))
+        .expect("valid timestamp")
+        .timestamp() as usize;
+
+    let new_claims = Claims {
+        sub: claims.sub,
+        exp,
+        role: claims.role.clone(),
+        org_id: claims.org_id,
+        scope: Some("full".to_string()),
+    };
+
+    let token = encode(
+        &Header::default(),
+        &new_claims,
+        &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+    )
+    .map_err(|e| {
+        tracing::error!("JWT encoding failed during password change: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let cookie = format!(
+        "rav_token={}; HttpOnly; Path=/; SameSite=Lax; Max-Age={}",
+        token,
+        24 * 60 * 60
+    );
+
+    Ok(([(SET_COOKIE, cookie)], StatusCode::OK))
 }
