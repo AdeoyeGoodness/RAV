@@ -125,6 +125,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/auth/login", post(api::auth::login))
         .route("/api/v1/auth/register", post(api::auth::register))
         .route("/api/v1/auth/me", get(api::auth::me))
+        .route("/api/v1/auth/change-password", post(api::auth::change_password))
         .route("/api/v1/auth/logout", post(api::auth::logout))
         .route("/api/v1/admin/organizations", get(api::admin::list_organizations))
         .route("/api/v1/admin/organizations", post(api::admin::create_organization))

@@ -111,7 +111,7 @@ pub async fn create_organization(
         r#"
         INSERT INTO organizations (id, name, enrollment_token, max_agents, token_expiry)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at
+        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at, admin_verified
         "#,
         Uuid::new_v4(),
         payload.name,
@@ -141,8 +141,8 @@ pub async fn create_organization(
     let user_id = Uuid::new_v4();
     sqlx::query!(
         r#"
-        INSERT INTO users (id, organization_id, email, password_hash, role, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO users (id, organization_id, email, password_hash, role, status, created_at, updated_at, must_change_password)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
         "#,
         user_id,
         org.id,
@@ -213,7 +213,7 @@ pub async fn update_organization(
             status = COALESCE($4, status),
             updated_at = $5
         WHERE id = $6
-        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at
+        RETURNING id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at, admin_verified
         "#,
         payload.name,
         payload.max_agents,

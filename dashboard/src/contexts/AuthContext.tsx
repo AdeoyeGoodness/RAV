@@ -63,7 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!isLoading) {
             if (!user && pathname !== '/login') {
                 router.push('/login')
-            } else if (user && pathname === '/login') {
+            } else if (user && user.must_change_password && pathname !== '/reset-password') {
+                router.push('/reset-password')
+            } else if (user && !user.must_change_password && (pathname === '/login' || pathname === '/reset-password')) {
                 router.push('/')
             }
         }
@@ -75,7 +77,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(null)
         // Broadcast change to other tabs
         localStorage.setItem('rav_auth_sync', Date.now().toString())
-        router.push('/')
+        
+        if (user.must_change_password) {
+            router.push('/reset-password')
+        } else {
+            router.push('/')
+        }
     }
 
     const logout = async () => {

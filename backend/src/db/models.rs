@@ -13,6 +13,7 @@ pub struct Organization {
     pub token_expiry: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -28,6 +29,7 @@ pub struct Agent {
     pub last_archived_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -83,9 +85,11 @@ pub struct User {
     pub password_hash: String,
     pub role: String, // super_admin, org_admin, org_user
     pub full_name: Option<String>,
+    pub must_change_password: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +99,7 @@ pub struct CreateUser {
     pub password: String,
     pub role: String,
     pub full_name: Option<String>,
+    pub must_change_password: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,6 +121,7 @@ pub struct UserResponse {
     pub email: String,
     pub role: String,
     pub full_name: Option<String>,
+    pub must_change_password: bool,
 }
 
 
@@ -197,6 +203,7 @@ pub struct OrganizationSettings {
     pub smtp_from_email: Option<String>,
     pub smtp_enabled: Option<bool>,
     pub updated_at: DateTime<Utc>,
+    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -235,4 +242,10 @@ pub struct EnrollmentTokenResponse {
     pub label: Option<String>,
     pub max_agents: Option<i32>,
     pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
 }

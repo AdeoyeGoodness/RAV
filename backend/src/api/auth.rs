@@ -21,6 +21,7 @@ pub struct Claims {
     pub exp: usize,
     pub role: String,
     pub org_id: Option<Uuid>,
+    pub scope: Option<String>,
 }
 
 #[async_trait]
@@ -70,7 +71,18 @@ impl FromRequestParts<AppState> for Claims
             StatusCode::UNAUTHORIZED
         })?;
 
-        Ok(token_data.claims)
+        let claims = token_data.claims;
+
+        // Backend Middleware: Enforce Restricted Scope
+        if claims.scope.as_deref() == Some("password_reset_only") {
+            let path = parts.uri.path();
+            if !(parts.method == axum::http::Method::POST && path == "/api/v1/auth/change-password") {
+                tracing::warn!("Blocked request to {} with restricted token", path);
+                return Err(StatusCode::FORBIDDEN);
+            }
+        }
+
+        Ok(claims)
     }
 }
 
@@ -85,7 +97,7 @@ pub async fn login(
     })?;
 
     let user_row = sqlx::query(
-        "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at FROM users WHERE email = $1 AND status = 'active'"
+        "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at, must_change_password FROM users WHERE email = $1 AND status = 'active'"
     )
     .bind(&payload.email)
     .fetch_optional(&mut *tx)
@@ -106,6 +118,7 @@ pub async fn login(
         status: user_row.get(6),
         created_at: user_row.get(7),
         updated_at: user_row.get(8),
+        must_change_password: user_row.get(9),
     };
 
     if !verify(payload.password, &user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
@@ -144,11 +157,18 @@ pub async fn login(
         .expect("valid timestamp")
         .timestamp() as usize;
 
+    let scope = if user.must_change_password {
+        Some("password_reset_only".to_string())
+    } else {
+        Some("full".to_string())
+    };
+
     let claims = Claims {
         sub: user.id,
         exp,
         role: user.role.clone(),
         org_id: user.organization_id,
+        scope,
     };
 
     let token = encode(
@@ -199,6 +219,7 @@ pub async fn login(
             email: user.email,
             role: user.role,
             full_name: user.full_name,
+            must_change_password: user.must_change_password,
         },
     });
 
@@ -253,7 +274,7 @@ pub async fn me(
     let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_row = sqlx::query(
-        "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at FROM users WHERE id = $1 AND status = 'active'"
+        "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at, must_change_password FROM users WHERE id = $1 AND status = 'active'"
     )
     .bind(claims.sub)
     .fetch_optional(&mut *tx)
@@ -295,10 +316,62 @@ pub async fn me(
         email: user_row.get(2),
         role: user_row.get(4),
         full_name: user_row.get(5),
+        must_change_password: user_row.get(9),
     }))
 }
 
 pub async fn logout() -> impl IntoResponse {
     let cookie = "rav_token=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0";
     [(SET_COOKIE, cookie)]
+}
+
+pub async fn change_password(
+    claims: Claims,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::db::models::ChangePasswordRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let user_row = sqlx::query(
+        "SELECT password_hash FROM users WHERE id =  AND status = 'active'"
+    )
+    .bind(claims.sub)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let current_hash: String = user_row.get(0);
+    if !verify(&payload.current_password, &current_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    if payload.current_password == payload.new_password {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let new_hash = hash(&payload.new_password, DEFAULT_COST).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    sqlx::query(
+        "UPDATE users SET password_hash = , must_change_password = false, password_changed_at = NOW() WHERE id = "
+    )
+    .bind(new_hash)
+    .bind(claims.sub)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if let Some(org_id) = claims.org_id {
+        sqlx::query(
+            "UPDATE organizations SET admin_verified = true WHERE id = "
+        )
+        .bind(org_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
 }

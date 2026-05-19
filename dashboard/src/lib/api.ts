@@ -53,6 +53,7 @@ export interface Organization {
   created_at: string
   created_at_ms: number
   updated_at: string
+  admin_verified?: boolean
 }
 
 export interface User {
@@ -100,6 +101,7 @@ export interface Agent {
   token_expiry: string | null
   created_at: string
   updated_at: string
+  admin_verified?: boolean
 }
 
 export async function getEvents(params?: {
@@ -349,3 +351,8 @@ export async function register(userData: {
   return response.data
 }
 
+
+export const changePassword = async (data: any) => {
+  const response = await api.post('/api/v1/auth/change-password', data)
+  return response.data
+}
