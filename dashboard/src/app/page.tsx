@@ -85,7 +85,11 @@ export default function DashboardPage() {
   // Only fetch once when user is available — no isLoading dependency to prevent re-renders
   useEffect(() => {
     if (user && !isLoading) {
-      fetchData()
+      if (user.role === 'super_admin') {
+        window.location.href = '/admin'
+      } else {
+        fetchData()
+      }
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
