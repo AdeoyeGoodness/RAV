@@ -236,10 +236,18 @@ pub async fn enroll_agent(
     sha2::Digest::update(&mut hasher, payload.enrollment_token.as_bytes());
     let token_hash = hex::encode(hasher.finalize());
 
-    // 2. Look up token in the secure enrollment_tokens table
+    // 2. Look up token in the secure enrollment_tokens table.
+    // Use a BYPASS tx so the agents subquery actually counts rows — agents has
+    // FORCE ROW LEVEL SECURITY from migration 014, and the bare pool has no
+    // app.current_org_id set, which would silently return 0 and let the per-token
+    // max_agents check below pass for any number of enrollments.
+    let mut lookup_tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Enrollment: Failed to begin bypass tx for token lookup: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let token_info = sqlx::query!(
         r#"
-        SELECT t.token_id, t.org_id, t.max_agents, t.expires_at, t.revoked, 
+        SELECT t.token_id, t.org_id, t.max_agents, t.expires_at, t.revoked,
                o.name as org_name, o.status as org_status,
                (SELECT COUNT(*) FROM agents WHERE enrollment_token_id = t.token_id AND deleted_at IS NULL) as "current_agents!"
         FROM enrollment_tokens t
@@ -248,10 +256,14 @@ pub async fn enroll_agent(
         "#,
         token_hash
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *lookup_tx)
     .await
     .map_err(|e| {
         tracing::error!("Enrollment: Failed to query token: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    lookup_tx.commit().await.map_err(|e| {
+        tracing::error!("Enrollment: Failed to commit token lookup tx: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
