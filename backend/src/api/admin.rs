@@ -17,6 +17,8 @@ use axum::extract::Query;
 pub struct CreateOrganization {
     pub name: String,
     pub admin_email: String,
+    pub token_expiry: Option<chrono::DateTime<Utc>>,
+    pub max_agents: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,8 +118,8 @@ pub async fn create_organization(
         Uuid::new_v4(),
         payload.name,
         dummy_token,
-        1000,
-        None as Option<chrono::DateTime<Utc>>
+        payload.max_agents.unwrap_or(1000),
+        payload.token_expiry
     )
     .fetch_one(&mut *tx)
     .await

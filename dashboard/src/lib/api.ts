@@ -201,7 +201,7 @@ export async function getOrgDetails(): Promise<Organization> {
   return response.data
 }
 
-export async function createOrganization(org: { name: string, admin_email: string }): Promise<{ organization: Organization, admin_email: string, temporary_password: string }> {
+export async function createOrganization(org: { name: string, admin_email: string, max_agents?: number, token_expiry?: string | null }): Promise<{ organization: Organization, admin_email: string, temporary_password: string }> {
   const response = await api.post('/api/v1/admin/organizations', org)
   return response.data
 }
