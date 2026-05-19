@@ -137,40 +137,47 @@ pub async fn query_events(
     headers: HeaderMap,
     Query(params): Query<EventQuery>,
 ) -> Result<Json<Vec<Event>>, StatusCode> {
-    let pool = state.db.pool();
 
-    // Determine target organization_id
-    let target_org_id = if claims.role == "super_admin" {
-        // Super Admin must explicitly provide a header to see raw data
-        headers
+    // Determine org context and begin RLS-scoped transaction
+    let mut tx = if claims.role == "super_admin" {
+        // Super Admin: must provide X-Organization-Id header, or gets BYPASS
+        if let Some(org_id) = headers
             .get("X-Organization-Id")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or(StatusCode::BAD_REQUEST)? // Super Admin must specify org
+        {
+            state.db.begin_rls_tx(org_id).await
+        } else {
+            state.db.begin_bypass_tx().await
+        }
     } else {
-        // Tenants are locked to their own ID from the JWT
-        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
-    };
+        // Tenant users: locked to their JWT org_id
+        let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+        state.db.begin_rls_tx(org_id).await
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to begin RLS transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let limit = params.limit.unwrap_or(100);
     
+    // RLS policies automatically filter by organization — no need for org_id in WHERE
     let events = sqlx::query_as::<_, Event>(
         r#"
-        SELECT id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, deleted_at, created_at 
+        SELECT id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, deleted_at, observed, received_at, created_at 
         FROM events 
-        WHERE organization_id = $1 
-          AND ($2::text IS NULL OR agent_id = $2)
-          AND ($3::text IS NULL OR event_type = $3)
-          AND ($4::text IS NULL OR category = $4)
-          AND ($5::text IS NULL OR severity = $5)
-          AND ($6::timestamptz IS NULL OR timestamp >= $6)
-          AND ($7::timestamptz IS NULL OR timestamp <= $7)
+        WHERE ($1::text IS NULL OR agent_id = $1)
+          AND ($2::text IS NULL OR event_type = $2)
+          AND ($3::text IS NULL OR category = $3)
+          AND ($4::text IS NULL OR severity = $4)
+          AND ($5::timestamptz IS NULL OR timestamp >= $5)
+          AND ($6::timestamptz IS NULL OR timestamp <= $6)
           AND deleted_at IS NULL 
         ORDER BY timestamp DESC 
-        LIMIT $8
+        LIMIT $7
         "#
     )
-    .bind(target_org_id)
     .bind(&params.agent_id)
     .bind(&params.event_type)
     .bind(&params.category)
@@ -178,10 +185,15 @@ pub async fn query_events(
     .bind(params.start_time)
     .bind(params.end_time)
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to query events: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit RLS transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -352,31 +364,42 @@ pub async fn list_agents(
     claims: Claims,
     headers: HeaderMap,
 ) -> Result<Json<Vec<serde_json::Value>>, StatusCode> {
-    let pool = state.db.pool();
-
-    let target_org_id = if claims.role == "super_admin" {
-        headers
+    let mut tx = if claims.role == "super_admin" {
+        if let Some(org_id) = headers
             .get("X-Organization-Id")
             .and_then(|h| h.to_str().ok())
             .and_then(|s| Uuid::parse_str(s).ok())
-            .ok_or(StatusCode::BAD_REQUEST)?
+        {
+            state.db.begin_rls_tx(org_id).await
+        } else {
+            state.db.begin_bypass_tx().await
+        }
     } else {
-        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
-    };
+        let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+        state.db.begin_rls_tx(org_id).await
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to begin RLS transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let agents = sqlx::query(
         r#"
         SELECT id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at
         FROM agents
-        WHERE organization_id = $1 AND deleted_at IS NULL
+        WHERE deleted_at IS NULL
         ORDER BY last_seen DESC
         "#,
     )
-    .bind(target_org_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to query agents: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit RLS transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 

@@ -41,6 +41,8 @@ pub struct Event {
     pub severity: Option<String>,
     pub category: Option<String>,
     pub deleted_at: Option<DateTime<Utc>>,
+    pub observed: Option<bool>,
+    pub received_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
 }
 
