@@ -27,7 +27,7 @@ pub async fn get_current_org(
     let pool = state.db.pool();
     let org = sqlx::query_as!(
         Organization,
-        r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at FROM organizations WHERE id = $1"#,
+        r#"SELECT id, name, enrollment_token, status, COALESCE(max_agents, 1000) as "max_agents!", token_expiry, created_at, updated_at, admin_verified FROM organizations WHERE id = $1"#,
         org_id
     )
     .fetch_optional(pool)

@@ -263,6 +263,7 @@ pub async fn register(
         email: user_row.get(2),
         role: user_row.get(4),
         full_name: user_row.get(5),
+        must_change_password: false,
     }))
 }
 

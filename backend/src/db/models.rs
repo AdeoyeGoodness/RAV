@@ -29,7 +29,6 @@ pub struct Agent {
     pub last_archived_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -89,7 +88,6 @@ pub struct User {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,7 +201,6 @@ pub struct OrganizationSettings {
     pub smtp_from_email: Option<String>,
     pub smtp_enabled: Option<bool>,
     pub updated_at: DateTime<Utc>,
-    pub admin_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
