@@ -37,7 +37,7 @@ DROP POLICY IF EXISTS agents_org_isolation ON agents;
 CREATE POLICY agents_org_isolation ON agents
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- === EVENTS ===
@@ -45,7 +45,7 @@ DROP POLICY IF EXISTS events_org_isolation ON events;
 CREATE POLICY events_org_isolation ON events
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- === FILES ===
@@ -53,7 +53,7 @@ DROP POLICY IF EXISTS files_org_isolation ON files;
 CREATE POLICY files_org_isolation ON files
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- === USERS ===
@@ -62,7 +62,7 @@ DROP POLICY IF EXISTS users_org_isolation ON users;
 CREATE POLICY users_org_isolation ON users
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- === AUDIT_LOGS ===
@@ -70,7 +70,7 @@ DROP POLICY IF EXISTS audit_logs_org_isolation ON audit_logs;
 CREATE POLICY audit_logs_org_isolation ON audit_logs
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- === ARCHIVES ===
@@ -78,7 +78,7 @@ DROP POLICY IF EXISTS archives_org_isolation ON archives;
 CREATE POLICY archives_org_isolation ON archives
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
 
 -- ============================================================
@@ -111,5 +111,5 @@ DROP POLICY IF EXISTS org_settings_isolation ON organization_settings;
 CREATE POLICY org_settings_isolation ON organization_settings
     USING (
         current_setting('app.current_org_id', true) = 'BYPASS'
-        OR organization_id = current_setting('app.current_org_id', true)::uuid
+        OR organization_id::text = current_setting('app.current_org_id', true)
     );
