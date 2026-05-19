@@ -586,8 +586,13 @@ pub async fn upload_file(
         tracing::error!("Upload: Failed to begin RLS tx for org {}: {}", org_id, e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    // Treat duplicate file_id as success — the agent retries the same id from its
+    // offline cache when uploads are interrupted, and the file content is already
+    // recorded. Without this the agent loops forever re-uploading the same blob.
     sqlx::query!(
-        "INSERT INTO files (file_id, organization_id, agent_id, file_name, file_size) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO files (file_id, organization_id, agent_id, file_name, file_size) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (file_id) DO NOTHING",
         file_id, org_id, agent_id, file_name, data.len() as i64
     )
     .execute(&mut *tx)

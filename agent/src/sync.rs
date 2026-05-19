@@ -325,27 +325,49 @@ impl SyncManager {
     pub async fn sync_events(&self) -> Result<()> {
         // 1. Fetch from Disk
         let batched_events = self.storage.fetch_unsynced_events(100)?; // Batch 100
-        
+
         if batched_events.is_empty() {
             return Ok(());
         }
 
-        // Clone events to allow modification (rebinding agent_id)
-        let mut events: Vec<Event> = batched_events.iter().map(|(_, e)| e.clone()).collect();
-        let event_ids: Vec<i64> = batched_events.iter().map(|(id, _)| *id).collect();
-
-        // Late Binding: ALWAYS bind events to current identity before sending
-        // This ensures events captured before enrollment are correctly tagged
         let (current_agent_id, _) = self.get_identity().await;
-        if current_agent_id != "unknown" {
-            for event in &mut events {
-                // Force all events to use the enrolled agent_id
-                event.agent_id = current_agent_id.clone();
-            }
-            info!("Rebinding {} events to agent_id: {}", events.len(), current_agent_id);
-        } else {
+        if current_agent_id == "unknown" {
             warn!("Cannot sync: agent_id is still 'unknown' (not enrolled yet)");
-            return Ok(()); // Don't send events with unknown agent_id
+            return Ok(());
+        }
+
+        // Partition the batch:
+        //   - events tagged with the current identity → send.
+        //   - events tagged "unknown" or with any other agent_id → drop.
+        //     These are pre-enrollment buffer or leftovers from a prior identity
+        //     (e.g. a previous MSI install whose queue survived in ProgramData),
+        //     and reattributing them to the new identity poisons the dashboard.
+        let mut events: Vec<Event> = Vec::with_capacity(batched_events.len());
+        let mut send_ids: Vec<i64> = Vec::with_capacity(batched_events.len());
+        let mut stale_ids: Vec<i64> = Vec::new();
+        for (id, event) in batched_events {
+            if event.agent_id == current_agent_id {
+                events.push(event);
+                send_ids.push(id);
+            } else {
+                stale_ids.push(id);
+            }
+        }
+
+        if !stale_ids.is_empty() {
+            warn!(
+                "Discarding {} queued events not tagged with current identity ({})",
+                stale_ids.len(), current_agent_id
+            );
+            // Mark them synced so the next prune cycle removes them.
+            // They never leave this machine.
+            if let Err(e) = self.storage.mark_synced(&stale_ids) {
+                error!("Failed to mark stale events as synced: {}", e);
+            }
+        }
+
+        if events.is_empty() {
+            return Ok(());
         }
 
         info!("Pushing {} buffered events to backend...", events.len());
@@ -373,8 +395,8 @@ impl SyncManager {
         }
 
         // 3. Mark Synced on Success (Transaction)
-        self.storage.mark_synced(&event_ids)?;
-        
+        self.storage.mark_synced(&send_ids)?;
+
         info!("Confirmed delivery of {} events.", events.len());
         Ok(())
     }
