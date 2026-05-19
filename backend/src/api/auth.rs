@@ -79,12 +79,16 @@ pub async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let pool = state.db.pool();
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass tx for login: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let user_row = sqlx::query(
         "SELECT id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at FROM users WHERE email = $1 AND status = 'active'"
     )
     .bind(&payload.email)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Auth query failed: {}", e);

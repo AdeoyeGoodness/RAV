@@ -46,8 +46,13 @@ pub async fn verify_identity(
     claims: Claims,
     Json(payload): Json<VerifyIdentityPayload>,
 ) -> Result<StatusCode, StatusCode> {
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     let user_row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
-        .fetch_optional(state.db.pool())
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
             tracing::error!("Identity verify: DB query failed: {}", e);
