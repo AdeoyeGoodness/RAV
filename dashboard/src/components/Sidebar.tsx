@@ -81,16 +81,6 @@ export default function Sidebar() {
 
         {/* Main Navigation */}
         <nav className="space-y-1 mb-8">
-          <a href="/" className={navItemClass('/')}>
-            <Home className={iconClass('/')} />
-            <span className="font-medium text-sm">Home</span>
-          </a>
-
-          <a href="/telemetry" className={navItemClass('/telemetry')}>
-            <Activity className={iconClass('/telemetry')} />
-            <span className="font-medium text-sm">Telemetry</span>
-          </a>
-
           {isLoading ? (
             <div className="px-4 space-y-4 py-2 mt-4">
               <div className="h-10 bg-white/[0.02] rounded-lg animate-pulse"></div>
@@ -101,6 +91,14 @@ export default function Sidebar() {
             <>
               {user?.role !== 'super_admin' && (
                 <>
+                  <a href="/" className={navItemClass('/')}>
+                    <Home className={iconClass('/')} />
+                    <span className="font-medium text-sm">Home</span>
+                  </a>
+                  <a href="/telemetry" className={navItemClass('/telemetry')}>
+                    <Activity className={iconClass('/telemetry')} />
+                    <span className="font-medium text-sm">Telemetry</span>
+                  </a>
                   <a href="/devices" className={navItemClass('/devices')}>
                     <Monitor className={iconClass('/devices')} />
                     <span className="font-medium text-sm">Devices</span>
