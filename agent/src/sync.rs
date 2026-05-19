@@ -30,6 +30,16 @@ pub struct AgentIdentity {
     pub organization_id: Option<String>,
 }
 
+/// Exponential backoff with ±5s jitter, capped at 600s.
+/// 1 failure → 60s, 2 → 120s, 3 → 240s, 4 → 480s, 5+ → 600s.
+fn compute_backoff_secs(failures: u32) -> u64 {
+    use rand::Rng;
+    let exp = failures.min(5);
+    let base = (2u64.pow(exp)).saturating_mul(30).min(600);
+    let jitter = rand::thread_rng().gen_range(0..5);
+    base + jitter
+}
+
 #[derive(Clone)]
 pub struct SyncManager {
     config: Arc<Config>,
@@ -111,43 +121,55 @@ impl SyncManager {
     }
 
     pub async fn run_sync_loop(&self) {
-        // Enroll agent on startup
-        if let Err(e) = self.enroll_agent().await {
-            error!("Failed to enroll agent: {}", e);
-        } else {
-            info!("Agent session active");
-            self.audit_event("RAV Agent session started", "info").await;
-        }
-
         let sync_interval = self.config.backend.sync_interval_seconds;
-        let mut consecutive_failures = 0;
-        
+        let mut consecutive_failures: u32 = 0;
+        let mut enrollment_failures: u32 = 0;
+        let mut enrolled = false;
+
         loop {
-            // Apply Network Jitter (Item 5.5) - Random +/- 5 second jitter
-            let jitter = {
-                use rand::Rng;
-                let mut rng = rand::thread_rng();
-                rng.gen_range(0..5)
-            };
-            
-            // Calculate sleep duration with exponential backoff if failing
+            // Phase 1: enrollment. Retry with backoff until the backend accepts us.
+            if !enrolled {
+                match self.enroll_agent().await {
+                    Ok(_) => {
+                        info!("Agent session active");
+                        self.audit_event("RAV Agent session started", "info").await;
+                        enrollment_failures = 0;
+                        enrolled = true;
+                        // Fall through to the sync cadence below.
+                    }
+                    Err(e) => {
+                        enrollment_failures = enrollment_failures.saturating_add(1);
+                        let backoff = compute_backoff_secs(enrollment_failures);
+                        error!(
+                            "Failed to enroll agent (attempt {}): {}. Retrying in {}s.",
+                            enrollment_failures, e, backoff
+                        );
+                        tokio::time::sleep(Duration::from_secs(backoff)).await;
+                        continue;
+                    }
+                }
+            }
+
+            // Phase 2: normal sync cadence (with backoff on transient sync failures).
             let base_sleep = if consecutive_failures > 0 {
-                // Exponential backoff: 30s, 60s, 120s, 240s, 480s, max 10 mins
-                let backoff = (2u64.pow(consecutive_failures.min(5) as u32) * 30).min(600);
-                Duration::from_secs(backoff + jitter)
+                compute_backoff_secs(consecutive_failures)
             } else {
-                Duration::from_secs(sync_interval + jitter)
+                let jitter = {
+                    use rand::Rng;
+                    let mut rng = rand::thread_rng();
+                    rng.gen_range(0..5)
+                };
+                sync_interval + jitter
             };
-            
-            tokio::time::sleep(base_sleep).await;
-            
+            tokio::time::sleep(Duration::from_secs(base_sleep)).await;
+
             // 1. Process Telemetry Events (Ordered by captured_at)
             match self.sync_events().await {
                 Ok(_) => {
                     consecutive_failures = 0;
                 }
                 Err(e) => {
-                    consecutive_failures += 1;
+                    consecutive_failures = consecutive_failures.saturating_add(1);
                     error!("Sync cycle failed (attempt {}): {}", consecutive_failures, e);
                     continue; // Skip heartbeat if we can't even sync events
                 }
