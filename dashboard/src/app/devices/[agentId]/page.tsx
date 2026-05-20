@@ -549,8 +549,13 @@ function ArchivesList({ agentId }: { agentId: string }) {
       // Burned after download — refresh so the consumed archive drops off the list.
       setTimeout(() => window.location.reload(), 1000);
     } catch (err: any) {
-      if (err?.response?.status === 401) {
+      const status = err?.response?.status;
+      if (status === 401) {
         alert("Incorrect password.");
+      } else if (status === 404) {
+        alert("This archive is no longer available (it may have already been downloaded).");
+        setIsAuthModalOpen(false);
+        setTimeout(() => window.location.reload(), 800);
       } else {
         alert("Download failed. Please try again.");
       }

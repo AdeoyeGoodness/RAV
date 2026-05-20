@@ -883,7 +883,18 @@ pub async fn download_archive(
     .ok_or(StatusCode::NOT_FOUND)?;
 
     let archive_path = state.archive_service.storage_dir().join(&archive.filename);
-    let data = std::fs::read(&archive_path).map_err(|_| StatusCode::NOT_FOUND)?;
+    let data = match std::fs::read(&archive_path) {
+        Ok(d) => d,
+        Err(_) => {
+            // File is gone (e.g. already burned by a prior download). Remove the orphaned
+            // row so the stale card disappears from the vault, then report not-found.
+            let _ = sqlx::query!("DELETE FROM archives WHERE id = $1", archive_id)
+                .execute(&mut *tx)
+                .await;
+            let _ = tx.commit().await;
+            return Err(StatusCode::NOT_FOUND);
+        }
+    };
 
     // 2. ATOMIC DELETE (Burn after download)
     let _ = std::fs::remove_file(&archive_path);
