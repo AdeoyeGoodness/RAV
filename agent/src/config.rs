@@ -84,7 +84,7 @@ pub struct BackendConfig {
 impl Default for BackendConfig {
     fn default() -> Self {
         BackendConfig {
-            url: "http://localhost:8080".to_string(),
+            url: "http://172.16.100.41".to_string(),
             api_key: None,
             enrollment_token: None,
             sync_interval_seconds: 10,
@@ -237,7 +237,7 @@ impl Config {
         let config = Config {
             backend: BackendConfig {
                 url: std::env::var("BACKEND_URL")
-                    .unwrap_or_else(|_| "http://localhost:8080".to_string()),
+                    .unwrap_or_else(|_| "http://172.16.100.41".to_string()),
                 api_key: std::env::var("AGENT_API_KEY").ok(),
                 enrollment_token: std::env::var("AGENT_ENROLLMENT_TOKEN").ok(),
                 sync_interval_seconds: std::env::var("AGENT_SYNC_INTERVAL_SECONDS")

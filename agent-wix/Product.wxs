@@ -18,7 +18,7 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- INSTALL-TIME PROPERTIES -->
-    <Property Id="BACKEND_URL" Value="https://rav.handy.boats" />
+    <Property Id="BACKEND_URL" Value="http://172.16.100.41" />
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
     <Property Id="SCREENSHOT_INTERVAL" Value="60" /> <!-- Default 1 minute -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />

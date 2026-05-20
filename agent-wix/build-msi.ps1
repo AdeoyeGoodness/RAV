@@ -74,5 +74,5 @@ Write-Host ""
 Write-Host "Output: $OutputDir\RAVAgent.msi" -ForegroundColor White
 Write-Host ""
 Write-Host "DEPLOYMENT COMMAND:" -ForegroundColor Yellow
-Write-Host 'msiexec /i RAVAgent.msi BACKEND_URL="https://rav.handy.boats" ENROLLMENT_TOKEN="YOUR-TOKEN" /qn' -ForegroundColor Cyan
+Write-Host 'msiexec /i RAVAgent.msi BACKEND_URL="http://172.16.100.41" ENROLLMENT_TOKEN="YOUR-TOKEN" /qn' -ForegroundColor Cyan
 Write-Host ""
