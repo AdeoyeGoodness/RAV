@@ -134,11 +134,24 @@ impl ArchiveService {
         .execute(&mut *tx)
         .await?;
 
-        // DELETE THE ARCHIVED EVENTS
+        // DELETE THE ARCHIVED EVENTS — but PRESERVE the most-recent wifi_changed so the
+        // device page's "Network Context" card (current network) survives the archive.
+        // wifi_changed is edge-triggered (only emitted on a real network change), so if we
+        // purged it the card would stay empty until the endpoint next switched networks.
+        // The kept event is still copied into the archive; a real network change later
+        // emits a fresh wifi_changed that supersedes it. IS DISTINCT FROM keeps the purge
+        // working normally when there is no wifi_changed (subquery is NULL).
         sqlx::query!(
             r#"
             DELETE FROM events
             WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
+              AND id IS DISTINCT FROM (
+                  SELECT id FROM events
+                  WHERE agent_id = $1 AND organization_id = $2
+                    AND event_type = 'wifi_changed' AND created_at < $3
+                  ORDER BY created_at DESC
+                  LIMIT 1
+              )
             "#,
             agent_id,
             org_id,
