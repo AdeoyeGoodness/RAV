@@ -18,6 +18,8 @@ pub struct AppConfig {
     pub smtp_user: Option<String>,
     pub smtp_pass: Option<String>,
     pub smtp_from: String,
+    /// Max screenshots embedded in a forensic PDF report (protects against huge PDFs/OOM).
+    pub report_max_screenshots: usize,
 }
 
 impl AppConfig {
@@ -55,6 +57,10 @@ impl AppConfig {
             smtp_pass: env::var("SMTP_PASS").ok(),
             smtp_from: env::var("SMTP_FROM")
                 .unwrap_or_else(|_| "noreply@rav-security.com".to_string()),
+            report_max_screenshots: env::var("REPORT_MAX_SCREENSHOTS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(200),
         })
     }
 }

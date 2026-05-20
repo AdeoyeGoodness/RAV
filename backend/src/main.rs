@@ -65,7 +65,12 @@ async fn main() -> Result<()> {
 
     // Initialize Archive System
     let archive_storage = std::path::PathBuf::from("storage/archives");
-    let archive_service = Arc::new(crate::services::archive::ArchiveService::new(db.pool().clone(), archive_storage));
+    let archive_service = Arc::new(crate::services::archive::ArchiveService::new(
+        db.pool().clone(),
+        archive_storage,
+        file_storage_dir.clone(),
+        config.report_max_screenshots,
+    ));
     info!("Archive storage: {}", archive_service.storage_dir().display());
     
     // Initialize Notification System
@@ -97,15 +102,22 @@ async fn main() -> Result<()> {
             tokio::time::sleep(tokio::time::Duration::from_secs(12 * 3600)).await; // Run every 12 hours
             info!("Running automated archive rotation check...");
             
-            // Query agents with events older than 3 days
-            let result = sqlx::query!(
-                r#"
-                SELECT DISTINCT agent_id, organization_id 
-                FROM events 
-                WHERE created_at < NOW() - INTERVAL '7 days'
-                "#
-            )
-            .fetch_all(db_bg.pool())
+            // Cross-org scan for agents with events older than 7 days. events has
+            // FORCE RLS, so this must run in a BYPASS transaction or it sees nothing.
+            let result = async {
+                let mut tx = db_bg.begin_bypass_tx().await?;
+                let rows = sqlx::query!(
+                    r#"
+                    SELECT DISTINCT agent_id, organization_id
+                    FROM events
+                    WHERE created_at < NOW() - INTERVAL '7 days'
+                    "#
+                )
+                .fetch_all(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                Ok::<_, sqlx::Error>(rows)
+            }
             .await;
 
             if let Ok(targets) = result {

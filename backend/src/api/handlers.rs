@@ -845,15 +845,19 @@ pub async fn download_archive(
     Path(archive_id): Path<Uuid>,
     Query(params): Query<DownloadQuery>,
 ) -> Result<Response<Body>, StatusCode> {
-    let pool = state.db.pool();
-
-    // 1. Password Verification (Security layer)
+    // 1. Password Verification (Security layer). users has FORCE RLS, so look up the
+    // caller's own row in a BYPASS tx (self-auth of an already-JWT-authenticated user).
     let password = params.password.ok_or(StatusCode::UNAUTHORIZED)?;
-    let user_row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
-        .fetch_optional(pool)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let user_row = {
+        let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        row
+    };
 
     if !bcrypt::verify(&password, &user_row.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
         return Err(StatusCode::UNAUTHORIZED);
@@ -865,12 +869,13 @@ pub async fn download_archive(
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
 
-    // Verify ownership
+    // archives has FORCE RLS — verify ownership and burn within an org-scoped tx.
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let archive = sqlx::query!(
         "SELECT filename FROM archives WHERE id = $1 AND organization_id = $2",
         archive_id, target_org_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
@@ -880,7 +885,8 @@ pub async fn download_archive(
 
     // 2. ATOMIC DELETE (Burn after download)
     let _ = std::fs::remove_file(&archive_path);
-    let _ = sqlx::query!("DELETE FROM archives WHERE id = $1", archive_id).execute(pool).await;
+    let _ = sqlx::query!("DELETE FROM archives WHERE id = $1", archive_id).execute(&mut *tx).await;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, "application/zip")
@@ -1094,8 +1100,6 @@ pub async fn get_all_archives(
     claims: Claims,
     headers: HeaderMap,
 ) -> Result<Json<Vec<crate::db::models::Archive>>, StatusCode> {
-    let pool = state.db.pool();
-
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -1106,16 +1110,19 @@ pub async fn get_all_archives(
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
 
+    // archives has FORCE RLS — scope the read to the org via an RLS transaction.
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let archives = sqlx::query_as::<_, crate::db::models::Archive>(
         "SELECT * FROM archives WHERE organization_id = $1 ORDER BY created_at DESC"
     )
     .bind(target_org_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to fetch all archives: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(archives))
 }

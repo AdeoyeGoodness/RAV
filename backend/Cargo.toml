@@ -57,6 +57,13 @@ rand = "0.8"
 # Archiving
 zip = "0.6"
 
+# PDF forensic report generation
+genpdf = { version = "0.2", features = ["images"] }
+# Used to decode/downscale/re-encode screenshots before embedding.
+# genpdf re-decodes the JPEG bytes we hand it (via Image::from_reader), so our
+# image version is decoupled from genpdf's internal one.
+image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
+
 # Notifications & Encryption
 lettre = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "hostname", "builder"] }
 aes-gcm = "0.10"
