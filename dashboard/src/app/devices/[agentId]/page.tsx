@@ -4,7 +4,7 @@ import React from 'react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert } from 'lucide-react'
-import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive } from '@/lib/api'
+import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, downloadArchive } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
@@ -527,15 +527,36 @@ function ArchivesList({ agentId }: { agentId: string }) {
     setIsAuthModalOpen(true);
   };
 
-  const handleDownload = () => {
-    if (!password) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/archives/${selectedArchiveId}/download?password=${encodeURIComponent(password)}`;
-    window.location.href = url;
-    setIsAuthModalOpen(false);
-    // Reload archives after a small delay since it burns after download
-    setTimeout(() => {
-      window.location.reload();
-    }, 2000);
+  const [downloading, setDownloading] = React.useState(false);
+
+  const handleDownload = async () => {
+    if (!password || !selectedArchiveId) return;
+    setDownloading(true);
+    try {
+      // Authenticated POST (cookie via withCredentials); password travels in the
+      // request body, never the URL. Returns the zip as a blob.
+      const blob = await downloadArchive(selectedArchiveId, password);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `forensic_archive_${selectedArchiveId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setIsAuthModalOpen(false);
+      setPassword("");
+      // Burned after download — refresh so the consumed archive drops off the list.
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        alert("Incorrect password.");
+      } else {
+        alert("Download failed. Please try again.");
+      }
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) return <div className="text-xs text-slate-500 italic">Initializing archive index...</div>;
@@ -599,11 +620,12 @@ function ArchivesList({ agentId }: { agentId: string }) {
               >
                 CANCEL
               </button>
-              <button 
+              <button
                 onClick={handleDownload}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/20"
+                disabled={downloading}
+                className="flex-1 bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                VERIFY & DOWNLOAD
+                {downloading ? "DECRYPTING…" : "VERIFY & DOWNLOAD"}
               </button>
             </div>
           </div>

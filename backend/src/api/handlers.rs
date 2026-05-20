@@ -843,7 +843,9 @@ pub async fn download_archive(
     claims: Claims,
     headers: HeaderMap,
     Path(archive_id): Path<Uuid>,
-    Query(params): Query<DownloadQuery>,
+    // Password comes in the POST body (never the URL) so it isn't leaked into
+    // browser history or proxy/access logs.
+    Json(params): Json<DownloadQuery>,
 ) -> Result<Response<Body>, StatusCode> {
     // 1. Password Verification (Security layer). users has FORCE RLS, so look up the
     // caller's own row in a BYPASS tx (self-auth of an already-JWT-authenticated user).
