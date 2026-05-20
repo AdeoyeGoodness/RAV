@@ -38,25 +38,29 @@ pub async fn start_monitoring(
 
 #[cfg(windows)]
 async fn scrape_windows_browsers(sync_manager: Arc<SyncManager>) -> Result<()> {
-    let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
-    if local_app_data.is_empty() { return Ok(()); }
+    // The agent runs as LocalSystem, so std::env::var("LOCALAPPDATA") resolves to
+    // the service profile (C:\Windows\System32\config\systemprofile\AppData\Local),
+    // not the logged-in users. Enumerate every real user's AppData\Local across all
+    // fixed drives and scrape each user's Chromium-based browsers from there.
+    for (user, local_app_data) in enumerate_user_local_appdata() {
+        let browsers = [
+            ("Chrome", format!("{}\\Google\\Chrome\\User Data", local_app_data)),
+            ("Edge", format!("{}\\Microsoft\\Edge\\User Data", local_app_data)),
+            ("Brave", format!("{}\\BraveSoftware\\Brave-Browser\\User Data", local_app_data)),
+        ];
 
-    let browsers = vec![
-        ("Chrome", format!("{}\\Google\\Chrome\\User Data", local_app_data)),
-        ("Edge", format!("{}\\Microsoft\\Edge\\User Data", local_app_data)),
-    ];
+        for (name, path) in browsers {
+            let base_path = Path::new(&path);
+            if !base_path.exists() { continue; }
 
-    for (name, path) in browsers {
-        let base_path = Path::new(&path);
-        if !base_path.exists() { continue; }
-
-        // Check Default and Profile X folders
-        let profiles = vec!["Default", "Profile 1", "Profile 2", "Profile 3"];
-        for profile in profiles {
-            let history_path = base_path.join(profile).join("History");
-            if history_path.exists() {
-                if let Err(e) = scrape_history_file(&history_path, name, profile, sync_manager.clone()).await {
-                    debug!("Failed to scrape {} history for {}: {}", name, profile, e);
+            // Check Default and Profile X folders
+            let profiles = ["Default", "Profile 1", "Profile 2", "Profile 3"];
+            for profile in profiles {
+                let history_path = base_path.join(profile).join("History");
+                if history_path.exists() {
+                    if let Err(e) = scrape_history_file(&history_path, name, profile, &user, sync_manager.clone()).await {
+                        debug!("Failed to scrape {} history for {}\\{}: {}", name, user, profile, e);
+                    }
                 }
             }
         }
@@ -65,15 +69,45 @@ async fn scrape_windows_browsers(sync_manager: Arc<SyncManager>) -> Result<()> {
     Ok(())
 }
 
+/// Enumerate every real user's `AppData\Local` directory across all fixed drives.
+/// Returns (username, local_appdata_path). Skips built-in/system profiles.
+/// Needed because the agent runs as LocalSystem and cannot rely on LOCALAPPDATA.
+#[cfg(windows)]
+fn enumerate_user_local_appdata() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for letter in b'C'..=b'Z' {
+        let users_dir = format!("{}:\\Users", letter as char);
+        let entries = match std::fs::read_dir(&users_dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if !entry.path().is_dir() { continue; }
+            let uname = entry.file_name().to_string_lossy().to_string();
+            if matches!(uname.to_lowercase().as_str(), "public" | "default" | "default user" | "all users" | "defaultuser0") {
+                continue;
+            }
+            let local = entry.path().join("AppData").join("Local");
+            if local.exists() {
+                out.push((uname, local.to_string_lossy().to_string()));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(windows)]
 async fn scrape_history_file(
-    path: &Path, 
-    browser: &str, 
+    path: &Path,
+    browser: &str,
     profile: &str,
+    user: &str,
     sync_manager: Arc<SyncManager>
 ) -> Result<()> {
     let storage = sync_manager.get_storage();
-    let state_key = format!("browser_last_ts_{}_{}", browser, profile);
+    // Key state per user as well, so different users' "Default" profiles don't
+    // share (and clobber) the same last-processed timestamp.
+    let state_key = format!("browser_last_ts_{}_{}_{}", user, browser, profile);
     
     // 1. Load last processed timestamp (Webkit format)
     let last_ts: i64 = match storage.load_state(&state_key) {
@@ -87,7 +121,7 @@ async fn scrape_history_file(
 
     // 2. Copy file to temp to avoid locking
     let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join(format!("rav_hist_{}_{}.db", browser, profile));
+    let temp_path = temp_dir.join(format!("rav_hist_{}_{}_{}.db", user, browser, profile));
     if let Err(e) = std::fs::copy(path, &temp_path) {
         debug!("Could not copy history file (likely in use): {}", e);
         return Ok(());
@@ -147,6 +181,7 @@ async fn scrape_history_file(
                 "visit_count": visit_cnt,
                 "browser": browser,
                 "profile": profile,
+                "user": user,
                 "source": "forensic_scraper"
             }),
         });
