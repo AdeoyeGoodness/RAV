@@ -230,18 +230,65 @@ pub async fn login(
 }
 
 pub async fn register(
+    claims: Option<Claims>,
     State(state): State<AppState>,
     Json(payload): Json<CreateUser>,
 ) -> Result<Json<UserResponse>, StatusCode> {
-    let pool = state.db.pool();
+    // Writes must go through a bypass transaction: the users table has
+    // FORCE ROW LEVEL SECURITY, and the plain pool connection has no
+    // app.current_org_id set, so inserts are rejected. login/me do the same.
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass tx for register: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // First-run bootstrap vs. locked-down access control:
+    //   * While NO super admin exists, registration is open (no auth) so the
+    //     initial super admin can be created via create_admin.js. The first
+    //     account is required to be a super_admin.
+    //   * Once a super admin exists, the caller must be an authenticated
+    //     super admin (this is the path the dashboard admin page uses).
+    let super_admin_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE role = 'super_admin' AND status = 'active'"
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to count super admins: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if super_admin_count == 0 {
+        // Bootstrap: the first account must itself be a super admin.
+        if payload.role != "super_admin" {
+            tracing::warn!(
+                "Bootstrap register rejected: first account must be super_admin, got '{}'",
+                payload.role
+            );
+            return Err(StatusCode::FORBIDDEN);
+        }
+    } else {
+        // Locked down: require an authenticated super admin.
+        match &claims {
+            Some(c) if c.role == "super_admin" => {}
+            Some(c) => {
+                tracing::warn!(
+                    "Register denied: user {} (role {}) is not super_admin",
+                    c.sub, c.role
+                );
+                return Err(StatusCode::FORBIDDEN);
+            }
+            None => return Err(StatusCode::UNAUTHORIZED),
+        }
+    }
 
     let password_hash = hash(payload.password, DEFAULT_COST).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let user_row = sqlx::query(
         r#"
-        INSERT INTO users (id, organization_id, email, password_hash, role, full_name)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at
+        INSERT INTO users (id, organization_id, email, password_hash, role, full_name, must_change_password)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, organization_id, email, password_hash, role, full_name, status, created_at, updated_at, must_change_password
         "#
     )
     .bind(Uuid::new_v4())
@@ -250,10 +297,16 @@ pub async fn register(
     .bind(password_hash)
     .bind(&payload.role)
     .bind(&payload.full_name)
-    .fetch_one(pool)
+    .bind(payload.must_change_password)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to create user: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit register tx: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
@@ -263,7 +316,7 @@ pub async fn register(
         email: user_row.get(2),
         role: user_row.get(4),
         full_name: user_row.get(5),
-        must_change_password: false,
+        must_change_password: user_row.get(9),
     }))
 }
 
