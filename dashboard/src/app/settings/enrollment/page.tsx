@@ -64,7 +64,7 @@ export default function EnrollmentTokensPage() {
       })
       
       setGeneratedToken(res.raw_token)
-      setNewToken({ ...newToken, label: '', max_agents: orgMaxAgents })
+      setNewToken({ ...newToken, label: '', max_agents: 1 })
       fetchData()
     } catch (error: any) {
       console.error(error)
@@ -89,6 +89,13 @@ export default function EnrollmentTokensPage() {
     setTimeout(() => setCopiedToken(null), 2000)
   }
 
+  // Slots already committed to active (non-revoked, non-expired) tokens.
+  // org max_agents is the ceiling, so only the leftover can go to a new token.
+  const allocatedAgents = tokens
+    .filter(t => !t.revoked && (!t.expires_at || new Date(t.expires_at) > new Date()))
+    .reduce((sum, t) => sum + (t.max_agents || 0), 0)
+  const remainingAgents = Math.max(0, orgMaxAgents - allocatedAgents)
+
   return (
     <div className="flex h-screen bg-[#050510] text-slate-300 font-sans selection:bg-sky-500/20 overflow-hidden relative">
       <div className="absolute top-[-20%] left-[-10%] w-[40%] h-[40%] bg-sky-900/10 blur-[180px] rounded-full pointer-events-none" />
@@ -108,7 +115,7 @@ export default function EnrollmentTokensPage() {
                 </div>
               </div>
               <button
-                  onClick={() => { setIsModalOpen(true); setGeneratedToken(null); }}
+                  onClick={() => { setNewToken(prev => ({ ...prev, max_agents: Math.max(1, remainingAgents) })); setIsModalOpen(true); setGeneratedToken(null); }}
                   className="flex items-center px-5 py-3 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_20px_rgba(2,132,199,0.2)] hover:shadow-[0_0_25px_rgba(2,132,199,0.3)] border border-sky-500/50"
               >
                   <Plus className="w-4 h-4 mr-2" />
@@ -218,16 +225,16 @@ export default function EnrollmentTokensPage() {
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">
-                                    Max Enrollments (Limit: {orgMaxAgents})
+                                    Max Enrollments ({remainingAgents} of {orgMaxAgents} remaining)
                                 </label>
                                 <input
                                     type="number"
                                     min="1"
-                                    max={orgMaxAgents}
+                                    max={remainingAgents}
                                     value={newToken.max_agents}
                                     onChange={(e) => {
                                         const val = parseInt(e.target.value);
-                                        if (val <= orgMaxAgents) {
+                                        if (!isNaN(val) && val >= 1 && val <= remainingAgents) {
                                             setNewToken({ ...newToken, max_agents: val })
                                         }
                                     }}
@@ -257,9 +264,10 @@ export default function EnrollmentTokensPage() {
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50"
+                                disabled={remainingAgents < 1}
+                                className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-600"
                             >
-                                Generate Secure Key
+                                {remainingAgents < 1 ? 'No Slots Remaining' : 'Generate Secure Key'}
                             </button>
                         </div>
                     </form>

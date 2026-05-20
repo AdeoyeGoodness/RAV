@@ -156,10 +156,35 @@ pub async fn create_enrollment_token(
     let requested_max = payload.max_agents.ok_or_else(|| {
         err(StatusCode::BAD_REQUEST, "max_agents is required.")
     })?;
-    if requested_max > org_max {
+    if requested_max < 1 {
+        return Err(err(StatusCode::BAD_REQUEST, "Max enrollments must be at least 1."));
+    }
+
+    // The org's max_agents is the hard ceiling on total provisionable agents, so a
+    // new token can only claim the slots left after existing active (non-revoked,
+    // non-expired) tokens' allocations are subtracted. Capping against org_max alone
+    // let every token claim the full org limit, ignoring slots already handed out.
+    let allocated = sqlx::query!(
+        r#"
+        SELECT COALESCE(SUM(max_agents), 0)::bigint AS "allocated!"
+        FROM enrollment_tokens
+        WHERE org_id = $1 AND revoked = false AND (expires_at IS NULL OR expires_at > NOW())
+        "#,
+        org_id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| internal())?
+    .allocated;
+
+    let remaining = (org_max as i64) - allocated;
+    if (requested_max as i64) > remaining {
         return Err(err(
             StatusCode::BAD_REQUEST,
-            &format!("Max enrollments cannot exceed your organization's limit of {}.", org_max),
+            &format!(
+                "Only {} of your organization's {} enrollment slots remain (the rest are already allocated to active tokens).",
+                remaining.max(0), org_max
+            ),
         ));
     }
 
