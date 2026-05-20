@@ -5,7 +5,8 @@ const data = JSON.stringify({
     password: process.env.ADMIN_PASSWORD || 'rav-super-password', // Use env var in production
     role: 'super_admin',
     full_name: 'RAV Super Admin',
-    organization_id: null
+    organization_id: null,
+    must_change_password: false
 });
 
 const options = {
