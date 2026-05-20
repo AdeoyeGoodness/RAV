@@ -92,12 +92,19 @@ impl ArchiveService {
         zip.start_file("events.json", options)?;
         zip.write_all(json_data.as_bytes())?;
 
-        // Human-readable PDF reports — one per section. A failure here must NOT abort
+        // Organization name for the report header (organizations table has no RLS).
+        let org_name = sqlx::query!("SELECT name FROM organizations WHERE id = $1", org_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|r| r.name)
+            .unwrap_or_default();
+
+        // Human-readable HTML reports — one per section. A failure here must NOT abort
         // archiving/purge; we still ship the JSON-only zip and proceed.
         match crate::services::report::generate_section_reports(
             agent_id,
             agent_id,
-            "",
+            &org_name,
             &events,
             &self.file_storage_dir,
             self.max_screenshots,
