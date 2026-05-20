@@ -661,8 +661,6 @@ pub async fn download_file(
     headers: HeaderMap,
     Path(file_id): Path<String>,
 ) -> Result<Response<Body>, StatusCode> {
-    let pool = state.db.pool();
-
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -673,14 +671,24 @@ pub async fn download_file(
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
 
-    let file_record = sqlx::query!(
+    // The files table has FORCE RLS. The lookup must run inside an org-scoped
+    // transaction so app.current_org_id is set; on the raw pool the policy is
+    // fail-closed and the row is invisible, which 404s every screenshot download.
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|e| {
+        tracing::error!("Download: Failed to begin RLS tx for org {}: {}", target_org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let _file_record = sqlx::query!(
         "SELECT file_name FROM files WHERE file_id = $1 AND organization_id = $2",
         file_id, target_org_id
     )
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let storage_dir = &state.file_storage_dir;
     let mut file_path: Option<std::path::PathBuf> = None;
