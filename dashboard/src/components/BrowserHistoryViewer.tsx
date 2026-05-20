@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { format } from 'date-fns'
 import { Globe, Download, Search, RefreshCw, Calendar, Filter, ExternalLink, Eye } from 'lucide-react'
 
@@ -19,6 +19,8 @@ interface BrowserHistoryViewerProps {
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
+  autoRefresh?: boolean
+  onToggleAutoRefresh?: () => void
 }
 
 export default function BrowserHistoryViewer({
@@ -27,7 +29,9 @@ export default function BrowserHistoryViewer({
   onRefresh,
   onClear,
   clearTimestamp,
-  onResetFilter
+  onResetFilter,
+  autoRefresh = true,
+  onToggleAutoRefresh
 }: BrowserHistoryViewerProps) {
   const [filter, setFilter] = useState<'all' | 'history' | 'active_tab' | 'download' | 'search'>('all')
   const [browserFilter, setBrowserFilter] = useState<string>('all')
@@ -175,20 +179,6 @@ export default function BrowserHistoryViewer({
     }
   }
 
-  const [autoRefresh, setAutoRefresh] = useState(true)
-
-  // Auto-refresh effect — controlled by toggle
-  useEffect(() => {
-    if (!autoRefresh || !onRefresh) return
-
-    const interval = setInterval(() => {
-      onRefresh()
-    }, 10000)
-
-    return () => clearInterval(interval)
-  }, [autoRefresh, onRefresh])
-
-
   return (
     <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/5">
@@ -200,7 +190,7 @@ export default function BrowserHistoryViewer({
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
+            onClick={onToggleAutoRefresh}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.1)]'

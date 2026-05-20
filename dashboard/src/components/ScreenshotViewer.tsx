@@ -20,6 +20,8 @@ interface ScreenshotViewerProps {
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
+  autoRefresh?: boolean
+  onToggleAutoRefresh?: () => void
 }
 
 export default function ScreenshotViewer({
@@ -28,7 +30,9 @@ export default function ScreenshotViewer({
   onRefresh,
   onClear,
   clearTimestamp,
-  onResetFilter
+  onResetFilter,
+  autoRefresh = true,
+  onToggleAutoRefresh
 }: ScreenshotViewerProps) {
   const [selectedScreenshot, setSelectedScreenshot] = useState<Event | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -196,19 +200,6 @@ export default function ScreenshotViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortedEvents.map(e => e.id).join(',')])
 
-  const [autoRefresh, setAutoRefresh] = useState(true)
-
-  // Auto-refresh effect — controlled by toggle
-  useEffect(() => {
-    if (!autoRefresh || !onRefresh) return
-
-    const interval = setInterval(() => {
-      onRefresh()
-    }, 10000)
-
-    return () => clearInterval(interval)
-  }, [autoRefresh, onRefresh])
-
   // Cleanup image URL on unmount
   useEffect(() => {
     return () => {
@@ -298,7 +289,7 @@ export default function ScreenshotViewer({
             </button>
           )}
           <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
+            onClick={onToggleAutoRefresh}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.1)]'

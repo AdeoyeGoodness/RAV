@@ -45,6 +45,7 @@ export default function DeviceDetailsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const mainRef = useRef<HTMLElement>(null)
 
   const loadDeviceData = useCallback(async (isInitial = false) => {
@@ -103,14 +104,15 @@ export default function DeviceDetailsPage() {
     }
   }, [agentId, user, loadDeviceData])
 
-  // Centralized auto-refresh — one single interval instead of 3 competing ones
+  // Centralized auto-refresh — the ONLY interval on this page. Each viewer's
+  // "Auto" toggle flips this shared flag, so pausing in one section pauses all.
   useEffect(() => {
-    if (!user) return
+    if (!user || !autoRefresh) return
     const interval = setInterval(() => {
       loadDeviceData(false)
     }, 10000)
     return () => clearInterval(interval)
-  }, [user, loadDeviceData])
+  }, [user, autoRefresh, loadDeviceData])
 
   const clearData = () => {
     if (confirm('Clear all displayed data? Only NEW events after this point will be shown. Old data will be hidden.')) {
@@ -432,6 +434,8 @@ export default function DeviceDetailsPage() {
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
+              autoRefresh={autoRefresh}
+              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Screenshot Viewer Section */}
@@ -442,6 +446,8 @@ export default function DeviceDetailsPage() {
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
+              autoRefresh={autoRefresh}
+              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Browser History Section */}
@@ -452,6 +458,8 @@ export default function DeviceDetailsPage() {
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
+              autoRefresh={autoRefresh}
+              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Forensic Archives Section (Item 12) */}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar, Clock } from 'lucide-react'
 
@@ -19,11 +19,12 @@ interface USBMonitoringProps {
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
+  autoRefresh?: boolean
+  onToggleAutoRefresh?: () => void
 }
 
-export default function USBMonitoring({ events, loading, onRefresh, onClear, clearTimestamp, onResetFilter }: USBMonitoringProps) {
+export default function USBMonitoring({ events, loading, onRefresh, onClear, clearTimestamp, onResetFilter, autoRefresh = true, onToggleAutoRefresh }: USBMonitoringProps) {
   const [filter, setFilter] = useState<'all' | 'usb_inserted' | 'usb_removed' | 'usb_file_transfer'>('all')
-  const [autoRefresh, setAutoRefresh] = useState(true)
   const [dateFilter, setDateFilter] = useState<string>('') // YYYY-MM-DD format
 
   // Filter USB events - explicitly exclude browser_download events
@@ -136,16 +137,6 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
     return new Date(iso)
   }
 
-  // Auto-refresh effect
-  useEffect(() => {
-    if (!autoRefresh || !onRefresh) return
-    
-    const interval = setInterval(() => {
-      onRefresh()
-    }, 10000) // Refresh every 10 seconds
-
-    return () => clearInterval(interval)
-  }, [autoRefresh, onRefresh])
 
   return (
     <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
@@ -226,7 +217,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setAutoRefresh(!autoRefresh)}
+            onClick={onToggleAutoRefresh}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.1)]'
