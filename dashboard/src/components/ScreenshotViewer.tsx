@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown } from 'lucide-react'
-import { downloadFile } from '@/lib/api'
+import { downloadFile, getEvents } from '@/lib/api'
 
 interface Event {
   id: string
@@ -14,25 +14,17 @@ interface Event {
 }
 
 interface ScreenshotViewerProps {
-  events: Event[]
-  loading: boolean
-  onRefresh?: () => void
+  agentId: string
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
-  autoRefresh?: boolean
-  onToggleAutoRefresh?: () => void
 }
 
 export default function ScreenshotViewer({
-  events,
-  loading,
-  onRefresh,
+  agentId,
   onClear,
   clearTimestamp,
-  onResetFilter,
-  autoRefresh = true,
-  onToggleAutoRefresh
+  onResetFilter
 }: ScreenshotViewerProps) {
   const [selectedScreenshot, setSelectedScreenshot] = useState<Event | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -44,6 +36,35 @@ export default function ScreenshotViewer({
   const [loadingThumbnails, setLoadingThumbnails] = useState<Set<string>>(new Set())
   const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(new Set())
   const loadingRef = useRef<Set<string>>(new Set())
+  const [allEvents, setAllEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // This section owns its own data, so refreshing it never touches the others.
+  const fetchEvents = useCallback(async (background = false) => {
+    if (!background) setLoading(true)
+    try {
+      const data = await getEvents({ agent_id: agentId, limit: 10000 })
+      setAllEvents(data as Event[])
+    } catch (e) {
+      console.error('Failed to load screenshot events:', e)
+    } finally {
+      if (!background) setLoading(false)
+    }
+  }, [agentId])
+
+  // Initial load shows a spinner; auto-refresh updates live without one.
+  useEffect(() => { fetchEvents(false) }, [fetchEvents])
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(() => fetchEvents(true), 10000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, fetchEvents])
+
+  // Apply the global "Clear" timestamp to this section's own data
+  const events = clearTimestamp
+    ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
+    : allEvents
 
   // Filter screenshot events
   const screenshotEvents = events.filter(e => e.event_type === 'screenshot_captured' || e.event_type === 'screenshot_upload_failed')
@@ -289,7 +310,7 @@ export default function ScreenshotViewer({
             </button>
           )}
           <button
-            onClick={onToggleAutoRefresh}
+            onClick={() => setAutoRefresh(v => !v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.1)]'
@@ -308,16 +329,14 @@ export default function ScreenshotViewer({
               <Trash2 className="w-4 h-4" />
             </button>
           )}
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="p-2 rounded-lg bg-black/40 border border-white/5 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all disabled:opacity-50"
-              title="Refresh screenshots"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-300' : ''}`} />
-            </button>
-          )}
+          <button
+            onClick={() => fetchEvents(false)}
+            disabled={loading}
+            className="p-2 rounded-lg bg-black/40 border border-white/5 text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all disabled:opacity-50"
+            title="Refresh screenshots"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-blue-300' : ''}`} />
+          </button>
         </div>
       </div>
 

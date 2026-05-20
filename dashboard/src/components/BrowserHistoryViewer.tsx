@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
 import { Globe, Download, Search, RefreshCw, Calendar, Filter, ExternalLink, Eye } from 'lucide-react'
+import { getEvents } from '@/lib/api'
 
 interface Event {
   id: string
@@ -13,31 +14,52 @@ interface Event {
 }
 
 interface BrowserHistoryViewerProps {
-  events: Event[]
-  loading: boolean
-  onRefresh?: () => void
+  agentId: string
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
-  autoRefresh?: boolean
-  onToggleAutoRefresh?: () => void
 }
 
 export default function BrowserHistoryViewer({
-  events,
-  loading,
-  onRefresh,
+  agentId,
   onClear,
   clearTimestamp,
-  onResetFilter,
-  autoRefresh = true,
-  onToggleAutoRefresh
+  onResetFilter
 }: BrowserHistoryViewerProps) {
   const [filter, setFilter] = useState<'all' | 'history' | 'active_tab' | 'download' | 'search'>('all')
   const [browserFilter, setBrowserFilter] = useState<string>('all')
   const [dateFilter, setDateFilter] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
+  const [allEvents, setAllEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // This section owns its own data, so refreshing it never touches the others.
+  const fetchEvents = useCallback(async (background = false) => {
+    if (!background) setLoading(true)
+    try {
+      const data = await getEvents({ agent_id: agentId, limit: 10000 })
+      setAllEvents(data as Event[])
+    } catch (e) {
+      console.error('Failed to load browser events:', e)
+    } finally {
+      if (!background) setLoading(false)
+    }
+  }, [agentId])
+
+  // Initial load shows a spinner; auto-refresh updates live without one.
+  useEffect(() => { fetchEvents(false) }, [fetchEvents])
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(() => fetchEvents(true), 10000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, fetchEvents])
+
+  // Apply the global "Clear" timestamp to this section's own data
+  const events = clearTimestamp
+    ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
+    : allEvents
 
   // Filter browser events - Support both old and new event types
   const browserEvents = events.filter(e =>
@@ -190,7 +212,7 @@ export default function BrowserHistoryViewer({
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={onToggleAutoRefresh}
+            onClick={() => setAutoRefresh(v => !v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.1)]'
@@ -199,15 +221,13 @@ export default function BrowserHistoryViewer({
           >
             Auto: {autoRefresh ? 'ON' : 'OFF'}
           </button>
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              className="p-2 rounded-lg bg-black/40 border border-white/5 text-indigo-400 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-300' : ''}`} />
-            </button>
-          )}
+          <button
+            onClick={() => fetchEvents(false)}
+            className="p-2 rounded-lg bg-black/40 border border-white/5 text-indigo-400 hover:bg-indigo-500/10 hover:border-indigo-500/30 transition-all disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-300' : ''}`} />
+          </button>
         </div>
       </div>
 

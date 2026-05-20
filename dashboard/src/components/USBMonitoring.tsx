@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar, Clock } from 'lucide-react'
+import { getEvents } from '@/lib/api'
 
 interface Event {
   id: string
@@ -13,19 +14,44 @@ interface Event {
 }
 
 interface USBMonitoringProps {
-  events: Event[]
-  loading: boolean
-  onRefresh?: () => void
+  agentId: string
   onClear?: () => void
   clearTimestamp?: Date | null
   onResetFilter?: () => void
-  autoRefresh?: boolean
-  onToggleAutoRefresh?: () => void
 }
 
-export default function USBMonitoring({ events, loading, onRefresh, onClear, clearTimestamp, onResetFilter, autoRefresh = true, onToggleAutoRefresh }: USBMonitoringProps) {
+export default function USBMonitoring({ agentId, onClear, clearTimestamp, onResetFilter }: USBMonitoringProps) {
   const [filter, setFilter] = useState<'all' | 'usb_inserted' | 'usb_removed' | 'usb_file_transfer'>('all')
   const [dateFilter, setDateFilter] = useState<string>('') // YYYY-MM-DD format
+  const [allEvents, setAllEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(true)
+
+  // This section owns its own data, so refreshing it never touches the others.
+  const fetchEvents = useCallback(async (background = false) => {
+    if (!background) setLoading(true)
+    try {
+      const data = await getEvents({ agent_id: agentId, limit: 10000 })
+      setAllEvents(data as Event[])
+    } catch (e) {
+      console.error('Failed to load USB events:', e)
+    } finally {
+      if (!background) setLoading(false)
+    }
+  }, [agentId])
+
+  // Initial load shows a spinner; auto-refresh updates live without one.
+  useEffect(() => { fetchEvents(false) }, [fetchEvents])
+  useEffect(() => {
+    if (!autoRefresh) return
+    const interval = setInterval(() => fetchEvents(true), 10000)
+    return () => clearInterval(interval)
+  }, [autoRefresh, fetchEvents])
+
+  // Apply the global "Clear" timestamp to this section's own data
+  const events = clearTimestamp
+    ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
+    : allEvents
 
   // Filter USB events - explicitly exclude browser_download events
   // to prevent them from appearing in USB monitoring section
@@ -217,7 +243,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={onToggleAutoRefresh}
+            onClick={() => setAutoRefresh(v => !v)}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
               autoRefresh
                 ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.1)]'
@@ -237,7 +263,7 @@ export default function USBMonitoring({ events, loading, onRefresh, onClear, cle
             </button>
           )}
           <button
-            onClick={onRefresh}
+            onClick={() => fetchEvents(false)}
             disabled={loading}
             className="p-2 rounded-lg bg-black/40 border border-white/5 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all disabled:opacity-50"
             title="Refresh data"

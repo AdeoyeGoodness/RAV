@@ -45,7 +45,6 @@ export default function DeviceDetailsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
   const mainRef = useRef<HTMLElement>(null)
 
   const loadDeviceData = useCallback(async (isInitial = false) => {
@@ -104,15 +103,16 @@ export default function DeviceDetailsPage() {
     }
   }, [agentId, user, loadDeviceData])
 
-  // Centralized auto-refresh — the ONLY interval on this page. Each viewer's
-  // "Auto" toggle flips this shared flag, so pausing in one section pauses all.
+  // Background refresh for the summary cards only (identity, network pulse,
+  // telemetry volume). Each section below fetches and refreshes its own data
+  // independently, so refreshing one section never touches the others.
   useEffect(() => {
-    if (!user || !autoRefresh) return
+    if (!user) return
     const interval = setInterval(() => {
       loadDeviceData(false)
     }, 10000)
     return () => clearInterval(interval)
-  }, [user, autoRefresh, loadDeviceData])
+  }, [user, loadDeviceData])
 
   const clearData = () => {
     if (confirm('Clear all displayed data? Only NEW events after this point will be shown. Old data will be hidden.')) {
@@ -210,11 +210,6 @@ export default function DeviceDetailsPage() {
   }
 
   const status = getAgentStatus(agent)
-  const usbEvents = events.filter(e =>
-    e.event_type === 'usb_inserted' ||
-    e.event_type === 'usb_removed' ||
-    e.event_type === 'usb_file_transfer'
-  )
 
   return (
     <div className="flex h-screen bg-[#020817] text-slate-200 font-sans selection:bg-cyan-500/30 relative overflow-hidden">
@@ -428,38 +423,26 @@ export default function DeviceDetailsPage() {
 
             {/* USB Monitoring Section */}
             <USBMonitoring
-              events={events}
-              loading={loading}
-              onRefresh={loadDeviceData}
+              agentId={agentId}
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
-              autoRefresh={autoRefresh}
-              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Screenshot Viewer Section */}
             <ScreenshotViewer
-              events={events}
-              loading={loading}
-              onRefresh={loadDeviceData}
+              agentId={agentId}
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
-              autoRefresh={autoRefresh}
-              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Browser History Section */}
             <BrowserHistoryViewer
-              events={events}
-              loading={loading}
-              onRefresh={loadDeviceData}
+              agentId={agentId}
               onClear={clearData}
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
-              autoRefresh={autoRefresh}
-              onToggleAutoRefresh={() => setAutoRefresh(v => !v)}
             />
 
             {/* Forensic Archives Section (Item 12) */}
