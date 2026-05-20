@@ -17,8 +17,8 @@ if %errorLevel% neq 0 (
 )
 
 :: --- DEFAULTS ---
-if "%SERVER_URL%"=="" set SERVER_URL=http://192.168.55.213:8080
-if "%TOKEN%"=="" set TOKEN=RAV-KRY0-CWYT-9EYZ-Z1XT
+if "%SERVER_URL%"=="" set SERVER_URL=http://172.16.100.41
+if "%TOKEN%"=="" set TOKEN=REPLACE-WITH-ENROLLMENT-TOKEN
 :: ----------------
 
 echo.
