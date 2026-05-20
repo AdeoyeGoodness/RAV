@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
@@ -15,6 +16,7 @@ import { RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
   const { user, isLoading } = useAuth()
+  const router = useRouter()
   const [agents, setAgents] = useState<Agent[]>([])
   const [allEvents, setAllEvents] = useState<any[]>([])
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
@@ -86,14 +88,17 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user && !isLoading) {
       if (user.role === 'super_admin') {
-        window.location.href = '/admin'
+        // Soft client-side redirect (no full-page reload) so the org dashboard never paints
+        router.replace('/admin')
       } else {
         fetchData()
       }
     }
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (isLoading || !user) {
+  // Hold the loading state for super_admins too — they belong on /admin, so never
+  // render the org Command Center for them (prevents the dashboard flash on login).
+  if (isLoading || !user || user.role === 'super_admin') {
     return (
       <div className="min-h-screen bg-[#030308] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">

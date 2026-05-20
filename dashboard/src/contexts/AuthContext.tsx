@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             } else if (user && user.must_change_password && pathname !== '/reset-password') {
                 router.push('/reset-password')
             } else if (user && !user.must_change_password && (pathname === '/login' || pathname === '/reset-password')) {
-                router.push('/')
+                router.push(user.role === 'super_admin' ? '/admin' : '/')
             }
         }
     }, [user, isLoading, pathname, router])
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (user.must_change_password) {
             router.push('/reset-password')
         } else {
-            router.push('/')
+            router.push(user.role === 'super_admin' ? '/admin' : '/')
         }
     }
 
