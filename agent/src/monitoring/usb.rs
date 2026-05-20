@@ -310,14 +310,50 @@ async fn start_windows_monitoring(
                     }
                     
                     // === STEP 2: System Scan (FROM USB TO SYSTEM) ===
-                    let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
-                    if !user_profile.is_empty() {
-                        let system_dirs = vec![
-                            format!("{}\\Downloads", user_profile),
-                            format!("{}\\Desktop", user_profile),
-                            format!("{}\\Documents", user_profile),
-                        ];
-                        
+                    // NOTE: the agent runs as LocalSystem, so std::env::var("USERPROFILE")
+                    // resolves to C:\Windows\System32\config\systemprofile — NOT the
+                    // logged-in user. Relying on it meant we scanned the service
+                    // account's empty folders and never saw real copies. Instead,
+                    // enumerate every real user's common folders across ALL fixed
+                    // drives, plus the root of data drives. The removable `drives`
+                    // (the USB sources) are excluded so we never treat the stick as a
+                    // destination. Each entry is (path, walk_depth).
+                    let watch_dirs: Vec<(String, u32)> = {
+                        let removable: std::collections::HashSet<String> = drives.iter().cloned().collect();
+                        let common = ["Desktop", "Downloads", "Documents", "Pictures", "Videos", "Music"];
+                        let mut dirs: Vec<(String, u32)> = Vec::new();
+                        for letter in b'C'..=b'Z' {
+                            let dl = format!("{}:", letter as char);
+                            if removable.contains(&dl) { continue; }
+                            let root = format!("{}\\", dl);
+                            if !std::path::Path::new(&root).exists() { continue; }
+                            let users_dir = format!("{}Users", root);
+                            if std::path::Path::new(&users_dir).exists() {
+                                // System/user drive: watch each real user's common folders.
+                                if let Ok(entries) = std::fs::read_dir(&users_dir) {
+                                    for entry in entries.flatten() {
+                                        if !entry.path().is_dir() { continue; }
+                                        let uname = entry.file_name().to_string_lossy().to_lowercase();
+                                        if matches!(uname.as_str(), "public" | "default" | "default user" | "all users" | "defaultuser0") {
+                                            continue;
+                                        }
+                                        for sub in &common {
+                                            let p = entry.path().join(sub);
+                                            if p.exists() {
+                                                dirs.push((p.to_string_lossy().to_string(), 3));
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Data drive with no \Users — watch its root broadly.
+                                dirs.push((root, 3));
+                            }
+                        }
+                        dirs
+                    };
+
+                    if !watch_dirs.is_empty() {
                         let mut usb_file_lookup: std::collections::HashMap<String, (String, u64, String, String, String)> = std::collections::HashMap::new();
                         for (dl, files) in &usb_snapshots {
                             let (did, dname) = device_map.get(dl).cloned().unwrap_or_else(|| (dl.clone(), format!("USB Drive {}", dl)));
@@ -328,23 +364,23 @@ async fn start_windows_monitoring(
                                 }
                             }
                         }
-                        
-                        for sys_dir in &system_dirs {
+
+                        for (sys_dir, depth) in &watch_dirs {
                             let sys_path = std::path::Path::new(sys_dir);
                             if !sys_path.exists() { continue; }
-                            
+
                             let mut current: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-                            walk_dir_files(sys_path, &mut current, 2);
-                            
+                            walk_dir_files(sys_path, &mut current, *depth);
+
                             let snapshot = sys_snapshots.entry(sys_dir.clone()).or_insert_with(std::collections::HashMap::new);
-                            
+
                             if !sys_baselined.contains(sys_dir) {
                                 *snapshot = current;
                                 sys_baselined.insert(sys_dir.clone());
                                 state_changed = true;
                                 continue;
                             }
-                            
+
                             for (fpath, &fsize) in &current {
                                 let mut is_new = false;
                                 if let Some((_, old_size)) = find_path_case_insensitive(snapshot, fpath) {
@@ -356,17 +392,17 @@ async fn start_windows_monitoring(
                                 }
 
                                 if !is_new { continue; }
-                                
+
                                 let fname = std::path::Path::new(fpath).file_name().and_then(|n| n.to_str()).unwrap_or("Unknown").to_string();
                                 let lookup_key = format!("{}|{}", fname.to_uppercase(), fsize);
-                                
+
                                 if let Some((usb_path, _, device_id, device_name, drive_letter)) = usb_file_lookup.get(&lookup_key) {
                                     let dedup = format!("from_usb_to_system|{}|{}", fpath.to_uppercase(), fsize);
                                     if logged_keys.contains(&dedup) { continue; }
                                     logged_keys.insert(dedup);
-                                    
+
                                     info!("TRANSFER DETECTED: Copy from USB to system: {} ({} bytes) from {}", fname, fsize, usb_path);
-                                    
+
                                     let (agent_id, _) = sync_manager_ft.get_identity().await;
                                     sync_manager_ft.queue_event(Event {
                                         event_type: "usb_file_transfer".to_string(),
