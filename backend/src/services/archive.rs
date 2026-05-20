@@ -92,9 +92,9 @@ impl ArchiveService {
         zip.start_file("events.json", options)?;
         zip.write_all(json_data.as_bytes())?;
 
-        // Human-readable PDF report. A failure here must NOT abort archiving/purge —
-        // we still ship the JSON-only zip and proceed.
-        match crate::services::report::generate_pdf_report(
+        // Human-readable PDF reports — one per section. A failure here must NOT abort
+        // archiving/purge; we still ship the JSON-only zip and proceed.
+        match crate::services::report::generate_section_reports(
             agent_id,
             agent_id,
             "",
@@ -102,9 +102,11 @@ impl ArchiveService {
             &self.file_storage_dir,
             self.max_screenshots,
         ) {
-            Ok(pdf_bytes) => {
-                zip.start_file("report.pdf", options)?;
-                zip.write_all(&pdf_bytes)?;
+            Ok(reports) => {
+                for (name, bytes) in reports {
+                    zip.start_file(&name, options)?;
+                    zip.write_all(&bytes)?;
+                }
             }
             Err(e) => {
                 warn!("PDF report generation failed for {}: {} — archiving JSON only", agent_id, e);
