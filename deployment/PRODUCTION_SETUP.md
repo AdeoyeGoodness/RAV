@@ -262,4 +262,101 @@ These are known and intentionally deferred — track and close them:
 | Backend "Access Denied" from MinIO | creds drift | `S3_ACCESS_KEY/SECRET` vs `MINIO_ROOT_USER/PASSWORD` |
 | Backend won't start, DB error | wrong port/password | `DATABASE_URL` (native Postgres = 5432, not 5434) |
 | Can't reach site from another subnet | nginx allow-list or routing | nginx `allow` blocks + inter-subnet routing |
+
+---
+
+## 10. Agent deployment & troubleshooting
+
+The agent runs on monitored **endpoints** (not the server). It reads its config from
+`C:\ProgramData\RAV\config.toml`, buffers events to `C:\ProgramData\RAV\rav_events.db`,
+logs to `C:\ProgramData\RAV\logs\`, and runs as the Windows service **`RAVAgent`**
+("RAV Monitoring Agent") under `LocalSystem`.
+
+### Where the backend URL comes from
+
+The agent builds requests as `{backend.url}/api/v1/...`, so `backend.url` must be the
+server **fronted by nginx** — `http://172.16.100.41` (port 80, no `:8080`). It resolves
+the URL in this order: `config.toml` → `--server` flag → `BACKEND_URL` env → compiled
+default (now `http://172.16.100.41`). The MSI writes `config.toml` from its
+`BACKEND_URL` property at install time.
+
+### Deploying an agent (clean install)
+
+```powershell
+# On each endpoint, elevated PowerShell.
+# 1. Clean any prior state so a stale config/queue can't linger (the MSI does NOT
+#    overwrite an existing config.toml).
+Remove-Item -Recurse -Force C:\ProgramData\RAV  -ErrorAction SilentlyContinue
+
+# 2. Install, passing the URL and the org-generated enrollment token explicitly.
+msiexec /i RAVAgent.msi BACKEND_URL="http://172.16.100.41" ENROLLMENT_TOKEN="<org-token>" /qn
+```
+
+Enrollment tokens are generated in the dashboard by an **org admin** (super admin →
+create organization → org admin → generate enrollment token).
+
+### MANDATORY pre-flight check (do this first, every time)
+
+Most agent "failures" are actually the endpoint not being able to reach the server.
+Before blaming the agent, prove reachability **from that endpoint, at that moment**:
+
+```powershell
+ipconfig | Select-String "IPv4"                                # must be in 172.16.x / 10.0.x (an allowed subnet)
+curl.exe -i --max-time 10 http://172.16.100.41/api/v1/agents   # must return HTTP 401
+```
+
+If the `curl` does not return `401`, **fix the network first** — do not touch the agent.
+Endpoints must be on a network/subnet that routes to `172.16.100.41` (Ethernet, or a
+machine-wide Wi-Fi profile). A laptop roaming between many Wi-Fi networks is the classic
+cause of intermittent agent failure.
+
+### Reading the agent log
+
+```powershell
+$log = (Get-ChildItem "C:\ProgramData\RAV\logs\*" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+Get-Content $log -Tail 20 -Wait
+```
+
+| Log line | Meaning | Action |
+|----------|---------|--------|
+| `Enrollment request failed` (+ `os error 10060`) | TCP connect timed out — **can't reach the server** | network problem — run the pre-flight check |
+| `Enrollment denied 401` | reached the server, but the **token** was rejected | regenerate the enrollment token in the dashboard; check the org is `active` |
+| `Resuming session for Organization: …` / `Agent session active` | **enrolled OK** | — |
+| `Discarding N … not tagged with current identity` | draining a stale pre-enrollment backlog | normal once; if persistent, see below |
+| `Pushing N buffered events to backend...` | events are being POSTed to `/api/v1/events` | working |
+
+### Service control
+
+```powershell
+Get-Service RAVAgent
+Restart-Service RAVAgent
+```
+
+### "Device shows up but no events"
+
+The agent buffers events tagged with its identity and only sends events matching the
+**current** enrolled identity; mismatched ones are discarded. If a large backlog built
+up while the agent was offline/unenrolled, it drains 100-at-a-time (oldest first), so
+new events can take several minutes to appear. To skip the backlog immediately (those
+events are discarded anyway, never sent):
+
+```powershell
+Stop-Service RAVAgent
+Remove-Item C:\ProgramData\RAV\rav_events.db* -Force
+Start-Service RAVAgent
+```
+
+The agent id is derived deterministically from the hardware fingerprint
+(`{hostname}-{fingerprint}`), so a reinstall/config-reset reuses the same id — it hits
+the same backend device row and keeps previously-buffered events valid (no orphaning).
+
+### Don't run the agent with no flags to "test" it
+
+Running `rav-agent.exe` with no arguments starts it in service/foreground mode logging
+to the **file**, not the console — so it looks like nothing happens. To test enrollment
+visibly, stop the service and use the one-shot enroll (prints to console):
+
+```powershell
+Stop-Service RAVAgent
+& "C:\Program Files (x86)\RAV Agent\rav-agent.exe" --server "http://172.16.100.41" --enroll "<token>"
 ```

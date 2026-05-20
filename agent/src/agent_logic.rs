@@ -261,15 +261,25 @@ async fn get_current_network_state() -> serde_json::Value {
 }
 
 pub fn generate_agent_id() -> String {
-    // Use hostname as base for agent ID
+    // Use hostname as a human-readable base.
     let hostname = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
         .unwrap_or_else(|_| "unknown".to_string());
-    
-    // Generate a unique ID based on hostname and UUID
-    use uuid::Uuid;
-    let uuid_short = Uuid::new_v4().to_string().split('-').next().unwrap().to_string();
-    format!("{}-{}", hostname, uuid_short)
+
+    // Derive a STABLE suffix from the hardware fingerprint instead of a random
+    // UUID, so the same machine always produces the same agent_id.
+    //
+    // Why this matters: agent_id is regenerated here whenever the persisted
+    // identity is missing (config reset, reinstall, ProgramData wiped). With a
+    // random suffix, the machine would get a brand-new id and then silently
+    // discard every event still buffered under the old id (see the identity
+    // check in SyncManager::sync_events), and the backend would create a
+    // duplicate device row. A deterministic id avoids both: re-enrollment hits
+    // the same agents row (ON CONFLICT (agent_id)) and previously-tagged events
+    // still match.
+    let fingerprint = generate_hardware_fingerprint();
+    let short = &fingerprint[..fingerprint.len().min(12)];
+    format!("{}-{}", hostname, short)
 }
 
 pub fn generate_hardware_fingerprint() -> String {
