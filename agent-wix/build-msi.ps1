@@ -33,14 +33,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Extension build failed!" -ForegroundColor Red
     exit 1
 }
-# Pack the signed CRX (stable ID from rav-extension.pem) for self-hosted force-install.
-npm run pack-crx
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Extension CRX packing failed!" -ForegroundColor Red
-    exit 1
-}
 Pop-Location
-Write-Host "OK: Extension compiled + packed (output\rav.crx)" -ForegroundColor Green
+Write-Host "OK: Extension compiled successfully" -ForegroundColor Green
 
 # Step 2: Build the Rust agent
 Write-Host ""
