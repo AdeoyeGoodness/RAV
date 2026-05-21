@@ -103,6 +103,8 @@ export interface Agent {
   created_at: string
   updated_at: string
   admin_verified?: boolean
+  enrollment_token_id?: string | null
+  campaign?: string | null // Enrollment-token label this device registered under
 }
 
 export async function getEvents(params?: {

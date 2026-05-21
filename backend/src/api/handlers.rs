@@ -120,6 +120,16 @@ pub async fn ingest_events(
     })?;
 
     for event in events {
+        // The agent doesn't send a category, so derive it from event_type. (Previously every
+        // event was stored as "system", which made the dashboard's category bars read zero for
+        // everything except browser.) Respect an explicit category if one is ever provided.
+        let category = event
+            .category
+            .as_deref()
+            .filter(|c| !c.is_empty() && *c != "system")
+            .map(str::to_string)
+            .unwrap_or_else(|| categorize_event(&event.event_type).to_string());
+
         let result = sqlx::query!(
             r#"
             INSERT INTO events (id, organization_id, agent_id, event_type, timestamp, metadata, severity, category, created_at)
@@ -132,7 +142,7 @@ pub async fn ingest_events(
             event.timestamp,
             &event.metadata,
             event.severity.as_deref().unwrap_or("low"),
-            event.category.as_deref().unwrap_or("system"),
+            category,
             Utc::now()
         )
         .execute(&mut *tx)
@@ -154,6 +164,32 @@ pub async fn ingest_events(
         "events_ingested": events_count,
         "organization_id": org_id
     })))
+}
+
+/// Map an event_type to a dashboard category. Mirrors report.rs `bucket()` but uses the lowercase
+/// keys the dashboard filters on (network/process/browser/file/screenshot). Order matters —
+/// first match wins (kept in sync with migration 016's backfill CASE).
+fn categorize_event(event_type: &str) -> &'static str {
+    let t = event_type.to_ascii_lowercase();
+    if t.contains("screenshot") {
+        "screenshot"
+    } else if t.contains("usb") || t.contains("file_transfer") {
+        "file"
+    } else if t.contains("browser")
+        || t.contains("history")
+        || t.contains("active_tab")
+        || t.contains("tab_updated")
+        || t.contains("search")
+        || t.contains("download")
+    {
+        "browser"
+    } else if t.contains("network") || t.contains("connection") || t.contains("wifi") {
+        "network"
+    } else if t.contains("process") {
+        "process"
+    } else {
+        "system"
+    }
 }
 
 pub async fn query_events(
@@ -582,10 +618,13 @@ pub async fn list_agents(
 
     let agents = sqlx::query(
         r#"
-        SELECT id, organization_id, agent_id, hardware_fingerprint, hostname, last_seen, created_at, updated_at
-        FROM agents
-        WHERE deleted_at IS NULL
-        ORDER BY last_seen DESC
+        SELECT a.id, a.organization_id, a.agent_id, a.hardware_fingerprint, a.hostname,
+               a.last_seen, a.created_at, a.updated_at,
+               a.enrollment_token_id, t.label AS token_label
+        FROM agents a
+        LEFT JOIN enrollment_tokens t ON a.enrollment_token_id = t.token_id
+        WHERE a.deleted_at IS NULL
+        ORDER BY a.last_seen DESC
         "#,
     )
     .fetch_all(&mut *tx)
@@ -616,6 +655,8 @@ pub async fn list_agents(
                 "server_time_ms": now.timestamp_millis(), // Add this for clock-sync
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
+                "enrollment_token_id": row.get::<Option<Uuid>, _>("enrollment_token_id"),
+                "campaign": row.get::<Option<String>, _>("token_label"),
             })
         })
         .collect();

@@ -54,10 +54,12 @@ export default function DashboardPage() {
       const mediumCount = eventsData.filter((e: any) => e.severity === 'medium').length
       const lowCount = eventsData.filter((e: any) => e.severity === 'low').length
 
+      // Categories are derived server-side from event_type (backend categorize_event +
+      // migration 016 backfill), so these all key off the canonical `category` field now.
       const networkCount = eventsData.filter((e: any) => e.category === 'network').length
       const processCount = eventsData.filter((e: any) => e.category === 'process').length
       const fileCount = eventsData.filter((e: any) => e.category === 'file').length
-      const browserCount = eventsData.filter((e: any) => e.event_type?.includes('BROWSER') || e.event_type?.includes('URL') || e.event_type?.includes('browser')).length
+      const browserCount = eventsData.filter((e: any) => e.category === 'browser').length
 
       const uniqueIps = new Set(eventsData.map((e: any) => e.metadata?.remote_ip).filter(Boolean)).size
       const screenshots = eventsData.filter((e: any) => e.event_type === 'screenshot_captured').length

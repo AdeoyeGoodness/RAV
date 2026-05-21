@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Monitor, Activity, Clock, HardDrive, Search } from 'lucide-react'
+import { Monitor, Activity, Clock, HardDrive, Search, Tag } from 'lucide-react'
 import { getAgents, getEvents, Agent } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -17,6 +17,7 @@ export default function DevicesPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [campaignFilter, setCampaignFilter] = useState('all')
 
   useEffect(() => {
     if (user) {
@@ -71,13 +72,26 @@ export default function DevicesPage() {
     return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
   }
 
+  // Distinct campaigns (enrollment-token labels) present across this org's devices.
+  const campaigns = Array.from(
+    new Set(agents.map(a => a.campaign).filter((c): c is string => !!c))
+  ).sort()
+
   const filteredAgents = agents.filter(agent => {
+    // Campaign filter
+    if (campaignFilter === '__none__') {
+      if (agent.campaign) return false
+    } else if (campaignFilter !== 'all') {
+      if (agent.campaign !== campaignFilter) return false
+    }
+    // Text search
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
     return (
       agent.agent_id.toLowerCase().includes(query) ||
       agent.hardware_fingerprint.toLowerCase().includes(query) ||
-      (agent.hostname && agent.hostname.toLowerCase().includes(query))
+      (agent.hostname && agent.hostname.toLowerCase().includes(query)) ||
+      (agent.campaign && agent.campaign.toLowerCase().includes(query))
     )
   })
 
@@ -95,13 +109,13 @@ export default function DevicesPage() {
               <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Manage and monitor all connected devices</p>
             </div>
 
-            {/* Search Bar */}
-            <div className="mb-6">
-              <div className="relative">
+            {/* Search + Campaign filter */}
+            <div className="mb-6 flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
                 <input
                   type="text"
-                  placeholder="Search devices by ID or hardware fingerprint..."
+                  placeholder="Search devices by ID, hostname, fingerprint, or campaign..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none transition-all"
@@ -114,6 +128,26 @@ export default function DevicesPage() {
                   onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; }}
                 />
               </div>
+              <select
+                value={campaignFilter}
+                onChange={(e) => setCampaignFilter(e.target.value)}
+                className="px-4 py-3 border rounded-lg focus:outline-none transition-all sm:w-64"
+                style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-primary)'
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; }}
+              >
+                <option value="all">All campaigns ({agents.length})</option>
+                {campaigns.map((c) => (
+                  <option key={c} value={c}>
+                    {c} ({agents.filter(a => a.campaign === c).length})
+                  </option>
+                ))}
+                <option value="__none__">No campaign</option>
+              </select>
             </div>
 
             {/* Devices Grid */}
@@ -181,6 +215,17 @@ export default function DevicesPage() {
                           <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>
                             {new Date(agent.created_at).toLocaleDateString()}
                           </span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-sm">
+                          <Tag className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+                          <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Campaign:</span>
+                          {agent.campaign ? (
+                            <span className="px-2 py-0.5 rounded-md text-xs font-medium" style={{ backgroundColor: 'rgba(0, 217, 255, 0.12)', color: 'var(--accent-cyan)' }}>
+                              {agent.campaign}
+                            </span>
+                          ) : (
+                            <span className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Unassigned</span>
+                          )}
                         </div>
                       </div>
 

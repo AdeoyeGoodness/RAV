@@ -3,7 +3,7 @@
 import React from 'react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert, Tag } from 'lucide-react'
 import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, downloadArchive } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -24,6 +24,7 @@ interface Agent {
   server_time_ms: number
   created_at: string
   updated_at: string
+  campaign?: string | null
 }
 
 interface Event {
@@ -244,6 +245,14 @@ export default function DeviceDetailsPage() {
                         {status.status}
                       </span>
                     </div>
+                    {agent.campaign && (
+                      <div className="px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 flex items-center gap-2" title="Enrollment campaign / token label">
+                        <Tag className="w-3 h-3 text-cyan-400" />
+                        <span className="text-cyan-300 text-xs font-bold tracking-wide uppercase">
+                          {agent.campaign}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <p className="text-slate-400 font-medium tracking-wide flex items-center gap-2">
                     <Monitor className="w-4 h-4 opacity-70" />
