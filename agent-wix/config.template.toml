@@ -6,6 +6,9 @@
 # enrollment_token = ""         # Population managed by MSI
 sync_interval_seconds = 10
 heartbeat_interval_seconds = 60
+# Enforce signed auto-updates: set to the code-signing cert thumbprint (no spaces). When set, the
+# agent refuses any update MSI not validly signed by this cert. See deployment/AGENT_AUTOUPDATE.md.
+# update_signer_thumbprint = ""
 
 [agent]
 # agent_id = ""                 # Population managed by MSI

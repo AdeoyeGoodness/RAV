@@ -40,6 +40,10 @@ static UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
 /// so the install no-ops and we keep our old version) doesn't re-download every heartbeat.
 static LAST_ATTEMPT: OnceLock<Mutex<Option<(String, Instant)>>> = OnceLock::new();
 const RETRY_COOLDOWN: Duration = Duration::from_secs(30 * 60);
+/// Optional compiled-in fallback for the expected MSI signer thumbprint. Leave empty to rely on
+/// `backend.update_signer_thumbprint` in config; bake a value here to hard-pin it in the (signed)
+/// binary so a tampered local config can't disable the check.
+const DEFAULT_SIGNER_THUMBPRINT: &str = "";
 
 /// Remove a stale downloaded installer from a previous update cycle. Call once on startup.
 pub fn cleanup_stale(config: &Config) {
@@ -139,7 +143,89 @@ async fn download_and_launch(config: &Config, info: &UpdateInfo) -> anyhow::Resu
     let msi_path = dir.join("RAVAgent.msi");
     std::fs::write(&msi_path, &bytes).context("writing installer to disk")?;
 
+    // Provenance gate: refuse any installer not validly signed by our pinned cert. This is what
+    // actually defeats a MITM (who could otherwise forge both the MSI bytes and the manifest
+    // sha256). No-op, with a warning, until a thumbprint is configured.
+    verify_signature_gate(config, &msi_path)?;
+
     launch_installer(&msi_path)
+}
+
+/// Resolve the expected signer thumbprint (config first, then compiled-in fallback) and enforce
+/// it. When none is set, signature checking is skipped (sha256 still applies) with a loud warning.
+fn verify_signature_gate(config: &Config, msi_path: &std::path::Path) -> anyhow::Result<()> {
+    let cfg_tp = config
+        .backend
+        .update_signer_thumbprint
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let expected = cfg_tp.or(if DEFAULT_SIGNER_THUMBPRINT.is_empty() {
+        None
+    } else {
+        Some(DEFAULT_SIGNER_THUMBPRINT)
+    });
+
+    match expected {
+        Some(tp) => verify_signature(msi_path, tp),
+        None => {
+            warn!(
+                "Auto-update: installer signature NOT enforced (no backend.update_signer_thumbprint set). \
+                 Relying on sha256 only — set the thumbprint to harden against a hostile server/MITM."
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Verify the MSI carries a valid Authenticode signature from the expected cert. Uses
+/// `Get-AuthenticodeSignature`; `Valid` requires the signing cert to be trusted on this endpoint
+/// (install its public cert into LocalMachine\Root — see deployment/AGENT_AUTOUPDATE.md).
+#[cfg(windows)]
+fn verify_signature(msi_path: &std::path::Path, expected_thumbprint: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let ps = format!(
+        "$s = Get-AuthenticodeSignature -LiteralPath '{}'; \
+         if ($s.Status -ne 'Valid') {{ Write-Output (\"INVALID:\" + $s.Status) }} \
+         else {{ Write-Output (\"OK:\" + $s.SignerCertificate.Thumbprint) }}",
+        msi_path.display()
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .context("running Get-AuthenticodeSignature")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("OK:") || l.starts_with("INVALID:"))
+        .unwrap_or("");
+
+    if let Some(status) = line.strip_prefix("INVALID:") {
+        anyhow::bail!(
+            "MSI Authenticode status is '{}' (need Valid — is the signing cert in LocalMachine\\Root?)",
+            status.trim()
+        );
+    }
+    let thumb = line
+        .strip_prefix("OK:")
+        .context("could not read MSI signature")?
+        .trim();
+    if !thumb.eq_ignore_ascii_case(expected_thumbprint) {
+        anyhow::bail!("MSI signer thumbprint mismatch (got '{}', expected '{}')", thumb, expected_thumbprint);
+    }
+    info!("Auto-update: MSI signature verified (signer {})", thumb);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn verify_signature(_msi_path: &std::path::Path, _expected_thumbprint: &str) -> anyhow::Result<()> {
+    Ok(())
 }
 
 #[cfg(windows)]

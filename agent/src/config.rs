@@ -79,6 +79,11 @@ pub struct BackendConfig {
     pub enrollment_token: Option<String>,
     pub sync_interval_seconds: u64,
     pub heartbeat_interval_seconds: u64,
+    /// Authenticode thumbprint the auto-update MSI must be signed with. When set, the agent
+    /// refuses any downloaded installer that isn't validly signed by this cert. Empty/absent =
+    /// signature enforcement off (SHA-256 only). serde default keeps older configs parseable.
+    #[serde(default)]
+    pub update_signer_thumbprint: Option<String>,
 }
 
 impl Default for BackendConfig {
@@ -89,6 +94,7 @@ impl Default for BackendConfig {
             enrollment_token: None,
             sync_interval_seconds: 10,
             heartbeat_interval_seconds: 60,
+            update_signer_thumbprint: None,
         }
     }
 }
@@ -257,6 +263,7 @@ impl Config {
                     .ok()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(60),
+                update_signer_thumbprint: std::env::var("AGENT_UPDATE_SIGNER_THUMBPRINT").ok(),
             },
             agent: AgentConfig {
                 agent_id: None, // Will be generated on first run

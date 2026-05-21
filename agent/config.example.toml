@@ -6,6 +6,8 @@ url = "http://172.16.100.41"
 # api_key = "your-api-key-here"  # Uncomment and set if using API key auth
 sync_interval_seconds = 10
 heartbeat_interval_seconds = 60
+# Enforce signed auto-updates: code-signing cert thumbprint (no spaces). Empty/absent = sha256 only.
+# update_signer_thumbprint = "ABC123...DEF"
 
 [agent]
 # agent_id will be auto-generated on first run

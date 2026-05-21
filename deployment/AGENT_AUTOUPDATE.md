@@ -85,11 +85,59 @@ manifest is read per-heartbeat. To pause/disable rollout, delete or rename `late
 3. Confirm the new version: `Get-Service RAVAgent` running, and the next startup log line shows
    `RAV Agent starting (v0.1.4)`.
 
-## Security (important, currently deferred hardening)
+## Signing (provenance hardening — strongly recommended)
 
-Over plain HTTP this is effectively **SYSTEM-level remote code delivery** from the backend: any
-party that controls the server or can MITM the LAN can push an arbitrary MSI to every endpoint.
-The SHA-256 check only catches corruption (the hash arrives over the same channel). Harden with:
-- **TLS** on the backend (the standing "No TLS" item in `PRODUCTION_SETUP.md`), and
-- an **Authenticode-signed MSI** with signature verification before launch.
-Acceptable for now only because the network is internal/firewalled.
+Auto-update is effectively remote SYSTEM code delivery. The sha256 alone does **not** stop a
+hostile server / LAN MITM (they'd control the manifest hash too). The real defense is an
+**Authenticode-signed MSI** the agent verifies before running. The agent already enforces this
+when `backend.update_signer_thumbprint` is set; here's the one-time setup. (Until it's set, the
+agent logs a warning and falls back to sha256-only, so nothing breaks before you finish.)
+
+### 1. Create a code-signing cert — once, on the build machine (free, self-signed)
+```powershell
+$cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=RAV Agent Updates" `
+        -CertStoreLocation Cert:\CurrentUser\My -KeyExportPolicy Exportable -KeyLength 2048 `
+        -NotAfter (Get-Date).AddYears(10)
+$cert.Thumbprint                                   # -> the value for update_signer_thumbprint
+
+$pw = ConvertTo-SecureString "STRONG-PASSWORD" -AsPlainText -Force
+Export-PfxCertificate -Cert $cert -FilePath rav-signing.pfx -Password $pw   # SECRET (build box only)
+Export-Certificate    -Cert $cert -FilePath rav-signing.cer                  # public (push to endpoints)
+```
+
+### 2. Sign the MSI — every release (signtool ships with the Windows SDK / VS Build Tools)
+```powershell
+signtool sign /fd SHA256 /f rav-signing.pfx /p "STRONG-PASSWORD" /d "RAV Agent" RAVAgent.msi
+# optional, if the build box has internet (keeps signature valid past cert expiry):
+#   ... /tr http://timestamp.digicert.com /td SHA256 ...
+signtool verify /pa RAVAgent.msi                   # sanity check
+```
+
+### 3. Trust the cert on endpoints (so Authenticode status is `Valid`)
+Pick one:
+- per endpoint (admin):
+  ```powershell
+  Import-Certificate -FilePath rav-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
+  Import-Certificate -FilePath rav-signing.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+  ```
+- fleet: push `rav-signing.cer` to Trusted Root via GPO, or bake it into the MSI.
+
+### 4. Turn on enforcement
+Set the thumbprint (no spaces) either in each `C:\ProgramData\RAV\config.toml` under `[backend]`:
+```
+update_signer_thumbprint = "<thumbprint>"
+```
+(then `Restart-Service RAVAgent`) — or hard-pin it in the binary via `DEFAULT_SIGNER_THUMBPRINT`
+in `agent/src/update.rs` and rebuild (tamper-proof, but a rebuild is needed to rotate). Config is
+the low-stress option and is safe against the network threat model (a remote attacker can't edit a
+local file).
+
+After this, an attacker who controls the server or the wire still can't push a malicious update —
+they can't produce an MSI signed by your key.
+
+## Still deferred: TLS
+
+This adds *signing* (provenance). It does **not** encrypt traffic — screenshots/evidence and JWT
+cookies still travel as plain HTTP on the internal LAN. TLS is a separate, higher-effort task
+(IP-only net → self-signed/internal CA, plus a URL-scheme change rippling through the agent config,
+dashboard rebuild, and CORS). Tracked as the standing "No TLS" item in `PRODUCTION_SETUP.md`.
