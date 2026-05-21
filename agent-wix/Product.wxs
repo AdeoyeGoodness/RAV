@@ -10,7 +10,7 @@
   
   <Package Name="RAV Agent" 
            Manufacturer="RAV Security" 
-           Version="1.0.0.0" 
+           Version="1.0.1.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     

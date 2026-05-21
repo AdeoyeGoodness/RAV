@@ -459,6 +459,21 @@ pub async fn register_agent(
     enroll_agent(State(state), Json(agent)).await
 }
 
+/// `storage/agent/latest.json` — the published agent release the fleet should converge to.
+/// `version` is the **agent semver** (matches CARGO_PKG_VERSION), not the MSI ProductVersion.
+#[derive(serde::Deserialize)]
+struct AgentManifest {
+    version: String,
+    sha256: String,
+    #[serde(default)]
+    filename: Option<String>,
+}
+
+fn read_agent_manifest(dir: &std::path::Path) -> Option<AgentManifest> {
+    let data = std::fs::read(dir.join("latest.json")).ok()?;
+    serde_json::from_slice(&data).ok()
+}
+
 pub async fn heartbeat(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -506,7 +521,39 @@ pub async fn heartbeat(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(Json(serde_json::json!({"status": "success"})))
+    // Advertise the latest published agent. The agent compares this version against its own
+    // and self-updates (downloads the MSI from /api/v1/agent/download) if it's behind.
+    let mut body = serde_json::json!({"status": "success"});
+    if let Some(m) = read_agent_manifest(&state.agent_dist_dir) {
+        body["update"] = serde_json::json!({
+            "version": m.version,
+            "sha256": m.sha256,
+            "url": "/api/v1/agent/download",
+        });
+    }
+
+    Ok(Json(body))
+}
+
+/// Serve the published agent installer (MSI) for auto-update. Unauthenticated by design —
+/// same trust model as enroll/heartbeat (gated by the internal-network firewall). Integrity
+/// is checked agent-side via the sha256 from the heartbeat manifest.
+/// SECURITY: over plain HTTP this is effectively SYSTEM-level remote code delivery; the real
+/// hardening is TLS + an Authenticode-signed MSI (tracked separately).
+pub async fn download_agent_installer(
+    State(state): State<AppState>,
+) -> Result<Response<Body>, StatusCode> {
+    let filename = read_agent_manifest(&state.agent_dist_dir)
+        .and_then(|m| m.filename)
+        .unwrap_or_else(|| "RAVAgent.msi".to_string());
+    let data = std::fs::read(state.agent_dist_dir.join(&filename))
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename))
+        .body(Body::from(data))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }
 
 pub async fn list_agents(

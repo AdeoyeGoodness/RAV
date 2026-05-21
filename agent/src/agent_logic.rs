@@ -24,6 +24,9 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
          }
     }
 
+    // Clear any installer left behind by a previous auto-update cycle.
+    crate::update::cleanup_stale(&config);
+
     // 4. Initialize Dependency (SyncManager)
     let config_arc = Arc::new(config);
     encryption::initialize(&config_arc)?;

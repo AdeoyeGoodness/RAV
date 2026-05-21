@@ -27,6 +27,8 @@ pub struct AppState {
     pub notification_service: Arc<crate::services::notifications::NotificationService>,
     pub encryption_service: Arc<crate::services::crypto::EncryptionService>,
     pub file_storage_dir: std::path::PathBuf,
+    /// Where the published agent installer + latest.json manifest live (for auto-update).
+    pub agent_dist_dir: std::path::PathBuf,
     pub server_start_time: chrono::DateTime<chrono::Utc>,
 }
 
@@ -63,6 +65,11 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&file_storage_dir)?;
     info!("File storage directory: {}", file_storage_dir.display());
 
+    // Agent distribution directory (auto-update): holds RAVAgent.msi + latest.json.
+    let agent_dist_dir = std::path::PathBuf::from("storage/agent");
+    std::fs::create_dir_all(&agent_dist_dir)?;
+    info!("Agent distribution directory: {}", agent_dist_dir.display());
+
     // Initialize Archive System
     let archive_storage = std::path::PathBuf::from("storage/archives");
     let archive_service = Arc::new(crate::services::archive::ArchiveService::new(
@@ -89,6 +96,7 @@ async fn main() -> Result<()> {
         notification_service: notification_service.clone(),
         encryption_service: encryption_service.clone(),
         file_storage_dir: file_storage_dir.clone(),
+        agent_dist_dir: agent_dist_dir.clone(),
         server_start_time: chrono::Utc::now(),
     };
 
@@ -162,6 +170,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
         .route("/api/v1/agents/register", post(handlers::register_agent)) // legacy
         .route("/api/v1/agents/heartbeat", post(handlers::heartbeat))
+        .route("/api/v1/agent/download", get(handlers::download_agent_installer))
         .route("/api/v1/agents", get(handlers::list_agents))
         .route("/api/v1/agents/:agent_id/events", delete(handlers::delete_agent_events))
         .route("/api/v1/agents/:agent_id/events/restore", put(handlers::restore_agent_events))

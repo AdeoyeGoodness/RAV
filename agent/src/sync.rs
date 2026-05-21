@@ -427,9 +427,20 @@ impl SyncManager {
         }
         
         let response = request.send().await.context("Heartbeat failed")?;
-        
+
         if !response.status().is_success() {
             anyhow::bail!("Heartbeat status: {}", response.status());
+        }
+
+        // The backend may advertise a newer agent build. If so, self-update (download MSI,
+        // verify, hand to msiexec). Errors are swallowed inside maybe_apply so a bad update
+        // never marks the heartbeat itself as failed.
+        if let Ok(body) = response.json::<serde_json::Value>().await {
+            if let Some(update) = body.get("update") {
+                if let Ok(info) = serde_json::from_value::<crate::update::UpdateInfo>(update.clone()) {
+                    crate::update::maybe_apply(&self.config, &info).await;
+                }
+            }
         }
 
         Ok(())

@@ -1,6 +1,6 @@
 [package]
 name = "rav-agent"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 
 [dependencies]
@@ -31,6 +31,9 @@ sysinfo = "0.30"
 
 # Hashing
 sha2 = "0.10"
+
+# Semantic version comparison (agent auto-update)
+semver = "1"
 
 # Configuration
 config = "0.14"

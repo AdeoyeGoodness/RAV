@@ -13,6 +13,7 @@ pub mod service;
 pub mod agent_logic;
 pub mod storage;
 pub mod utils;
+pub mod update;
 
 use config::Config;
 use sync::SyncManager;
