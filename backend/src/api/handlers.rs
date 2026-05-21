@@ -571,6 +571,66 @@ pub async fn heartbeat(
     Ok(Json(body))
 }
 
+/// Stable RAV browser-extension ID — derived from agent-wix/rav-extension.pem; must match the
+/// CRX, the manifest "key", native-messaging allowed_origins, and the MSI force-install policy.
+const EXTENSION_ID: &str = "fammadlbpgjlmfacjgcbabjohgknacib";
+
+/// Omaha update manifest for self-hosted browser-extension force-install. The browser fetches this
+/// (URL set by the MSI policy), reads the version + codebase, and downloads the CRX. The codebase
+/// is built from the Host the browser actually used, so it always points back at this server.
+pub async fn extension_update_manifest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    let version = std::fs::read_to_string(state.extension_dist_dir.join("version"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "1.0.0".to_string());
+
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("127.0.0.1");
+    let scheme = headers
+        .get("X-Forwarded-Proto")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("http");
+    let codebase = format!("{}://{}/api/v1/extension/download", scheme, host);
+
+    let xml = format!(
+        "<?xml version='1.0' encoding='UTF-8'?>\n\
+         <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>\n\
+         \x20 <app appid='{id}'>\n\
+         \x20   <updatecheck codebase='{codebase}' version='{version}' />\n\
+         \x20 </app>\n\
+         </gupdate>\n",
+        id = EXTENSION_ID,
+        codebase = codebase,
+        version = version
+    );
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/xml")
+        .body(Body::from(xml))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+}
+
+/// Serve the signed extension CRX referenced by the update manifest. Unauthenticated (internal
+/// network); the CRX is signed, so the browser verifies its integrity + ID.
+pub async fn download_extension(
+    State(state): State<AppState>,
+) -> Result<Response<Body>, StatusCode> {
+    let data = std::fs::read(state.extension_dist_dir.join("rav.crx"))
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/x-chrome-extension")
+        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"rav.crx\"")
+        .body(Body::from(data))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+}
+
 /// Serve the published agent installer (MSI) for auto-update. Unauthenticated by design —
 /// same trust model as enroll/heartbeat (gated by the internal-network firewall). Integrity
 /// is checked agent-side via the sha256 from the heartbeat manifest.

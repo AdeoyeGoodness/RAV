@@ -58,6 +58,9 @@ secrets/
 config.toml
 !config.example.toml
 
+# Built browser-extension CRX (regenerated each build; published to the backend, not the repo)
+agent-wix/output/rav.crx
+
 # ============================================================================
 # Database files
 # ============================================================================

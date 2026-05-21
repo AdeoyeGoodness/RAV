@@ -1,11 +1,19 @@
-RAV Browser Monitor - Extension Identity Backup
-CRITICAL: Do not lose this key. It determines the Extension ID.
+RAV Browser Monitor - Extension Identity
+CRITICAL: The signing key determines the Extension ID. Do not lose it.
 
-Extension ID: lkgbkgaglogjopokmbcedcdlcajldhkk
+Extension ID: fammadlbpgjlmfacjgcbabjohgknacib
 
-Public Key (from manifest.json):
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8ygxMuc2/HQ77BEKQR2oXRiCFiFguiXcD+axx43X8/Rfd3s1BnKyKwQIDAQABK4TiODb2WmB1jl1A/ZE/0TdZ4WQ9fkdr/q5T4t4miNYOWgrmYheszpa7z//hXMG5fyB1OuoUy84fHHw1EZmB
+Signing key (private):  agent-wix/rav-extension.pem  (gitignored via *.pem — NOT in the repo)
+  - BACK THIS UP. It is kept only on the build machine; losing it changes the ID + breaks the fleet.
+  - Packs the CRX (build-msi.ps1 -> npm run pack-crx) and fixes the ID above.
+  - The same ID is wired into: manifest.json "key", agent-wix/native-messaging-host.json
+    allowed_origins, agent-wix/Product.wxs force-install/allowlist, and the backend
+    (EXTENSION_ID in backend/src/api/handlers.rs). Change the key -> change ALL of these.
 
-Usage:
-1. Ensure this 'key' field is always present in manifest.json.
-2. If repacking or updating, preserve this key to maintain the ID.
+Public key (manifest.json "key"):
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAhs6Vqp6AfmV/TwbQUkTF3EQlfAFnKyJEnRYLWJ4FM9EeZN4CpxrmcjnLVvfTJcyJKyw1hPsMX4M9NFpWYHHgI94XIqld52ic0AF6kY0OHj8dU1sPy71oKeQW5JN3h9m0iSc2kJq5exBsESniSuNSc/QFcUyCz2naGdFI8cza2QmDvBjGyWn0os5KQcvxYBMIczi0jJ++F/qWBadiPS6wEeC290eCfX9IuqNW7olPc5Xz1FAVqC5pQyt3GGKmMs8yBCu2kxe7k974XAK6Xsu0ZQivAKylce8yW0LwHeUvAnEclu/1loPPqvPvbiZt8Mz//MmkfXr+3922hFKNyLm/KQIDAQAB
+
+How it loads (offline / no public store):
+  The MSI sets an enterprise force-install policy pointing at OUR backend:
+    fammadlbpgjlmfacjgcbabjohgknacib;<BACKEND_URL>/api/v1/extension/updates.xml
+  The backend serves the update manifest + signed CRX. See deployment/EXTENSION_DEPLOY.md.

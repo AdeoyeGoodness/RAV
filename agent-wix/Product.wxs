@@ -99,15 +99,18 @@
           <!-- Edge Native Messaging (HKCU) -->
           <RegistryValue Root="HKCU" Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.rav.agent" Value="[INSTALLFOLDER]com.rav.agent.json" Type="string" />
 
-          <!-- Enterprise Policy: Force Install from Web Store -->
+          <!-- Enterprise Policy: force-install the RAV extension from OUR backend (no public store,
+               works on the internal/offline network). [BACKEND_URL] is the install-time server URL;
+               the backend serves the Omaha update manifest + the signed CRX. The extension ID
+               (fammadlbpgjlmfacjgcbabjohgknacib) is derived from agent-wix/rav-extension.pem and must
+               match the CRX, the manifest "key", and native-messaging allowed_origins. -->
           <!-- Chrome -->
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna;https://clients2.google.com/service/update2/crx" Type="string" />
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist" Name="1" Value="dlkdbjmoohiplloecfgblbggpijbomna" Type="string" />
-          
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist" Name="1" Value="fammadlbpgjlmfacjgcbabjohgknacib;[BACKEND_URL]/api/v1/extension/updates.xml" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Google\Chrome\ExtensionInstallAllowlist" Name="1" Value="fammadlbpgjlmfacjgcbabjohgknacib" Type="string" />
+
           <!-- Edge -->
-          <!-- Note: Edge Update URL is https://edge.microsoft.com/extensionwebstorebase/v1/crx -->
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie;https://edge.microsoft.com/extensionwebstorebase/v1/crx" Type="string" />
-          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="epjnmnocdpicilcklecnmkmdjdegnaie" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist" Name="1" Value="fammadlbpgjlmfacjgcbabjohgknacib;[BACKEND_URL]/api/v1/extension/updates.xml" Type="string" />
+          <RegistryValue Root="HKLM" Key="SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallAllowlist" Name="1" Value="fammadlbpgjlmfacjgcbabjohgknacib" Type="string" />
         </Component>
 
         <!-- Unpacked Extension Bundle -->

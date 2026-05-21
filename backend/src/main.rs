@@ -29,6 +29,8 @@ pub struct AppState {
     pub file_storage_dir: std::path::PathBuf,
     /// Where the published agent installer + latest.json manifest live (for auto-update).
     pub agent_dist_dir: std::path::PathBuf,
+    /// Where the published browser-extension CRX lives (for self-hosted force-install).
+    pub extension_dist_dir: std::path::PathBuf,
     pub server_start_time: chrono::DateTime<chrono::Utc>,
 }
 
@@ -70,6 +72,11 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&agent_dist_dir)?;
     info!("Agent distribution directory: {}", agent_dist_dir.display());
 
+    // Extension distribution directory: holds rav.crx (+ optional version file) for force-install.
+    let extension_dist_dir = std::path::PathBuf::from("storage/extension");
+    std::fs::create_dir_all(&extension_dist_dir)?;
+    info!("Extension distribution directory: {}", extension_dist_dir.display());
+
     // Initialize Archive System
     let archive_storage = std::path::PathBuf::from("storage/archives");
     let archive_service = Arc::new(crate::services::archive::ArchiveService::new(
@@ -97,6 +104,7 @@ async fn main() -> Result<()> {
         encryption_service: encryption_service.clone(),
         file_storage_dir: file_storage_dir.clone(),
         agent_dist_dir: agent_dist_dir.clone(),
+        extension_dist_dir: extension_dist_dir.clone(),
         server_start_time: chrono::Utc::now(),
     };
 
@@ -171,6 +179,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/register", post(handlers::register_agent)) // legacy
         .route("/api/v1/agents/heartbeat", post(handlers::heartbeat))
         .route("/api/v1/agent/download", get(handlers::download_agent_installer))
+        .route("/api/v1/extension/updates.xml", get(handlers::extension_update_manifest))
+        .route("/api/v1/extension/download", get(handlers::download_extension))
         .route("/api/v1/agents", get(handlers::list_agents))
         .route("/api/v1/agents/:agent_id/events", delete(handlers::delete_agent_events))
         .route("/api/v1/agents/:agent_id/events/restore", put(handlers::restore_agent_events))
