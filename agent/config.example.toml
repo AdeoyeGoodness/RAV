@@ -2,7 +2,7 @@
 # Copy this file to config.toml and update the values
 
 [backend]
-url = "http://172.16.100.41"
+url = "https://rav.handy.boats"
 # api_key = "your-api-key-here"  # Uncomment and set if using API key auth
 sync_interval_seconds = 10
 heartbeat_interval_seconds = 60
