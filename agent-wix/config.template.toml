@@ -27,8 +27,9 @@ track_connections = true
 
 [monitoring.screenshots]
 enabled = true
-capture_interval_seconds = 60
-compression_quality = 85
+capture_interval_seconds = 120
+compression_quality = 60
+max_width = 1280
 format = "jpeg"
 
 [stealth]

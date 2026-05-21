@@ -204,15 +204,24 @@ pub struct ScreenshotMonitoringConfig {
     pub enabled: bool,
     pub capture_interval_seconds: u64,
     pub compression_quality: u8, // 0-100 for JPEG
+    /// Downscale captures wider than this (px) before encoding; 0 = no downscaling.
+    /// serde default keeps older config.toml files (written without this key) parseable.
+    #[serde(default = "default_max_width")]
+    pub max_width: u32,
     pub format: String, // "jpeg" or "png"
+}
+
+fn default_max_width() -> u32 {
+    1280
 }
 
 impl Default for ScreenshotMonitoringConfig {
     fn default() -> Self {
         ScreenshotMonitoringConfig {
             enabled: true,
-            capture_interval_seconds: 60, // 1 minute
-            compression_quality: 85,
+            capture_interval_seconds: 120, // 2 minutes
+            compression_quality: 60,
+            max_width: default_max_width(),
             format: "jpeg".to_string(),
         }
     }
@@ -270,8 +279,9 @@ impl Config {
                 },
                 screenshots: ScreenshotMonitoringConfig {
                     enabled: true,
-                    capture_interval_seconds: 60, // Default: 1 minute
-                    compression_quality: 85, // Good quality, reasonable size
+                    capture_interval_seconds: 120, // Default: 2 minutes
+                    compression_quality: 60, // Reduced quality to shrink storage/bandwidth
+                    max_width: default_max_width(), // Downscale wide captures to 1280px
                     format: "jpeg".to_string(),
                 },
                 processes: ProcessMonitoringConfig::default(),

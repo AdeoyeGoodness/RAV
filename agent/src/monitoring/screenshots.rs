@@ -297,44 +297,59 @@ async fn read_from_helper_folder(config: &Config) -> Result<(Vec<u8>, u32, u32)>
     
     // Read the file
     let image_data = fs::read(&filepath)?;
-    
+
     // DELETE the file after reading so we never re-read it as stale
     let _ = fs::remove_file(&filepath);
     // Also clean up any older files
     for old_file in files.iter().skip(1) {
         let _ = fs::remove_file(old_file.path());
     }
-    
-    // Decode to get dimensions
-    let img = image::load_from_memory(&image_data)?;
+
+    // Downscale + encode per config (resolution/quality reduction).
+    process_capture(&image_data, &config.monitoring.screenshots)
+}
+
+/// Decode a raw PNG capture, optionally downscale it to `cfg.max_width`, and re-encode it to
+/// the configured format/quality. Returns the encoded bytes plus the **post-resize** dimensions
+/// so event metadata and the stored file agree. This is where resolution/quality reduction
+/// happens, for both console-mode (`try_direct_capture`) and service-mode (`read_from_helper_folder`).
+#[cfg(windows)]
+fn process_capture(
+    png_bytes: &[u8],
+    cfg: &crate::config::ScreenshotMonitoringConfig,
+) -> Result<(Vec<u8>, u32, u32)> {
+    let original = image::load_from_memory(png_bytes)?;
+    let needs_resize = cfg.max_width > 0 && original.width() > cfg.max_width;
+    let img = if needs_resize {
+        original.resize(cfg.max_width, u32::MAX, image::imageops::FilterType::Triangle)
+    } else {
+        original
+    };
     let width = img.width();
     let height = img.height();
-    
-    // Convert to JPEG if configured
-    let final_data = if config.monitoring.screenshots.format == "jpeg" {
+
+    let data = if cfg.format == "jpeg" {
         let rgb_img = img.to_rgb8();
-        let (jpeg_width, jpeg_height) = rgb_img.dimensions();
+        let (w, h) = rgb_img.dimensions();
         let rgb_bytes = rgb_img.into_raw();
         let mut jpeg_data = Vec::new();
         {
             use image::codecs::jpeg::JpegEncoder;
-            let mut encoder = JpegEncoder::new_with_quality(
-                &mut jpeg_data,
-                config.monitoring.screenshots.compression_quality,
-            );
-            encoder.encode(
-                &rgb_bytes,
-                jpeg_width,
-                jpeg_height,
-                image::ColorType::Rgb8,
-            )?;
+            let mut encoder = JpegEncoder::new_with_quality(&mut jpeg_data, cfg.compression_quality);
+            encoder.encode(&rgb_bytes, w, h, image::ColorType::Rgb8)?;
         }
         jpeg_data
+    } else if needs_resize {
+        // PNG that was downscaled — re-encode the resized image.
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, image::ImageOutputFormat::Png)?;
+        out.into_inner()
     } else {
-        image_data
+        // PNG, no resize — keep the original bytes (avoids a needless re-encode).
+        png_bytes.to_vec()
     };
 
-    Ok((final_data, width, height))
+    Ok((data, width, height))
 }
 
 #[cfg(windows)]
@@ -350,8 +365,6 @@ async fn try_direct_capture(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     // Capture primary screen (first screen)
     let screen = &screens[0];
     let image = screen.capture()?;
-    let width = image.width() as u32;
-    let height = image.height() as u32;
 
     // In screenshots 0.8, Image has a save() method, but we need bytes
     // Save to a temporary file and read it back, or convert directly
@@ -366,38 +379,12 @@ async fn try_direct_capture(config: &Config) -> Result<(Vec<u8>, u32, u32)> {
     
     // Read the file bytes
     let image_data = std::fs::read(&temp_path)?;
-    
+
     // Clean up temp file
     let _ = std::fs::remove_file(&temp_path);
-    
-    // If format is JPEG, we need to convert PNG to JPEG
-    let final_data = if config.monitoring.screenshots.format == "jpeg" {
-        // Decode PNG and re-encode as JPEG
-        let img = image::load_from_memory(&image_data)?;
-        let rgb_img = img.to_rgb8();
-        let (jpeg_width, jpeg_height) = rgb_img.dimensions();
-        let rgb_bytes = rgb_img.into_raw();
-        let mut jpeg_data = Vec::new();
-        {
-            use image::codecs::jpeg::JpegEncoder;
-            let mut encoder = JpegEncoder::new_with_quality(
-                &mut jpeg_data,
-                config.monitoring.screenshots.compression_quality,
-            );
-            encoder.encode(
-                &rgb_bytes,
-                jpeg_width,
-                jpeg_height,
-                image::ColorType::Rgb8,
-            )?;
-        }
-        jpeg_data
-    } else {
-        // Keep as PNG
-        image_data
-    };
 
-    Ok((final_data, width, height))
+    // Downscale + encode per config (resolution/quality reduction).
+    process_capture(&image_data, &config.monitoring.screenshots)
 }
 
 /// Capture screenshot via helper process running in user session
