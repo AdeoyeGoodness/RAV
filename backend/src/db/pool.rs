@@ -1,5 +1,7 @@
 use anyhow::Result;
 use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::ConnectOptions;
+use std::str::FromStr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,9 +16,15 @@ impl Database {
             .acquire_timeout(std::time::Duration::from_secs(30))
             .idle_timeout(std::time::Duration::from_secs(600))
             .max_lifetime(std::time::Duration::from_secs(1800));
-        
+
+        // Default slow-statement logging fires at 1s, which is noisy on this VPS because COMMIT
+        // waits on disk fsync during write bursts. Raise it to 3s so only genuinely slow queries warn.
+        let connect_options = sqlx::postgres::PgConnectOptions::from_str(database_url)
+            .map_err(|e| anyhow::anyhow!("Invalid DATABASE_URL: {}", e))?
+            .log_slow_statements(log::LevelFilter::Warn, std::time::Duration::from_secs(3));
+
         let pool = pool_options
-            .connect(database_url)
+            .connect_with(connect_options)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to connect to database: {}", e))?;
 

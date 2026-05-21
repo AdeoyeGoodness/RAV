@@ -119,6 +119,13 @@ pub async fn ingest_events(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Telemetry is high-volume and agents buffer/retry, so this batch's COMMIT doesn't need to
+    // block on a WAL fsync. Relax durability for THIS transaction only: a hard server crash can
+    // drop at most the last sub-second of just-acknowledged events (only telemetry, nothing else).
+    let _ = sqlx::query("SET LOCAL synchronous_commit = OFF")
+        .execute(&mut *tx)
+        .await;
+
     for event in events {
         // The agent doesn't send a category, so derive it from event_type. (Previously every
         // event was stored as "system", which made the dashboard's category bars read zero for
