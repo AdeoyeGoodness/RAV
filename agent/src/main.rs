@@ -93,6 +93,9 @@ fn main() -> Result<()> {
             .init();
         
         info!("RAV Agent starting (v{})", env!("CARGO_PKG_VERSION"));
+        // Temporary auto-update verification marker — this line did not exist in v0.1.3, so seeing
+        // it in the log proves the self-update applied. Safe to remove after testing.
+        info!("=== build marker: auto-update verification (v{}) ===", env!("CARGO_PKG_VERSION"));
     }
 
     // 3. Dynamic Console Attachment: If we have CLI flags, try to attach to parent console
