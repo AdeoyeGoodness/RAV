@@ -395,10 +395,15 @@ pub async fn enroll_agent(
     // Attempt is accepted, we will log 'enrolled' or 'reinstall' later
 
 
-    // 2. Enroll agent (Insert or update seen timestamp)
-    // Use RLS-bound tx scoped to the token's org so the INSERT into agents
-    // and audit_logs satisfies the row-level security policy from migration 014.
-    let mut tx = state.db.begin_rls_tx(token.org_id).await.map_err(|e| {
+    // 2. Enroll agent (Insert or update seen timestamp).
+    // Run in BYPASS, not an org-scoped tx: enrollment is a system action authorized by the token,
+    // and the deterministic agent_id means a re-enrolled machine may already have an agents row
+    // under a DIFFERENT org. agents has FORCE RLS (migration 014), so an org-scoped policy would
+    // hide that conflicting row and make `ON CONFLICT (agent_id) DO UPDATE` fail with
+    // "new row violates row-level security policy". BYPASS lets the upsert (and the audit/attempt
+    // inserts) run; organization_id is still set explicitly from the validated token, so the agent
+    // lands in the correct org. (The token lookup above already uses BYPASS for the same reason.)
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
         tracing::error!("Enrollment: Failed to start transaction: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -413,6 +418,7 @@ pub async fn enroll_agent(
             hostname = EXCLUDED.hostname,
             hardware_fingerprint = EXCLUDED.hardware_fingerprint,
             organization_id = EXCLUDED.organization_id,
+            enrollment_token_id = EXCLUDED.enrollment_token_id,
             os_version = EXCLUDED.os_version
         RETURNING (xmax = 0) AS "inserted!"
         "#,
