@@ -242,8 +242,13 @@ impl SyncManager {
         };
 
         let existing_org_id = self.config.agent.organization_id.clone();
-        let has_token = self.config.backend.enrollment_token.is_some();
-        
+        // An empty/blank token counts as "no token". The MSI can write enrollment_token = "" on
+        // upgrade; that must NOT force an already-enrolled agent into a doomed re-enrollment.
+        let has_token = self.config.backend.enrollment_token
+            .as_deref()
+            .map(|t| !t.trim().is_empty())
+            .unwrap_or(false);
+
         if let Some(org_id) = existing_org_id {
             if !has_token {
                 // Updating internal state
@@ -252,6 +257,8 @@ impl SyncManager {
                     id_guard.organization_id = Some(org_id.clone());
                     id_guard.agent_id = Some(agent_id.clone());
                 }
+                // Re-save identity so it's protected against the next config.toml reset.
+                let _ = self.config.save_identity(&agent_id, &org_id);
                 info!("Resuming session for Organization: {}", org_id);
                 return Ok((agent_id, org_id));
             } else {
@@ -265,6 +272,8 @@ impl SyncManager {
         let os_version = self.get_os_version();
         
         let enrollment_token = self.config.backend.enrollment_token.as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
             .ok_or_else(|| anyhow::anyhow!("No enrollment token provided"))?;
 
         let enrollment = serde_json::json!({
@@ -317,6 +326,12 @@ impl SyncManager {
             error!("Failed to persist enrollment state to disk: {}", e);
         } else {
             info!("Agent identity persisted to config.toml");
+        }
+
+        // Also persist to the MSI-independent identity file so enrollment survives MSI upgrades
+        // (config.toml gets reset on auto-update; identity.toml does not).
+        if let Err(e) = self.config.save_identity(&agent_id, &org_id) {
+            error!("Failed to persist identity.toml: {}", e);
         }
 
         Ok((agent_id, org_id))

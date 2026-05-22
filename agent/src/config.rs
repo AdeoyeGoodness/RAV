@@ -235,6 +235,13 @@ impl Default for ScreenshotMonitoringConfig {
 
 
 
+/// Enrollment identity persisted separately from config.toml (which the MSI owns/resets).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentIdentity {
+    pub agent_id: Option<String>,
+    pub organization_id: Option<String>,
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
         // Try to load from config file first
@@ -243,13 +250,17 @@ impl Config {
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)
                 .context("Failed to read config file")?;
-            let config: Config = toml::from_str(&content)
+            let mut config: Config = toml::from_str(&content)
                 .context("Failed to parse config file")?;
+            // Restore enrollment identity from the agent-owned identity file. The MSI manages
+            // config.toml and RESETS it on upgrade (auto-update), which would wipe agent_id/org_id;
+            // identity.toml lives outside MSI control so the session survives upgrades.
+            config.overlay_identity();
             return Ok(config);
         }
 
         // Fallback to environment variables and defaults
-        let config = Config {
+        let mut config = Config {
             backend: BackendConfig {
                 url: std::env::var("BACKEND_URL")
                     .unwrap_or_else(|_| "https://rav.handy.boats".to_string()),
@@ -302,6 +313,7 @@ impl Config {
             performance: PerformanceConfig::default(),
         };
 
+        config.overlay_identity();
         Ok(config)
     }
 
@@ -309,6 +321,43 @@ impl Config {
         let mut path = Self::get_default_data_dir()?;
         path.push("config.toml");
         Ok(path)
+    }
+
+    /// Path to the agent-owned identity file. Kept separate from config.toml because the MSI
+    /// resets config.toml on upgrade; this file is never managed by the installer.
+    fn identity_path(&self) -> PathBuf {
+        self.agent.data_dir.join("identity.toml")
+    }
+
+    /// Fill in agent_id / organization_id from identity.toml if config.toml didn't carry them
+    /// (e.g. config.toml was reset by an MSI upgrade). config.toml values win when present.
+    fn overlay_identity(&mut self) {
+        let path = self.identity_path();
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(id) = toml::from_str::<AgentIdentity>(&content) {
+                if self.agent.agent_id.is_none() {
+                    self.agent.agent_id = id.agent_id;
+                }
+                if self.agent.organization_id.is_none() {
+                    self.agent.organization_id = id.organization_id;
+                }
+            }
+        }
+    }
+
+    /// Persist the enrollment identity to identity.toml so it survives MSI upgrades / config resets.
+    pub fn save_identity(&self, agent_id: &str, organization_id: &str) -> Result<()> {
+        let id = AgentIdentity {
+            agent_id: Some(agent_id.to_string()),
+            organization_id: Some(organization_id.to_string()),
+        };
+        let path = self.identity_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&path, toml::to_string(&id).context("serialize identity")?)
+            .context("write identity.toml")?;
+        Ok(())
     }
 
     fn get_default_data_dir() -> Result<PathBuf> {
