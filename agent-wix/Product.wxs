@@ -10,7 +10,7 @@
   
   <Package Name="RAV Agent" 
            Manufacturer="RAV Security" 
-           Version="1.0.3.0"
+           Version="1.0.4.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -18,7 +18,7 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- INSTALL-TIME PROPERTIES -->
-    <Property Id="BACKEND_URL" Value="https://rav.handy.boats" />
+    <Property Id="BACKEND_URL" Value="http://172.16.100.41" />
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
     <Property Id="SCREENSHOT_INTERVAL" Value="60" /> <!-- Default 1 minute -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
