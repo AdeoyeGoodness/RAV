@@ -220,6 +220,7 @@ export interface EnrollmentToken {
   expires_at: string | null
   revoked: boolean
   created_at: string
+  agent_count: number // agents currently enrolled under this token
 }
 
 export interface EnrollmentTokenResponse {

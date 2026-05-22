@@ -247,10 +247,12 @@ pub async fn list_enrollment_tokens(
     let tokens = sqlx::query_as!(
         EnrollmentToken,
         r#"
-        SELECT token_id, org_id, label, max_agents, expires_at, revoked, created_at
-        FROM enrollment_tokens
-        WHERE org_id = $1
-        ORDER BY created_at DESC
+        SELECT t.token_id, t.org_id, t.label, t.max_agents, t.expires_at, t.revoked, t.created_at,
+               (SELECT COUNT(*) FROM agents a
+                WHERE a.enrollment_token_id = t.token_id AND a.deleted_at IS NULL) AS "agent_count!"
+        FROM enrollment_tokens t
+        WHERE t.org_id = $1
+        ORDER BY t.created_at DESC
         "#,
         org_id
     )

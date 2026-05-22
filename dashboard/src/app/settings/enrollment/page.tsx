@@ -89,11 +89,15 @@ export default function EnrollmentTokensPage() {
     setTimeout(() => setCopiedToken(null), 2000)
   }
 
-  // Slots already committed to active (non-revoked, non-expired) tokens.
-  // org max_agents is the ceiling, so only the leftover can go to a new token.
-  const allocatedAgents = tokens
-    .filter(t => !t.revoked && (!t.expires_at || new Date(t.expires_at) > new Date()))
-    .reduce((sum, t) => sum + (t.max_agents || 0), 0)
+  // Slots committed against the org ceiling. An ACTIVE (non-revoked, non-expired) token reserves
+  // its full max_agents allocation. An expired/revoked token no longer reserves unused slots, but
+  // the agents actually enrolled under it are still running and still occupy capacity — so it keeps
+  // counting its real agent_count. (Without this, an expired token would wrongly free the slot of
+  // an agent that's still enrolled, e.g. showing "10 of 10" instead of "9 of 10".)
+  const allocatedAgents = tokens.reduce((sum, t) => {
+    const isActive = !t.revoked && (!t.expires_at || new Date(t.expires_at) > new Date())
+    return sum + (isActive ? (t.max_agents || 0) : (t.agent_count || 0))
+  }, 0)
   const remainingAgents = Math.max(0, orgMaxAgents - allocatedAgents)
 
   return (
@@ -129,7 +133,7 @@ export default function EnrollmentTokensPage() {
                   <thead className="bg-[#080A14]/40 border-b border-white/[0.04]">
                     <tr>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Label</th>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Max Uses</th>
+                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Enrolled / Max</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Expires At</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -169,7 +173,9 @@ export default function EnrollmentTokensPage() {
                             </div>
                           </td>
                           <td className="px-6 py-5 text-sm text-slate-400">
-                              {token.max_agents ? `${token.max_agents}` : 'Unlimited'}
+                              <span className="text-slate-200 font-medium">{token.agent_count}</span>
+                              {' / '}
+                              {token.max_agents ? `${token.max_agents}` : '∞'}
                           </td>
                           <td className={`px-6 py-5 text-sm font-mono ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
                               {token.expires_at ? new Date(token.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}

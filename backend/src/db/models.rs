@@ -223,6 +223,10 @@ pub struct EnrollmentToken {
     pub expires_at: Option<DateTime<Utc>>,
     pub revoked: bool,
     pub created_at: DateTime<Utc>,
+    /// Agents currently enrolled under this token (non-deleted). Used for capacity accounting
+    /// so an expired token still counts the agents actually running under it.
+    #[sqlx(default)]
+    pub agent_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

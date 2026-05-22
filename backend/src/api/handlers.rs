@@ -360,20 +360,20 @@ pub async fn enroll_agent(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    if let Some(expiry) = token.expires_at {
-        if Utc::now() > expiry {
-            tracing::warn!("Enrollment attempt with expired token for Org: {}", token.org_name);
-            log_rejection!(Some(token.token_id), "rejected_expired");
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-    }
-
-    // Cap checks. Reinstalls (same hardware_fingerprint already enrolled in
-    // this org and not soft-deleted) bypass both caps since they don't grow
-    // the agent count. New machines must clear the org-wide cap first
-    // (broader problem — bumping the per-token cap won't help) and then the
-    // per-token cap.
+    // Expiry + capacity gates apply to NEW machines only. Reinstalls (same hardware_fingerprint
+    // already enrolled in this org and not soft-deleted) bypass them, so an already-enrolled
+    // agent keeps working and can re-establish its session even after its token expires — only
+    // brand-new enrollments are blocked once the token is expired or at capacity. (Revoked and
+    // inactive-org are checked above and block everyone, including reinstalls.)
     if !token.is_reinstall {
+        if let Some(expiry) = token.expires_at {
+            if Utc::now() > expiry {
+                tracing::warn!("Enrollment attempt with expired token for Org: {}", token.org_name);
+                log_rejection!(Some(token.token_id), "rejected_expired");
+                return Err(StatusCode::UNAUTHORIZED);
+            }
+        }
+
         if token.org_current_agents >= token.org_max_agents as i64 {
             tracing::warn!(
                 "Enrollment blocked: Org '{}' at agent cap ({}/{})",
