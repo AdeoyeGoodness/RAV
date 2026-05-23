@@ -31,10 +31,10 @@ Self-healing guards: only one update runs at a time; a given version isn't retri
 | MSI ProductVersion | `agent-wix/Product.wxs` `<Package Version=...>` | `msiexec` MajorUpgrade decision | must increase **and stay ≥ the installed one** |
 
 They don't need to match numerically, but **both must go up**. The MSI version can't go
-*down* (currently `1.0.1.0`; never publish a lower one — MajorUpgrade refuses downgrades).
+*down* (currently `1.0.5.0`; never publish a lower one — MajorUpgrade refuses downgrades).
 
-Current release: agent **0.1.3**, MSI **1.0.1.0** (this is the build that introduces
-auto-update).
+Current release: agent **0.1.7**, MSI **1.0.5.0** (fixes the Interrogate-driven service
+shutdown that took machines offline, and adds service failure-recovery / crash auto-restart).
 
 ## Bootstrap caveat (read once)
 
