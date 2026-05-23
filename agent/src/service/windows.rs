@@ -158,10 +158,15 @@ fn run_service_logic(service_name: &str) -> Result<()> {
     
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
-            ServiceControl::Stop | ServiceControl::Interrogate => {
+            ServiceControl::Stop => {
                 let _ = shutdown_tx.send(());
                 ServiceControlHandlerResult::NoError
             }
+            // Interrogate is a routine "report your current status" query, NOT a stop
+            // request. It must only be acknowledged. Previously this was grouped with
+            // Stop, so any status probe (sc interrogate, AV/EDR, monitoring tools, or
+            // the SCM itself) made the service shut itself down -> machine went offline.
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
             _ => ServiceControlHandlerResult::NoError,
         }
     };

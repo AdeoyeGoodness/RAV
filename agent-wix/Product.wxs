@@ -10,7 +10,7 @@
   
   <Package Name="RAV Agent" 
            Manufacturer="RAV Security" 
-           Version="1.0.4.0"
+           Version="1.0.5.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -79,7 +79,16 @@
           <File Id="AgentExe" Source="$(var.AgentPath)\rav-agent.exe" KeyPath="yes" />
           <File Id="AgentNativeHostBat" Source="rav-native-host.bat" />
           <File Id="LaunchHelperVbs" Source="launch-helper.vbs" />
-          <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem" />
+          <ServiceInstall Id="RAVAgentService" Name="RAVAgent" DisplayName="RAV Monitoring Agent" Description="Remote Asset Visibility monitoring service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem">
+            <!-- Auto-restart the service if it ever terminates unexpectedly (crash). NOTE: a
+                 clean Stop is not a "failure" and will NOT trigger this — so this is insurance
+                 against crashes, not a substitute for the Interrogate handler fix. -->
+            <util:ServiceConfig FirstFailureActionType="restart"
+                                SecondFailureActionType="restart"
+                                ThirdFailureActionType="restart"
+                                RestartServiceDelayInSeconds="60"
+                                ResetPeriodInDays="1" />
+          </ServiceInstall>
           <ServiceControl Id="StartRAVService" Name="RAVAgent" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
           
           <!-- Registry key to launch helper on user logon (HKCU, runs in user session) -->
