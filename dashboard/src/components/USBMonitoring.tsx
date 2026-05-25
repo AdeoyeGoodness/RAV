@@ -166,7 +166,10 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  const parseSafeDate = (ts: string) => {
+  // Function declaration (hoisted) so it can be called from the date filter
+  // above; as a `const` arrow it sat in the temporal dead zone and crashed
+  // ("Cannot access before initialization") when a date was selected.
+  function parseSafeDate(ts: string) {
     let iso = ts.replace(' ', 'T')
     if (!iso.endsWith('Z') && !iso.match(/[+-]\d{2}:\d{2}$/)) {
       iso += 'Z'
