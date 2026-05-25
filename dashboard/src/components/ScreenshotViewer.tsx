@@ -44,14 +44,25 @@ export default function ScreenshotViewer({
   const fetchEvents = useCallback(async (background = false) => {
     if (!background) setLoading(true)
     try {
-      const data = await getEvents({ agent_id: agentId, limit: 10000 })
+      // When a date is picked, filter on the SERVER by that local day's UTC
+      // bounds + event_type — NOT by slicing a recent in-memory batch. A busy
+      // agent emits far more than `limit` events per day (process/network fire
+      // every few seconds), so the "most recent 10k events" only reaches back a
+      // few hours; any older day would appear empty even though the DB has it.
+      const params: any = { agent_id: agentId, limit: 10000 }
+      if (dateFilter) {
+        params.event_type = 'screenshot_captured'
+        params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()
+        params.end_time = new Date(`${dateFilter}T23:59:59.999`).toISOString()
+      }
+      const data = await getEvents(params)
       setAllEvents(data as Event[])
     } catch (e) {
       console.error('Failed to load screenshot events:', e)
     } finally {
       if (!background) setLoading(false)
     }
-  }, [agentId])
+  }, [agentId, dateFilter])
 
   // Initial load shows a spinner; auto-refresh updates live without one.
   useEffect(() => { fetchEvents(false) }, [fetchEvents])
@@ -81,7 +92,10 @@ export default function ScreenshotViewer({
   const dateFilteredEvents = dateFilter
     ? screenshotEvents.filter(e => {
       const eventDate = parseSafeDate(e.timestamp)
-      const filterDate = new Date(dateFilter)
+      // Parse the picked day in LOCAL time. `new Date('YYYY-MM-DD')` parses as
+      // UTC midnight, which shifts to the previous calendar day in negative-UTC
+      // zones — making the comparison drop the very day the user selected.
+      const filterDate = new Date(`${dateFilter}T00:00:00`)
       return eventDate.toDateString() === filterDate.toDateString()
     })
     : screenshotEvents
