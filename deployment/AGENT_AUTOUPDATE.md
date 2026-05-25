@@ -71,6 +71,14 @@ EOF
 `version` here is the **agent semver** you set in `Cargo.toml`. No backend restart needed — the
 manifest is read per-heartbeat. To pause/disable rollout, delete or rename `latest.json`.
 
+> ⚠️ **Compute the sha256 on the server, from the exact file you uploaded** (the
+> `HASH=$(sha256sum …)` line above) — never paste a hash from the build machine. Rust release
+> builds use `lto = true` and are **not byte-reproducible**: recompiling the same source produces a
+> different MSI hash. If `latest.json`'s hash doesn't match the served file byte-for-byte, every
+> agent rejects the update at the verify step and nothing rolls out (you'll see a sha256-mismatch
+> retry every 30 min). Verify after publishing: `sha256sum RAVAgent.msi` must equal the hash in
+> `latest.json`.
+
 ## Verify end-to-end (test VPS)
 
 1. Confirm the server serves it: `curl -I http://<server>/api/v1/agent/download` → 200,
