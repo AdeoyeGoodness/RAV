@@ -31,14 +31,23 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
   const fetchEvents = useCallback(async (background = false) => {
     if (!background) setLoading(true)
     try {
-      const data = await getEvents({ agent_id: agentId, limit: 10000 })
+      // When a date is picked, filter on the SERVER by that local day's UTC
+      // bounds + category. A recent-N client-side filter never reaches older
+      // days on busy agents. USB events are categorized as "file" by the backend.
+      const params: any = { agent_id: agentId, limit: 10000 }
+      if (dateFilter) {
+        params.category = 'file'
+        params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()
+        params.end_time = new Date(`${dateFilter}T23:59:59.999`).toISOString()
+      }
+      const data = await getEvents(params)
       setAllEvents(data as Event[])
     } catch (e) {
       console.error('Failed to load USB events:', e)
     } finally {
       if (!background) setLoading(false)
     }
-  }, [agentId])
+  }, [agentId, dateFilter])
 
   // Initial load shows a spinner; auto-refresh updates live without one.
   useEffect(() => { fetchEvents(false) }, [fetchEvents])
@@ -70,7 +79,9 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
   const dateFilteredEvents = dateFilter
     ? usbEvents.filter(e => {
         const eventDate = parseSafeDate(e.timestamp)
-        const filterDate = new Date(dateFilter)
+        // Parse the picked day in LOCAL time (new Date('YYYY-MM-DD') is UTC
+        // midnight and shifts a day in negative-UTC zones).
+        const filterDate = new Date(`${dateFilter}T00:00:00`)
         // Compare dates (ignore time)
         return eventDate.toDateString() === filterDate.toDateString()
       })
