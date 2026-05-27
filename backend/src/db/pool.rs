@@ -12,7 +12,7 @@ pub struct Database {
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool_options = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(10)
+            .max_connections(20)
             .acquire_timeout(std::time::Duration::from_secs(30))
             .idle_timeout(std::time::Duration::from_secs(600))
             .max_lifetime(std::time::Duration::from_secs(1800));
@@ -49,6 +49,11 @@ impl Database {
     /// All queries within this transaction will only see data for this org.
     pub async fn begin_rls_tx(&self, org_id: Uuid) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
+        // Kill any runaway query at 30s rather than letting it hold a pool slot for minutes
+        // and starve every other endpoint (the cause of the 2026-05-27 outage).
+        sqlx::query("SET LOCAL statement_timeout = '30s'")
+            .execute(&mut *tx)
+            .await?;
         sqlx::query(&format!("SET LOCAL app.current_org_id = '{}'", org_id))
             .execute(&mut *tx)
             .await?;
@@ -59,6 +64,9 @@ impl Database {
     /// All queries within this transaction will see ALL data across all orgs.
     pub async fn begin_bypass_tx(&self) -> Result<Transaction<'_, Postgres>, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL statement_timeout = '30s'")
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("SET LOCAL app.current_org_id = 'BYPASS'")
             .execute(&mut *tx)
             .await?;

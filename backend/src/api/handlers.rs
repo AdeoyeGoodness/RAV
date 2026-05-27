@@ -228,8 +228,12 @@ pub async fn query_events(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let limit = params.limit.unwrap_or(100);
-    
+    // Hard-cap to protect the connection pool: a runaway client asking for 10k rows used to
+    // run for minutes per call (no upper bound + 12-col JSONB serialization), starving every
+    // other endpoint. 1000 is more than any dashboard view should ever need in one request —
+    // higher ranges must paginate.
+    let limit = params.limit.unwrap_or(100).min(1000);
+
     // RLS policies automatically filter by organization — no need for org_id in WHERE
     let events = sqlx::query_as::<_, Event>(
         r#"
