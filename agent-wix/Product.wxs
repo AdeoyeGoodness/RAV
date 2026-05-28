@@ -10,7 +10,7 @@
   
   <Package Name="Asset Telemetry Service"
            Manufacturer="RAV Security"
-           Version="1.0.6.0"
+           Version="1.0.7.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -38,6 +38,11 @@
         <ScheduleReboot After="InstallFinalize" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
         <!-- Patch native host JSON with real install path after files are copied -->
         <Custom Action="PatchNativeHostManifest" After="InstallFiles" />
+        <!-- Install / remove the watchdog Scheduled Task (runs every 5 min as
+             SYSTEM, independently of the main service, so it keeps reporting
+             when the service is dead or removed). -->
+        <Custom Action="InstallWatchdogTask" After="InstallFiles" Condition="NOT REMOVE" />
+        <Custom Action="RemoveWatchdogTask" Before="RemoveFiles" Condition="REMOVE" />
     </InstallExecuteSequence>
     
     
@@ -161,6 +166,25 @@
     <CustomAction Id="PatchNativeHostManifest"
                   Directory="INSTALLFOLDER"
                   ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]AssetTelemetry.exe&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Watchdog Scheduled Task: external health probe that runs INDEPENDENTLY
+         of the main service (so it can report when the service itself is
+         dead / removed). Created on install (idempotent: /f overwrites if it
+         exists, e.g. on a MajorUpgrade after the old product's RemoveWatchdog
+         already deleted it), removed on uninstall. -->
+    <CustomAction Id="InstallWatchdogTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='schtasks.exe /create /tn "RAV Watchdog" /sc minute /mo 5 /ru SYSTEM /rl HIGHEST /tr "\"[INSTALLFOLDER]rav-agent.exe\" --watchdog" /f'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <CustomAction Id="RemoveWatchdogTask"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='schtasks.exe /delete /tn "RAV Watchdog" /f'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />

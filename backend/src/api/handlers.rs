@@ -664,7 +664,19 @@ pub async fn list_agents(
         r#"
         SELECT a.id, a.organization_id, a.agent_id, a.hardware_fingerprint, a.hostname,
                a.display_name, a.last_seen, a.created_at, a.updated_at,
-               a.enrollment_token_id, t.label AS token_label
+               a.enrollment_token_id, t.label AS token_label,
+               a.watchdog_last_seen, a.watchdog_service_state, a.watchdog_binary_present,
+               a.watchdog_version,
+               (
+                   SELECT state FROM agent_lifecycle_events l
+                   WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
+                   ORDER BY l.received_at DESC LIMIT 1
+               ) AS last_lifecycle_state,
+               (
+                   SELECT received_at FROM agent_lifecycle_events l
+                   WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
+                   ORDER BY l.received_at DESC LIMIT 1
+               ) AS last_lifecycle_at
         FROM agents a
         LEFT JOIN enrollment_tokens t ON a.enrollment_token_id = t.token_id
         WHERE a.deleted_at IS NULL
@@ -702,6 +714,12 @@ pub async fn list_agents(
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
                 "enrollment_token_id": row.get::<Option<Uuid>, _>("enrollment_token_id"),
                 "campaign": row.get::<Option<String>, _>("token_label"),
+                "watchdog_last_seen": row.get::<Option<chrono::DateTime<Utc>>, _>("watchdog_last_seen"),
+                "watchdog_service_state": row.get::<Option<String>, _>("watchdog_service_state"),
+                "watchdog_binary_present": row.get::<Option<bool>, _>("watchdog_binary_present"),
+                "watchdog_version": row.get::<Option<String>, _>("watchdog_version"),
+                "last_lifecycle_state": row.get::<Option<String>, _>("last_lifecycle_state"),
+                "last_lifecycle_at": row.get::<Option<chrono::DateTime<Utc>>, _>("last_lifecycle_at"),
             })
         })
         .collect();
@@ -1487,4 +1505,119 @@ pub async fn get_all_archives(
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(archives))
+}
+
+// ===========================================================================
+// AGENT HEALTH SIGNALS: watchdog + lifecycle
+// ===========================================================================
+//
+// These let the backend tell apart "stopped", "killed", "removed" and
+// "offline (unknown)". The main agent's heartbeat alone can't — it just goes
+// silent in all of those cases. The two extra signals close that gap:
+//
+//   * Watchdog: posted by a separate Windows Scheduled Task on the endpoint,
+//     so it keeps reporting even when the main service is dead/removed.
+//   * Lifecycle: posted by the main agent on graceful start/stop; a recent
+//     "stopping" before silence proves the stop was intentional.
+
+pub async fn report_watchdog(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(report): Json<crate::db::models::WatchdogReport>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let org_id = headers
+        .get("X-Organization-Id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|e| {
+        tracing::error!("Watchdog: Failed to begin RLS tx for org {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let result = sqlx::query!(
+        r#"
+        UPDATE agents
+        SET watchdog_last_seen      = NOW(),
+            watchdog_service_state  = $1,
+            watchdog_binary_present = $2,
+            watchdog_version        = $3,
+            hostname                = COALESCE($4, hostname)
+        WHERE agent_id = $5 AND organization_id = $6
+        "#,
+        report.service_state,
+        report.binary_present,
+        report.watchdog_version,
+        report.hostname,
+        &report.agent_id,
+        org_id,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update watchdog snapshot: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if result.rows_affected() == 0 {
+        // Agent isn't enrolled in this org. Don't error noisily — the watchdog
+        // is fire-and-forget; just tell it nothing was recorded.
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Watchdog: commit failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({"status": "success"})))
+}
+
+pub async fn report_lifecycle(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(event): Json<crate::db::models::LifecycleEvent>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let org_id = headers
+        .get("X-Organization-Id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Validate state — anything outside the known vocabulary gets rejected so
+    // the table doesn't accumulate junk.
+    let state_str = event.state.as_str();
+    if !matches!(state_str, "started" | "stopping" | "uninstalling") {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|e| {
+        tracing::error!("Lifecycle: Failed to begin RLS tx for org {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    sqlx::query!(
+        r#"
+        INSERT INTO agent_lifecycle_events (agent_id, organization_id, state, reason, reported_at)
+        VALUES ($1, $2, $3, $4, NOW())
+        "#,
+        &event.agent_id,
+        org_id,
+        state_str,
+        event.reason,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to insert lifecycle event: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Lifecycle: commit failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({"status": "success"})))
 }

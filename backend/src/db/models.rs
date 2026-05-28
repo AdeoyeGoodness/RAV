@@ -76,6 +76,27 @@ pub struct Heartbeat {
     pub hostname: Option<String>,
 }
 
+/// Watchdog snapshot posted by the endpoint-side Scheduled Task. Lets the
+/// backend distinguish a killed/crashed service (state=Stopped, binary
+/// present) from a removed agent (NotInstalled or binary missing).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchdogReport {
+    pub agent_id: String,
+    pub hostname: Option<String>,
+    pub service_state: String,    // "Running" | "Stopped" | "NotInstalled" | "Unknown"
+    pub binary_present: bool,
+    pub watchdog_version: Option<String>,
+}
+
+/// Lifecycle event posted by the MAIN agent on graceful startup/shutdown so a
+/// recent "stopping" before silence means admin-initiated, not crash/killed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifecycleEvent {
+    pub agent_id: String,
+    pub state: String,            // "started" | "stopping" | "uninstalling"
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,

@@ -120,6 +120,49 @@ impl SyncManager {
         self.queue_event(event);
     }
 
+    /// Fire-and-forget lifecycle notification ("started", "stopping",
+    /// "uninstalling") to /api/v1/agents/lifecycle. The watchdog tells the
+    /// backend WHAT state the agent is in; this tells it whether the agent
+    /// went down on PURPOSE (recent "stopping" before silence = admin stop,
+    /// not crash/kill). Short timeout so it never blocks startup or shutdown.
+    pub async fn report_lifecycle(&self, state: &str, reason: Option<&str>) {
+        let agent_id = match self.config.agent.agent_id.as_deref() {
+            Some(id) if !id.is_empty() => id.to_string(),
+            _ => return, // not enrolled — nothing to report against
+        };
+        let org_id = match self.config.agent.organization_id.as_deref() {
+            Some(o) if !o.is_empty() => o.to_string(),
+            _ => return,
+        };
+
+        let url = format!(
+            "{}/api/v1/agents/lifecycle",
+            self.config.backend.url.trim_end_matches('/')
+        );
+        let body = serde_json::json!({
+            "agent_id": agent_id,
+            "state": state,
+            "reason": reason,
+        });
+
+        // Dedicated short-timeout client so a dead network can't hang the
+        // shutdown path waiting for this best-effort notification.
+        let client = match reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+        {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let _ = client
+            .post(&url)
+            .header("X-Organization-Id", &org_id)
+            .json(&body)
+            .send()
+            .await;
+    }
+
     pub async fn run_sync_loop(&self) {
         let sync_interval = self.config.backend.sync_interval_seconds;
         let mut consecutive_failures: u32 = 0;

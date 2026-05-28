@@ -1,6 +1,8 @@
 #[cfg(windows)]
 pub mod windows;
 
+pub mod watchdog;
+
 #[cfg(target_os = "macos")]
 pub mod macos;
 

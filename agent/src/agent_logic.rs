@@ -42,6 +42,15 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
 
     info!("Sync manager initialized");
 
+    // Tell the backend the agent is up. Fire-and-forget; if the backend or
+    // network is unavailable this returns within ~2s and we keep going.
+    // Combined with the watchdog's snapshots, a recent "started" or "stopping"
+    // event lets the backend tell graceful lifecycle changes apart from a
+    // crash/kill (which never sends "stopping").
+    sync_manager
+        .report_lifecycle("started", Some(env!("CARGO_PKG_VERSION")))
+        .await;
+
     // =========================================================================
     // TELEMETRY GAP DETECTION (fixes.md §5)
     // Detect if the agent was offline and emit an AGENT_OFFLINE_PERIOD event
@@ -93,6 +102,13 @@ pub async fn run_agent(mut config: Config, shutdown_signal: impl Future<Output =
     // Wait for shutdown signal
     shutdown_signal.await;
     info!("Shutdown signal received, stopping agent...");
+
+    // Notify the backend BEFORE we shut down. A recent "stopping" lets the
+    // backend classify the upcoming silence as a graceful stop, not a kill.
+    // Bounded timeout inside report_lifecycle, so a dead network can't hang us.
+    sync_manager
+        .report_lifecycle("stopping", Some("shutdown_signal"))
+        .await;
 
     // =========================================================================
     // GRACEFUL SHUTDOWN: Persist state for next startup's gap detection

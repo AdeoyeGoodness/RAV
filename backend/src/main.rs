@@ -176,6 +176,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
         .route("/api/v1/agents/register", post(handlers::register_agent)) // legacy
         .route("/api/v1/agents/heartbeat", post(handlers::heartbeat))
+        .route("/api/v1/agents/watchdog", post(handlers::report_watchdog))
+        .route("/api/v1/agents/lifecycle", post(handlers::report_lifecycle))
         .route("/api/v1/agent/download", get(handlers::download_agent_installer))
         .route("/api/v1/agents", get(handlers::list_agents))
         .route("/api/v1/agents/:agent_id/events", delete(handlers::delete_agent_events))

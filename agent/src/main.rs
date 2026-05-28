@@ -34,6 +34,7 @@ fn main() -> Result<()> {
     let mut export_path: Option<String> = None;
     let mut cli_token = None;
     let mut cli_server = None;
+    let mut watchdog_flag = false;
 
     for i in 0..args.len() {
         if args[i] == "--export" {
@@ -63,6 +64,9 @@ fn main() -> Result<()> {
         }
         if args[i] == "--native-host" || args[i].starts_with("chrome-extension://") || args[i].starts_with("moz-extension://") {
             native_host_flag = true;
+        }
+        if args[i] == "--watchdog" {
+            watchdog_flag = true;
         }
     }
 
@@ -101,13 +105,26 @@ fn main() -> Result<()> {
     // 3. Dynamic Console Attachment: If we have CLI flags, try to attach to parent console
     // so the user actually sees the output in their terminal.
     #[cfg(windows)]
-    if !native_host_flag && (cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag) {
+    if !native_host_flag && (cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || watchdog_flag) {
         attach_console();
     }
 
-    // 4. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost/Export)
-    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag || export_flag {
+    // 4. Handle Explicit CLI Commands (Install/Enroll/Uninstall/Helper/NativeHost/Export/Watchdog)
+    if cli_token.is_some() || cli_server.is_some() || install_flag || uninstall_flag || helper_flag || native_host_flag || export_flag || watchdog_flag {
         info!("RAV Agent: Processing CLI commands...");
+
+        // Watchdog: one-shot health probe invoked by a Scheduled Task. Runs
+        // INDEPENDENTLY of the main service so it can report the service's
+        // own death/removal. Brief tokio runtime for the async HTTP POST,
+        // then exit.
+        if watchdog_flag {
+            info!("RAV Agent: Running in watchdog mode...");
+            let rt = tokio::runtime::Runtime::new()?;
+            if let Err(e) = rt.block_on(service::watchdog::run_watchdog_mode()) {
+                tracing::error!("Watchdog: {:#}", e);
+            }
+            return Ok(());
+        }
 
         // Export Tool (Item 7.1)
         if export_flag {
