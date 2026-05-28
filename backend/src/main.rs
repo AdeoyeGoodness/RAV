@@ -181,6 +181,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/:agent_id/events", delete(handlers::delete_agent_events))
         .route("/api/v1/agents/:agent_id/events/restore", put(handlers::restore_agent_events))
         .route("/api/v1/agents/:agent_id", delete(handlers::delete_agent))
+        .route("/api/v1/agents/:agent_id/display-name", patch(handlers::update_agent_display_name))
         .route("/api/v1/files/upload", post(handlers::upload_file))
         .layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)) // Allow up to 20MB for screenshot uploads
         .route("/api/v1/files/:file_id", get(handlers::download_file))

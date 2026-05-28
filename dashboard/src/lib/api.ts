@@ -96,6 +96,7 @@ export interface Agent {
   agent_id: string
   hardware_fingerprint: string
   hostname: string | null
+  display_name?: string | null // Editable friendly label; agent_id stays immutable
   last_seen: string
   last_seen_ms: number
   server_time_ms: number // For drift-proof status
@@ -105,6 +106,12 @@ export interface Agent {
   admin_verified?: boolean
   enrollment_token_id?: string | null
   campaign?: string | null // Enrollment-token label this device registered under
+}
+
+// Set or clear the human-readable label shown for a device. Pass null/empty to clear back
+// to "use hostname". agent_id is never changed — this is a pure relabel.
+export async function updateAgentDisplayName(agentId: string, displayName: string | null): Promise<void> {
+  await api.patch(`/api/v1/agents/${agentId}/display-name`, { display_name: displayName })
 }
 
 export async function getEvents(params?: {

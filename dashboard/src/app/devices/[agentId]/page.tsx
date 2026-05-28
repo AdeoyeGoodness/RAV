@@ -3,8 +3,8 @@
 import React from 'react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Monitor, Activity, Clock, Calendar, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert, Tag } from 'lucide-react'
-import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, downloadArchive } from '@/lib/api'
+import { ArrowLeft, Monitor, Activity, Clock, Calendar, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert, Tag, Edit2, Check, X } from 'lucide-react'
+import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, downloadArchive, updateAgentDisplayName } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
@@ -20,6 +20,7 @@ interface Agent {
   agent_id: string
   hardware_fingerprint: string
   hostname: string | null
+  display_name?: string | null
   last_seen: string
   last_seen_ms: number
   server_time_ms: number
@@ -47,6 +48,11 @@ export default function DeviceDetailsPage() {
   const [events, setEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [clearTimestamp, setClearTimestamp] = useState<Date | null>(null)
+  // Inline display-name editor (admin-only). agent_id is never edited; this is a label.
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [savingName, setSavingName] = useState(false)
+  const [nameError, setNameError] = useState<string | null>(null)
   const mainRef = useRef<HTMLElement>(null)
 
   const loadDeviceData = useCallback(async (isInitial = false) => {
@@ -302,8 +308,70 @@ export default function DeviceDetailsPage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Internal Node ID</p>
-                      <p className="text-base font-medium text-white">{agent.agent_id}</p>
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Display Name</p>
+                      {editingName ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={nameDraft}
+                            onChange={(e) => setNameDraft(e.target.value)}
+                            placeholder={agent.hostname || agent.agent_id}
+                            maxLength={100}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') {
+                                setEditingName(false); setNameDraft(''); setNameError(null)
+                              }
+                            }}
+                            className="flex-1 px-3 py-1.5 bg-white/[0.04] border border-sky-500/40 rounded-md text-base font-medium text-white outline-none focus:border-sky-400"
+                          />
+                          <button
+                            disabled={savingName}
+                            onClick={async () => {
+                              setSavingName(true); setNameError(null)
+                              try {
+                                const trimmed = nameDraft.trim()
+                                await updateAgentDisplayName(agent.agent_id, trimmed || null)
+                                setAgent({ ...agent, display_name: trimmed || null })
+                                setEditingName(false)
+                              } catch (err: any) {
+                                setNameError(err?.response?.data?.message || 'Failed to update name')
+                              } finally {
+                                setSavingName(false)
+                              }
+                            }}
+                            className="p-1.5 rounded-md bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 disabled:opacity-50"
+                            title="Save"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            disabled={savingName}
+                            onClick={() => { setEditingName(false); setNameDraft(''); setNameError(null) }}
+                            className="p-1.5 rounded-md bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 border border-white/10"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 group">
+                          <p className="text-base font-medium text-white">
+                            {agent.display_name || agent.hostname || agent.agent_id}
+                          </p>
+                          {(user?.role === 'org_admin' || user?.role === 'super_admin') && (
+                            <button
+                              onClick={() => { setNameDraft(agent.display_name || ''); setEditingName(true) }}
+                              className="p-1 rounded text-slate-500 hover:text-sky-400 hover:bg-white/[0.04] opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Rename device (label only — does not change identity)"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-[10px] font-mono text-slate-600 mt-1 truncate">id: {agent.agent_id}</p>
+                      {nameError && <p className="text-[10px] text-rose-400 mt-1">{nameError}</p>}
                     </div>
                     <div>
                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Last Synchronized</p>

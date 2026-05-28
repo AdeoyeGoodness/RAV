@@ -92,6 +92,7 @@ export default function DevicesPage() {
       agent.agent_id.toLowerCase().includes(query) ||
       agent.hardware_fingerprint.toLowerCase().includes(query) ||
       (agent.hostname && agent.hostname.toLowerCase().includes(query)) ||
+      (agent.display_name && agent.display_name.toLowerCase().includes(query)) ||
       (agent.campaign && agent.campaign.toLowerCase().includes(query))
     )
   })
@@ -184,7 +185,7 @@ export default function DevicesPage() {
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {agent.hostname || (agent.agent_id.length > 20
+                              {agent.display_name || agent.hostname || (agent.agent_id.length > 20
                                 ? `${agent.agent_id.substring(0, 20)}...`
                                 : agent.agent_id)}
                             </h3>

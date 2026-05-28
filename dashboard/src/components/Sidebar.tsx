@@ -7,6 +7,7 @@ import { getAgents, getOrgDetails, Organization as OrgType } from '@/lib/api'
 interface Agent {
   agent_id: string
   hostname: string | null
+  display_name?: string | null
 }
 
 export default function Sidebar() {
@@ -179,7 +180,7 @@ export default function Sidebar() {
                               onClick={() => window.location.href = `/devices/${agent.agent_id}`}
                             >
                               <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50" />
-                              {agent.hostname || agent.agent_id.substring(0, 12)}
+                              {agent.display_name || agent.hostname || agent.agent_id.substring(0, 12)}
                             </li>
                           ))
                         )}

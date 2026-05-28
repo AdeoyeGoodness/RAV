@@ -663,7 +663,7 @@ pub async fn list_agents(
     let agents = sqlx::query(
         r#"
         SELECT a.id, a.organization_id, a.agent_id, a.hardware_fingerprint, a.hostname,
-               a.last_seen, a.created_at, a.updated_at,
+               a.display_name, a.last_seen, a.created_at, a.updated_at,
                a.enrollment_token_id, t.label AS token_label
         FROM agents a
         LEFT JOIN enrollment_tokens t ON a.enrollment_token_id = t.token_id
@@ -694,6 +694,7 @@ pub async fn list_agents(
                 "agent_id": row.get::<String, _>("agent_id"),
                 "hardware_fingerprint": row.get::<String, _>("hardware_fingerprint"),
                 "hostname": row.get::<Option<String>, _>("hostname"),
+                "display_name": row.get::<Option<String>, _>("display_name"),
                 "last_seen": last_seen,
                 "last_seen_ms": last_seen.timestamp_millis(),
                 "server_time_ms": now.timestamp_millis(), // Add this for clock-sync
@@ -909,6 +910,95 @@ pub async fn delete_agent_events(
     Ok(Json(serde_json::json!({
         "status": "success",
         "deleted_count": deleted_count
+    })))
+}
+
+/// Set or clear the human-readable label shown for an agent in dashboard lists. Does NOT
+/// touch agent_id or hostname — those remain the immutable identity used by every query,
+/// audit log, and foreign key. Pass `display_name: null` to clear back to "use hostname".
+#[derive(Deserialize)]
+pub struct UpdateDisplayNamePayload {
+    pub display_name: Option<String>,
+}
+
+pub async fn update_agent_display_name(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Json(payload): Json<UpdateDisplayNamePayload>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Renaming a device is an admin action — org users shouldn't be able to relabel devices.
+    if claims.role != "org_admin" && claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    // Normalize: trim whitespace; treat empty as "clear it" (NULL).
+    let cleaned: Option<String> = payload
+        .display_name
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // Hard cap so the UI doesn't get a 4 KB "name."
+    if let Some(ref name) = cleaned {
+        if name.chars().count() > 100 {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let result = sqlx::query!(
+        "UPDATE agents SET display_name = $1, updated_at = NOW() WHERE agent_id = $2 AND organization_id = $3 AND deleted_at IS NULL",
+        cleaned.as_deref(),
+        &agent_id,
+        target_org_id
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if result.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let (ip, ua) = extract_request_meta(&headers);
+    log_audit(
+        &mut tx,
+        actor_type_from_role(&claims.role),
+        Some(claims.sub),
+        Some(target_org_id),
+        "AGENT_RENAMED",
+        "AGENT",
+        Some(agent_id.clone()),
+        serde_json::json!({
+            "agent_id": agent_id,
+            "display_name": cleaned,
+        }),
+        ip,
+        ua,
+    ).await.map_err(|e| {
+        tracing::error!("Rename: Failed to audit log: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "agent_id": agent_id,
+        "display_name": cleaned,
     })))
 }
 
