@@ -111,6 +111,12 @@ export default function Sidebar() {
                     <Archive className={iconClass('/archives')} />
                     <span className="font-medium text-sm">Forensic Vault</span>
                   </a>
+                  {user?.role === 'org_admin' && (
+                    <a href="/audit" className={navItemClass('/audit')}>
+                      <Shield className={iconClass('/audit')} />
+                      <span className="font-medium text-sm">Audit Trail</span>
+                    </a>
+                  )}
                   <a href="/settings/notifications" className={navItemClass('/settings/notifications')}>
                     <Bell className={iconClass('/settings/notifications')} />
                     <span className="font-medium text-sm">Forensic Alerts</span>

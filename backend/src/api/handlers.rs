@@ -16,6 +16,29 @@ use crate::services::audit::log_audit;
 use crate::api::auth::Claims;
 use crate::AppState;
 
+/// Pull caller IP + User-Agent off the request headers for audit logging. nginx is in front,
+/// so the real client IP is in X-Forwarded-For (first hop); we fall back to X-Real-IP.
+fn extract_request_meta(headers: &HeaderMap) -> (Option<String>, Option<String>) {
+    let ip = headers
+        .get("x-forwarded-for")
+        .or_else(|| headers.get("x-real-ip"))
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string());
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+    (ip, user_agent)
+}
+
+/// Map a JWT role string to the audit ActorType enum (SuperAdmin / OrgAdmin / System).
+fn actor_type_from_role(role: &str) -> ActorType {
+    match role {
+        "super_admin" => ActorType::SuperAdmin,
+        _ => ActorType::OrgAdmin,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct EventQuery {
     pub agent_id: Option<String>,
@@ -835,8 +858,6 @@ pub async fn delete_agent_events(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let pool = state.db.pool();
-
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -846,18 +867,48 @@ pub async fn delete_agent_events(
     } else {
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
-    
+
+    // Wrap the wipe + audit log in a single tx so a failed audit rolls back the wipe.
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Wipe: Failed to begin tx: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     let result = sqlx::query!(
         "UPDATE events SET deleted_at = $1 WHERE agent_id = $2 AND organization_id = $3 AND deleted_at IS NULL",
         Utc::now(), &agent_id, target_org_id
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
+    let deleted_count = result.rows_affected();
+
+    let (ip, ua) = extract_request_meta(&headers);
+    log_audit(
+        &mut tx,
+        actor_type_from_role(&claims.role),
+        Some(claims.sub),
+        Some(target_org_id),
+        "AGENT_EVENTS_WIPED",
+        "AGENT",
+        Some(agent_id.clone()),
+        serde_json::json!({
+            "agent_id": agent_id,
+            "deleted_count": deleted_count,
+        }),
+        ip,
+        ua,
+    ).await.map_err(|e| {
+        tracing::error!("Wipe: Failed to audit log: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(Json(serde_json::json!({
         "status": "success",
-        "deleted_count": result.rows_affected()
+        "deleted_count": deleted_count
     })))
 }
 
@@ -867,8 +918,6 @@ pub async fn delete_agent(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let pool = state.db.pool();
-
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -879,14 +928,35 @@ pub async fn delete_agent(
         claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
     };
 
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     sqlx::query!(
         "UPDATE agents SET deleted_at = $1 WHERE agent_id = $2 AND organization_id = $3 AND deleted_at IS NULL",
         Utc::now(), &agent_id, target_org_id
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
+    let (ip, ua) = extract_request_meta(&headers);
+    log_audit(
+        &mut tx,
+        actor_type_from_role(&claims.role),
+        Some(claims.sub),
+        Some(target_org_id),
+        "AGENT_DELETED",
+        "AGENT",
+        Some(agent_id.clone()),
+        serde_json::json!({ "agent_id": agent_id }),
+        ip,
+        ua,
+    ).await.map_err(|e| {
+        tracing::error!("DeleteAgent: Failed to audit log: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(Json(serde_json::json!({"status": "success"})))
 }
 
@@ -907,14 +977,37 @@ pub async fn restore_agent_events(
         .and_then(|s| Uuid::parse_str(s).ok())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    let pool = state.db.pool();
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let result = sqlx::query!(
         "UPDATE events SET deleted_at = NULL WHERE agent_id = $1 AND organization_id = $2 AND deleted_at IS NOT NULL",
         &agent_id, target_org_id
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let restored_count = result.rows_affected();
+    let (ip, ua) = extract_request_meta(&headers);
+    log_audit(
+        &mut tx,
+        actor_type_from_role(&claims.role),
+        Some(claims.sub),
+        Some(target_org_id),
+        "AGENT_EVENTS_RESTORED",
+        "AGENT",
+        Some(agent_id.clone()),
+        serde_json::json!({
+            "agent_id": agent_id,
+            "restored_count": restored_count,
+        }),
+        ip,
+        ua,
+    ).await.map_err(|e| {
+        tracing::error!("Restore: Failed to audit log: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     
     Ok(Json(serde_json::json!({
         "status": "success",
@@ -1036,14 +1129,43 @@ pub async fn trigger_agent_archive(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    if let Some(_arch) = archive {
+    if let Some(arch) = archive {
         let _ = state.notification_service.notify_archive_ready(target_org_id, &agent_id, &state.encryption_service).await;
+
+        // Audit log — best-effort; the archive already exists, so we never fail the user's
+        // request on a logging error, but we DO loudly log it server-side.
+        let (ip, ua) = extract_request_meta(&headers);
+        let log_result: Result<(), sqlx::Error> = async {
+            let mut tx = state.db.begin_bypass_tx().await?;
+            log_audit(
+                &mut tx,
+                actor_type_from_role(&claims.role),
+                Some(claims.sub),
+                Some(target_org_id),
+                "ARCHIVE_TRIGGERED",
+                "AGENT",
+                Some(agent_id.clone()),
+                serde_json::json!({
+                    "agent_id": agent_id,
+                    "archive_id": arch.id,
+                    "filename": arch.filename,
+                    "events_archived": arch.event_count,
+                }),
+                ip,
+                ua,
+            ).await?;
+            tx.commit().await?;
+            Ok(())
+        }.await;
+        if let Err(e) = log_result {
+            tracing::error!("ArchiveTrigger: audit log failed for {}: {}", agent_id, e);
+        }
 
         Ok(Json(serde_json::json!({
             "status": "success",
-            "archive_id": _arch.id,
-            "filename": _arch.filename,
-            "events_archived": _arch.event_count
+            "archive_id": arch.id,
+            "filename": arch.filename,
+            "events_archived": arch.event_count
         })))
     } else {
         Ok(Json(serde_json::json!({
@@ -1085,9 +1207,37 @@ pub async fn trigger_org_archive(
         }
     }
 
+    // Audit log — one row for the org-wide trigger summarising the batch.
+    let (ip, ua) = extract_request_meta(&headers);
+    let archives_generated = results.len();
+    let log_result: Result<(), sqlx::Error> = async {
+        let mut tx = state.db.begin_bypass_tx().await?;
+        log_audit(
+            &mut tx,
+            actor_type_from_role(&claims.role),
+            Some(claims.sub),
+            Some(target_org_id),
+            "ORG_ARCHIVE_TRIGGERED",
+            "ORGANIZATION",
+            Some(target_org_id.to_string()),
+            serde_json::json!({
+                "organization_id": target_org_id,
+                "archives_generated": archives_generated,
+                "details": results,
+            }),
+            ip,
+            ua,
+        ).await?;
+        tx.commit().await?;
+        Ok(())
+    }.await;
+    if let Err(e) = log_result {
+        tracing::error!("OrgArchiveTrigger: audit log failed for org {}: {}", target_org_id, e);
+    }
+
     Ok(Json(serde_json::json!({
         "status": "success",
-        "archives_generated": results.len(),
+        "archives_generated": archives_generated,
         "details": results
     })))
 }
