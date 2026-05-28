@@ -543,16 +543,20 @@ pub async fn heartbeat(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
+    // Persist the agent's running CARGO_PKG_VERSION so we can verify rollout from psql
+    // ("SELECT agent_version, count(*) FROM agents GROUP BY agent_version") without needing
+    // to walk up to an endpoint.
     let result = sqlx::query!(
         r#"
         UPDATE agents
-        SET last_seen = $1, updated_at = $1, hostname = COALESCE($2, hostname)
+        SET last_seen = $1, updated_at = $1, hostname = COALESCE($2, hostname), agent_version = $5
         WHERE agent_id = $3 AND organization_id = $4
         "#,
         Utc::now(),
         heartbeat.hostname,
         &heartbeat.agent_id,
-        org_id
+        org_id,
+        &heartbeat.version,
     )
     .execute(&mut *tx)
     .await;
