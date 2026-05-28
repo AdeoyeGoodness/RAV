@@ -42,7 +42,7 @@ export default function BrowserHistoryViewer({
       // When a date is picked, filter on the SERVER by that local day's UTC
       // bounds + category. A recent-N client-side filter never reaches older
       // days on busy agents. Browser events are categorized as "browser".
-      const params: any = { agent_id: agentId, limit: 10000 }
+      const params: any = { agent_id: agentId, limit: 1000 }
       if (dateFilter) {
         params.category = 'browser'
         params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()

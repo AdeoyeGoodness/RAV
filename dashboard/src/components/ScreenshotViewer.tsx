@@ -49,7 +49,7 @@ export default function ScreenshotViewer({
       // agent emits far more than `limit` events per day (process/network fire
       // every few seconds), so the "most recent 10k events" only reaches back a
       // few hours; any older day would appear empty even though the DB has it.
-      const params: any = { agent_id: agentId, limit: 10000 }
+      const params: any = { agent_id: agentId, limit: 1000 }
       if (dateFilter) {
         params.event_type = 'screenshot_captured'
         params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()

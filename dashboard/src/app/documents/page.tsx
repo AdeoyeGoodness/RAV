@@ -57,7 +57,7 @@ export default function DocumentsPage() {
   const loadDocuments = async () => {
     setLoading(true)
     try {
-      const events = await getEvents({ event_type: 'usb_file_transfer', limit: 10000 })
+      const events = await getEvents({ event_type: 'usb_file_transfer', limit: 1000 })
       const docs = events.map(event => ({
         id: event.id,
         event_type: event.event_type,

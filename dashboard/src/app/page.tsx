@@ -43,7 +43,7 @@ export default function DashboardPage() {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const [agentsData, eventsData] = await Promise.all([
         getAgents(),
-        getEvents({ start_time: twentyFourHoursAgo, limit: 10000 })
+        getEvents({ start_time: twentyFourHoursAgo, limit: 1000 })
       ])
 
       setAgents(agentsData)

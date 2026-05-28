@@ -57,7 +57,7 @@ export default function DeviceDetailsPage() {
     try {
       const [agentsData, eventsData] = await Promise.all([
         getAgents(),
-        getEvents({ agent_id: agentId, limit: 10000 }),
+        getEvents({ agent_id: agentId, limit: 1000 }),
       ])
 
       const foundAgent = agentsData.find(a => a.agent_id === agentId || a.hostname === agentId)

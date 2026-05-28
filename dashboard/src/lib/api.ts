@@ -116,7 +116,18 @@ export async function getEvents(params?: {
   end_time?: string
   limit?: number
 }): Promise<Event[]> {
-  const response = await api.get('/api/v1/events', { params })
+  // Default to "last 24h" so dashboard views don't silently miss older events when the
+  // backend's hard cap (1000) is hit by a busy stream — the cause of the 2026-05-28
+  // "where did this morning's events go?" report. Callers that need longer history pass
+  // an explicit start_time (or end_time, in which case we leave the range alone).
+  const defaultStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const queryParams = {
+    ...params,
+    start_time: params?.start_time || (params?.end_time ? undefined : defaultStart),
+    // Match the backend cap; asking for more is wasted bandwidth.
+    limit: Math.min(params?.limit ?? 1000, 1000),
+  }
+  const response = await api.get('/api/v1/events', { params: queryParams })
   return response.data
 }
 

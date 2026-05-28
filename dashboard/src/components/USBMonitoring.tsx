@@ -34,7 +34,7 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
       // When a date is picked, filter on the SERVER by that local day's UTC
       // bounds + category. A recent-N client-side filter never reaches older
       // days on busy agents. USB events are categorized as "file" by the backend.
-      const params: any = { agent_id: agentId, limit: 10000 }
+      const params: any = { agent_id: agentId, limit: 1000 }
       if (dateFilter) {
         params.category = 'file'
         params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()
