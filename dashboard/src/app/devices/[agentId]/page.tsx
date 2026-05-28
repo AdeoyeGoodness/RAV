@@ -3,7 +3,7 @@
 import React from 'react'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Monitor, Activity, Clock, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert, Tag } from 'lucide-react'
+import { ArrowLeft, Monitor, Activity, Clock, Calendar, HardDrive, Usb, FileText, AlertCircle, Trash2, Globe, Archive, Database, ShieldAlert, Tag } from 'lucide-react'
 import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, downloadArchive } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -308,6 +308,13 @@ export default function DeviceDetailsPage() {
                        <p className="text-base font-medium text-white flex items-center gap-2">
                          <Clock className="w-4 h-4 text-slate-400" />
                          {new Date(agent.last_seen).toLocaleString()}
+                       </p>
+                    </div>
+                    <div>
+                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Installed On</p>
+                       <p className="text-base font-medium text-white flex items-center gap-2">
+                         <Calendar className="w-4 h-4 text-slate-400" />
+                         {new Date(agent.created_at).toLocaleString()}
                        </p>
                     </div>
                     <div>
