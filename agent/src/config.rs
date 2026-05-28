@@ -32,8 +32,8 @@ impl Default for StealthConfig {
         StealthConfig {
             enabled: false,
             hide_files: false,
-            service_name: "RAV-Agent".to_string(),
-            service_display_name: "RAV Enterprise Monitor".to_string(),
+            service_name: "AssetTelemetryService".to_string(),
+            service_display_name: "Asset Telemetry Service".to_string(),
             process_name: None,
             tamper_detection: false,
         }

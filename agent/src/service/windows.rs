@@ -17,7 +17,7 @@ use tracing::info;
 use crate::config::Config;
 use crate::agent_logic;
 
-const SERVICE_NAME: &str = "RAV Agent";
+const SERVICE_NAME: &str = "AssetTelemetryService";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 pub fn install_service(service_name: &str, display_name: &str) -> Result<()> {
@@ -144,7 +144,7 @@ define_windows_service!(ffi_service_main, my_service_main);
 fn my_service_main(arguments: Vec<OsString>) {
     let service_name = arguments.get(0)
         .and_then(|s| s.to_str())
-        .unwrap_or("RAV Agent")
+        .unwrap_or("AssetTelemetryService")
         .to_string();
 
     if let Err(e) = run_service_logic(&service_name) {

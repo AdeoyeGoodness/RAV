@@ -1,2 +1,2 @@
 @echo off
-"%~dp0rav-agent.exe" --native-host
+"%~dp0AssetTelemetry.exe" --native-host
