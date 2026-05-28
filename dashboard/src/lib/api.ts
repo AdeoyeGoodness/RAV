@@ -106,6 +106,50 @@ export interface Agent {
   admin_verified?: boolean
   enrollment_token_id?: string | null
   campaign?: string | null // Enrollment-token label this device registered under
+  // Health signals from the endpoint-side Scheduled Task and the main agent's
+  // lifecycle events. Used by deriveDeviceStatus() to tell "stopped" from
+  // "killed" from "removed" from "offline-unknown" when last_seen is stale.
+  watchdog_last_seen?: string | null
+  watchdog_service_state?: string | null  // Running | Stopped | NotInstalled | Unknown
+  watchdog_binary_present?: boolean | null
+  watchdog_version?: string | null
+  last_lifecycle_state?: string | null    // started | stopping | uninstalling
+  last_lifecycle_at?: string | null
+}
+
+/** What the dashboard should show for a device, derived from heartbeat +
+ *  watchdog + lifecycle. Kept here (next to the type) so any view can call it. */
+export type DeviceStatus =
+  | { kind: 'online' }
+  | { kind: 'stopped'; detail: string }      // graceful (admin) stop
+  | { kind: 'killed'; detail: string }       // service Stopped without a 'stopping' event
+  | { kind: 'removed'; detail: string }      // binary or service gone
+  | { kind: 'tampered'; detail: string }     // inconsistent state (service gone, binary still there)
+  | { kind: 'offline_unknown'; detail: string } // neither agent nor watchdog reporting
+
+export function deriveDeviceStatus(a: Agent, now: number = Date.now()): DeviceStatus {
+  const ageMs = (ts: string | null | undefined) =>
+    ts ? Math.max(0, now - new Date(ts).getTime()) : Number.POSITIVE_INFINITY
+  const heartbeatStale = ageMs(a.last_seen) > 3 * 60 * 1000        // > 3 min
+  const watchdogFresh  = ageMs(a.watchdog_last_seen) < 15 * 60 * 1000 // < 15 min
+  const lifecycleFresh = ageMs(a.last_lifecycle_at) < 30 * 60 * 1000  // < 30 min
+
+  if (!heartbeatStale) return { kind: 'online' }
+
+  if (lifecycleFresh && (a.last_lifecycle_state === 'stopping' || a.last_lifecycle_state === 'uninstalling')) {
+    return { kind: 'stopped', detail: `graceful (${a.last_lifecycle_state})` }
+  }
+
+  if (watchdogFresh) {
+    const svc = a.watchdog_service_state
+    const bin = a.watchdog_binary_present
+    if (svc === 'NotInstalled' && bin === false) return { kind: 'removed', detail: 'uninstalled' }
+    if (svc === 'NotInstalled' && bin === true)  return { kind: 'tampered', detail: 'service gone, binary present' }
+    if (svc === 'Stopped' && bin)                return { kind: 'killed', detail: 'service stopped (no graceful event)' }
+    if (svc === 'Running')                       return { kind: 'online' } // watchdog says it's running; heartbeat may be lagging
+  }
+
+  return { kind: 'offline_unknown', detail: 'no heartbeat or watchdog' }
 }
 
 // Set or clear the human-readable label shown for a device. Pass null/empty to clear back

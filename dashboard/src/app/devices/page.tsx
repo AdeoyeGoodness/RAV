@@ -55,8 +55,33 @@ export default function DevicesPage() {
     const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
     const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
 
+    // Online / idle: heartbeating fine — the watchdog/lifecycle signals are
+    // only interesting once it's gone quiet.
     if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
     if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
+
+    // Stale heartbeat: use the watchdog/lifecycle to say WHY rather than just "offline".
+    // Derivation matches deriveDeviceStatus() in lib/api.ts so views agree.
+    const ageMs = (ts: string | null | undefined) =>
+      ts ? Math.max(0, agent.server_time_ms - new Date(ts).getTime()) : Number.POSITIVE_INFINITY
+    const watchdogFresh  = ageMs(agent.watchdog_last_seen) < 15 * 60 * 1000
+    const lifecycleFresh = ageMs(agent.last_lifecycle_at) < 30 * 60 * 1000
+
+    if (lifecycleFresh && (agent.last_lifecycle_state === 'stopping' || agent.last_lifecycle_state === 'uninstalling')) {
+      return { status: 'stopped', color: 'text-[#FFD166]', bg: 'bg-[#FFD166]/10', border: 'border-[#FFD166]/30' }
+    }
+    if (watchdogFresh) {
+      const svc = agent.watchdog_service_state
+      const bin = agent.watchdog_binary_present
+      if (svc === 'NotInstalled' && bin === false)
+        return { status: 'removed', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/15', border: 'border-[#FF6B6B]/50' }
+      if (svc === 'NotInstalled' && bin === true)
+        return { status: 'tampered', color: 'text-[#FF8C42]', bg: 'bg-[#FF8C42]/15', border: 'border-[#FF8C42]/50' }
+      if (svc === 'Stopped' && bin)
+        return { status: 'killed', color: 'text-[#FF8C42]', bg: 'bg-[#FF8C42]/10', border: 'border-[#FF8C42]/30' }
+      if (svc === 'Running')
+        return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
+    }
     return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
   }
 
