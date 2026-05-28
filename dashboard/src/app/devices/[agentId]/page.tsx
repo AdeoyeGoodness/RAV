@@ -8,6 +8,7 @@ import { getAgents, getEvents, deleteAgentEvents, triggerManualArchive, download
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
+import ArchiveBanner from '@/components/ArchiveBanner'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
@@ -222,7 +223,8 @@ export default function DeviceDetailsPage() {
       <div className="flex-1 ml-64 flex flex-col relative z-10">
         <Header />
         <ExpiryBanner />
-        
+        <ArchiveBanner />
+
         <main ref={mainRef} className="flex-1 overflow-y-auto p-8 pt-24 custom-scrollbar">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Header Area */}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
+import ArchiveBanner from '@/components/ArchiveBanner'
 import { StatsRow } from '@/components/dashboard/StatsRow'
 import { ActivitySummary } from '@/components/dashboard/ActivitySummary'
 import { KeyEvents } from '@/components/dashboard/KeyEvents'
@@ -123,6 +124,7 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
         <Header />
         <ExpiryBanner />
+        <ArchiveBanner />
 
         <main className="flex-1 overflow-auto p-8 space-y-6 mt-20 relative z-10">
           {/* Top Bar — Title + Refresh */}

@@ -105,22 +105,26 @@ export function AuditLogTable() {
 
             {/* Toolbar */}
             <div className="flex flex-wrap gap-2 items-end bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-slate-400">Organization</label>
-                    <div className="relative">
-                        <select
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 pl-8 text-sm text-slate-200 outline-none focus:border-purple-500 w-48 appearance-none"
-                            value={filters.organization_id}
-                            onChange={(e) => setFilters({ ...filters, organization_id: e.target.value })}
-                        >
-                            <option value="">All Organizations</option>
-                            {orgs.map(org => (
-                                <option key={org.id} value={org.id}>{org.name}</option>
-                            ))}
-                        </select>
-                        <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                {/* Organization filter: super_admin only (the org_admin endpoint is already scoped
+                    to their own org, so this dropdown is meaningless for them and we hide it). */}
+                {user?.role === 'super_admin' && (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-slate-400">Organization</label>
+                        <div className="relative">
+                            <select
+                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 pl-8 text-sm text-slate-200 outline-none focus:border-purple-500 w-48 appearance-none"
+                                value={filters.organization_id}
+                                onChange={(e) => setFilters({ ...filters, organization_id: e.target.value })}
+                            >
+                                <option value="">All Organizations</option>
+                                {orgs.map(org => (
+                                    <option key={org.id} value={org.id}>{org.name}</option>
+                                ))}
+                            </select>
+                            <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        </div>
                     </div>
-                </div>
+                )}
 
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-slate-400">Actor Type</label>
@@ -129,34 +133,64 @@ export function AuditLogTable() {
                         value={filters.actor_type}
                         onChange={(e) => setFilters({ ...filters, actor_type: e.target.value })}
                     >
-                        <option value="">All Actors</option>
-                        <option value="super_admin">Super Admin</option>
-                        <option value="org_admin">Org Admin</option>
-                        <option value="system">System</option>
+                        {user?.role === 'super_admin' ? (
+                            <>
+                                <option value="">All Actors</option>
+                                <option value="super_admin">Super Admin</option>
+                                <option value="org_admin">Org Admin</option>
+                                <option value="system">System</option>
+                            </>
+                        ) : (
+                            // Org admins only care about their own admin actions in their ledger.
+                            <>
+                                <option value="">All Actions</option>
+                                <option value="org_admin">Org Admin</option>
+                            </>
+                        )}
                     </select>
                 </div>
 
                 <div className="flex flex-col gap-1">
                     <label className="text-xs text-slate-400">Action Type</label>
-                    <input
-                        type="text"
-                        placeholder="e.g. ORG_CREATED"
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
-                        value={filters.action_type}
-                        onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
-                    />
+                    {user?.role === 'super_admin' ? (
+                        <input
+                            type="text"
+                            placeholder="e.g. ORG_CREATED"
+                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
+                            value={filters.action_type}
+                            onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
+                        />
+                    ) : (
+                        // For org admins, expose the 5 destructive actions explicitly so they
+                        // don't have to remember + spell the action_type strings.
+                        <select
+                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500 min-w-[200px]"
+                            value={filters.action_type}
+                            onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
+                        >
+                            <option value="">All Actions</option>
+                            <option value="AGENT_EVENTS_WIPED">Agent Events Wiped</option>
+                            <option value="AGENT_DELETED">Agent Deleted</option>
+                            <option value="AGENT_EVENTS_RESTORED">Agent Events Restored</option>
+                            <option value="ARCHIVE_TRIGGERED">Archive Triggered</option>
+                            <option value="ORG_ARCHIVE_TRIGGERED">Org Archive Triggered</option>
+                            <option value="AGENT_ENROLLED">Agent Enrolled</option>
+                        </select>
+                    )}
                 </div>
 
-                <div className="flex flex-col gap-1">
-                    <label className="text-xs text-slate-400">Target Type</label>
-                    <input
-                        type="text"
-                        placeholder="e.g. AGENT"
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
-                        value={filters.target_type}
-                        onChange={(e) => setFilters({ ...filters, target_type: e.target.value })}
-                    />
-                </div>
+                {user?.role === 'super_admin' && (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs text-slate-400">Target Type</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. AGENT"
+                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
+                            value={filters.target_type}
+                            onChange={(e) => setFilters({ ...filters, target_type: e.target.value })}
+                        />
+                    </div>
+                )}
 
                 <button
                     onClick={() => fetchLogs()}

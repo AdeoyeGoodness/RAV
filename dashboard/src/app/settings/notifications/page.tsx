@@ -4,6 +4,7 @@ import { Mail, ShieldCheck, Lock, Save, AlertCircle, ShieldAlert, CheckCircle2, 
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
+import ArchiveBanner from '@/components/ArchiveBanner'
 
 export default function NotificationSettings() {
   const [settings, setSettings] = useState({
@@ -176,6 +177,7 @@ export default function NotificationSettings() {
       <div className="flex-1 flex flex-col overflow-hidden ml-64">
         <Header />
         <ExpiryBanner />
+        <ArchiveBanner />
         <main className="flex-1 p-8 pt-24 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             <header className="mb-10">

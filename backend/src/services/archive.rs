@@ -71,8 +71,13 @@ impl ArchiveService {
         }
 
         let event_count = events.len() as i32;
-        let start_date = events.first().unwrap().created_at;
-        let end_date = events.last().unwrap().created_at;
+        // Use the actual event `timestamp` (when the event happened on the endpoint), NOT
+        // `created_at` (when the backend received it). Agents are store-and-forward, so an
+        // offline box that comes back online and flushes a backlog gives a tight `created_at`
+        // window but a much wider true coverage window. Using timestamp here makes the
+        // 'Telemetry Range' the dashboard shows actually reflect when these events happened.
+        let start_date = events.iter().map(|e| e.timestamp).min().unwrap();
+        let end_date = events.iter().map(|e| e.timestamp).max().unwrap();
 
         // 2. Prepare JSON Payload (kept for machine analysis)
         let json_data = serde_json::to_string_pretty(&events)?;
@@ -206,5 +211,44 @@ impl ArchiveService {
         .await?;
         tx.commit().await?;
         Ok(archives)
+    }
+
+    /// Delete archives older than `max_age_days`. Removes both the on-disk ZIP and the
+    /// `archives` row. The dashboard's vault page tells admins archives only live for 3 days;
+    /// this is what makes that promise true. Cross-org sweep (the archives table doesn't have
+    /// RLS, so a plain query is fine). Errors deleting a single file are logged but don't
+    /// abort the rest of the cleanup.
+    pub async fn cleanup_old_archives(&self, max_age_days: i64) -> Result<usize> {
+        let cutoff = Utc::now() - Duration::days(max_age_days);
+
+        let stale = sqlx::query!(
+            r#"SELECT id, filename FROM archives WHERE created_at < $1"#,
+            cutoff
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let count = stale.len();
+
+        for row in &stale {
+            let file_path = self.storage_dir.join(&row.filename);
+            if file_path.exists() {
+                if let Err(e) = fs::remove_file(&file_path) {
+                    warn!("Archive cleanup: failed to delete {}: {}", file_path.display(), e);
+                }
+            }
+        }
+
+        sqlx::query!(
+            r#"DELETE FROM archives WHERE created_at < $1"#,
+            cutoff
+        )
+        .execute(&self.pool)
+        .await?;
+
+        if count > 0 {
+            info!("Archive cleanup: purged {} archives older than {} days", count, max_age_days);
+        }
+        Ok(count)
     }
 }
