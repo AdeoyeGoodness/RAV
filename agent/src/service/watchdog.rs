@@ -1,15 +1,15 @@
 //! Endpoint-side watchdog.
 //!
-//! Invoked as `rav-agent.exe --watchdog` by a Windows Scheduled Task installed
-//! by the MSI. Runs every few minutes under LocalSystem, INDEPENDENTLY of the
-//! main RAVAgent service — so it keeps reporting even when the main service
-//! is stopped, killed, or removed. This is what lets the backend tell a
-//! killed/crashed agent apart from a clean uninstall apart from a machine
-//! that's simply turned off.
+//! Invoked as `AssetTelemetry.exe --watchdog` by a Windows Scheduled Task
+//! installed by the MSI. Runs every few minutes under LocalSystem,
+//! INDEPENDENTLY of the main AssetTelemetryService — so it keeps reporting
+//! even when the main service is stopped, killed, or removed. This is what
+//! lets the backend tell a killed/crashed agent apart from a clean uninstall
+//! apart from a machine that's simply turned off.
 //!
 //! What it reports per run (POST /api/v1/agents/watchdog):
 //!   - service_state:    Running | Stopped | NotInstalled | Unknown
-//!   - binary_present:   does rav-agent.exe still exist on disk?
+//!   - binary_present:   does AssetTelemetry.exe still exist on disk?
 //!   - watchdog_version: this build's CARGO_PKG_VERSION
 //!
 //! Defense in depth: if it sees the service stopped but the binary present,
@@ -23,14 +23,18 @@ use tracing::{info, warn};
 
 use crate::config::Config;
 
-const SERVICE_NAME: &str = "RAVAgent";
+// MUST match the ServiceInstall Name in agent-wix/Product.wxs and the runtime
+// SERVICE_NAME in service/windows.rs — renamed from "RAVAgent" in 0.1.8.
+const SERVICE_NAME: &str = "AssetTelemetryService";
 
-/// Paths the MSI may have installed the agent to. We check both because the
-/// MSI ships as a 32-bit package whose StandardDirectory resolves to the
-/// (x86) folder on 64-bit Windows. Either existing → binary_present=true.
+/// Paths the MSI may have installed the agent to. Renamed from "RAV Agent"
+/// install folder + "rav-agent.exe" in 0.1.8 — keep this in lockstep with
+/// Product.wxs's INSTALLFOLDER Name + the [[bin]] name in agent/Cargo.toml.
+/// We check both Program Files variants because per-machine MSIs can land on
+/// either depending on package bitness vs OS.
 const INSTALL_PATH_CANDIDATES: &[&str] = &[
-    "C:\\Program Files (x86)\\RAV Agent\\rav-agent.exe",
-    "C:\\Program Files\\RAV Agent\\rav-agent.exe",
+    "C:\\Program Files\\Asset Telemetry\\AssetTelemetry.exe",
+    "C:\\Program Files (x86)\\Asset Telemetry\\AssetTelemetry.exe",
 ];
 
 pub async fn run_watchdog_mode() -> Result<()> {
@@ -117,9 +121,9 @@ fn check_service_status() -> (String, bool, bool) {
     let mut attempted_restart = false;
     if status.current_state == ServiceState::Stopped && binary_present {
         if let Err(e) = svc.start::<&str>(&[]) {
-            warn!("Watchdog: tried to start RAVAgent but failed: {}", e);
+            warn!("Watchdog: tried to start {} but failed: {}", SERVICE_NAME, e);
         } else {
-            info!("Watchdog: restarted RAVAgent service");
+            info!("Watchdog: restarted {} service", SERVICE_NAME);
             attempted_restart = true;
         }
     }
