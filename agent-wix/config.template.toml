@@ -2,7 +2,7 @@
 # This file is populated at install-time by the MSI installer.
 
 [backend]
-# url = "https://rav.handy.boats" # Population managed by MSI
+# url = "http://172.16.100.41" # Population managed by MSI
 # enrollment_token = ""         # Population managed by MSI
 sync_interval_seconds = 10
 heartbeat_interval_seconds = 60
