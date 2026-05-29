@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     if helper_flag {
         // Screenshot Helper: No file logging (Security requirement: No disk writes)
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "AssetTelemetry=info,rav_agent=info".into()))
             .init();
         info!("RAV Screenshot Helper starting...");
     } else {
@@ -92,7 +92,7 @@ fn main() -> Result<()> {
         _tracing_guard = Some(guard);
 
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "AssetTelemetry=info,rav_agent=info".into()))
             .with_writer(non_blocking)
             .init();
         
