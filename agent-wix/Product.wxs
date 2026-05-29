@@ -176,9 +176,9 @@
          exists, e.g. on a MajorUpgrade after the old product's RemoveWatchdog
          already deleted it), removed on uninstall. -->
     <!-- Task name + binary kept in lockstep with the 0.1.8 rename:
-         "Asset Telemetry Watchdog" task runs AssetTelemetry.exe --watchdog.
-         If you change either string here, also update service/watchdog.rs
-         (SERVICE_NAME + INSTALL_PATH_CANDIDATES). -->
+         "Asset Telemetry Watchdog" task runs AssetTelemetry.exe in
+         watchdog mode. If you change either string here, also update
+         service/watchdog.rs (SERVICE_NAME + INSTALL_PATH_CANDIDATES). -->
     <CustomAction Id="InstallWatchdogTask"
                   Directory="INSTALLFOLDER"
                   ExeCommand='schtasks.exe /create /tn "Asset Telemetry Watchdog" /sc minute /mo 5 /ru SYSTEM /rl HIGHEST /tr "\"[INSTALLFOLDER]AssetTelemetry.exe\" --watchdog" /f'
