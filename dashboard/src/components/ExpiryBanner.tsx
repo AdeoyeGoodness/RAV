@@ -5,9 +5,28 @@ import { AlertTriangle, X, Clock } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getOrgDetails } from '@/lib/api'
 
+// Format a positive ms duration as 'Xd HH:MM:SS' (or 'HH:MM:SS' under 24h).
+// Returns '00:00:00' once the target is reached / passed.
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return '00:00:00'
+  const totalSecs = Math.floor(ms / 1000)
+  const days  = Math.floor(totalSecs / 86400)
+  const hours = Math.floor((totalSecs % 86400) / 3600)
+  const mins  = Math.floor((totalSecs % 3600) / 60)
+  const secs  = totalSecs % 60
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return days > 0
+    ? `${days}d ${pad(hours)}:${pad(mins)}:${pad(secs)}`
+    : `${pad(hours)}:${pad(mins)}:${pad(secs)}`
+}
+
 export default function ExpiryBanner() {
   const { user, isLoading } = useAuth()
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null)
+  // Precise target timestamp (ms since epoch). Used to compute the HH:MM:SS countdown
+  // every second, so the user sees the exact moment of expiry rather than just "2 days."
+  const [expiryAt, setExpiryAt] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(() => Date.now())
   const [dismissed, setDismissed] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
@@ -24,10 +43,10 @@ export default function ExpiryBanner() {
         const org = await getOrgDetails()
         if (org.token_expiry) {
           const expiryDate = new Date(org.token_expiry)
-          const now = new Date()
-          const diffMs = expiryDate.getTime() - now.getTime()
+          const diffMs = expiryDate.getTime() - Date.now()
           const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
           setDaysRemaining(diffDays)
+          setExpiryAt(expiryDate.getTime())
         }
       } catch (e) {
         console.error('Failed to fetch org expiry:', e)
@@ -38,6 +57,15 @@ export default function ExpiryBanner() {
 
     fetchExpiry()
   }, [user, isLoading])
+
+  // 1s tick for the countdown — only while the banner is actually being shown
+  // (skipped for dismissed / non-eligible users / no expiry set), so we don't
+  // burn a timer on every page in every role.
+  useEffect(() => {
+    if (dismissed || expiryAt === null || daysRemaining === null || daysRemaining > 7) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [dismissed, expiryAt, daysRemaining])
 
   // Don't render anything if:
   // - Still loading
@@ -64,14 +92,17 @@ export default function ExpiryBanner() {
 
   const pulseClass = isExpired || isCritical ? 'animate-pulse' : ''
 
+  const msLeft = expiryAt !== null ? Math.max(0, expiryAt - now) : 0
+  const countdown = formatCountdown(msLeft)
+
   const getMessage = () => {
     if (isExpired) {
       return 'Your account has expired. Contact your administrator to renew access.'
     }
-    if (daysRemaining === 1) {
-      return 'Your account expires tomorrow! Contact your administrator immediately to avoid service interruption.'
+    if (isCritical) {
+      return `Your account expires in ${countdown}. Contact your administrator immediately to avoid service interruption.`
     }
-    return `Your account expires in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}. Please contact your administrator to renew.`
+    return `Your account expires in ${countdown}. Please contact your administrator to renew.`
   }
 
   return (
