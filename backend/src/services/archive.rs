@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use zip::write::FileOptions;
 use std::io::Write;
 use uuid::Uuid;
+use std::collections::HashSet;
 use tracing::{info, warn};
 
 pub struct ArchiveService {
@@ -249,6 +250,57 @@ impl ArchiveService {
         if count > 0 {
             info!("Archive cleanup: purged {} archives older than {} days", count, max_age_days);
         }
+        Ok(count)
+    }
+
+    /// Delete uploaded blobs (screenshots, USB payloads) older than `max_age_days`.
+    /// Events older than 7 days are already archived+purged from the `events` table by
+    /// `archive_agent_telemetry`, so the referencing rows are gone and the blobs on disk
+    /// are effectively orphaned. Without this sweep `storage/files/` grows unbounded and
+    /// the endpoint detail page's screenshot list gets slower every week.
+    /// Cross-org sweep (files table has no RLS). One directory scan, O(files_on_disk).
+    pub async fn cleanup_old_files(&self, max_age_days: i64) -> Result<usize> {
+        let cutoff = Utc::now() - Duration::days(max_age_days);
+
+        let stale = sqlx::query!(
+            r#"SELECT file_id FROM files WHERE created_at < $1"#,
+            cutoff
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let count = stale.len();
+        if count == 0 {
+            return Ok(0);
+        }
+
+        let stale_ids: HashSet<String> = stale.iter().map(|r| r.file_id.clone()).collect();
+
+        // Single dir scan: blobs live at {file_id}.{ext}. Match on the stem, delete on hit.
+        // Errors on individual files are logged but don't abort the sweep.
+        if let Ok(entries) = fs::read_dir(&self.file_storage_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    let stem = match name.rfind('.') {
+                        Some(dot) => &name[..dot],
+                        None => name,
+                    };
+                    if stale_ids.contains(stem) {
+                        if let Err(e) = fs::remove_file(entry.path()) {
+                            warn!("File cleanup: failed to delete {}: {}", entry.path().display(), e);
+                        }
+                    }
+                }
+            }
+        } else {
+            warn!("File cleanup: could not read {}", self.file_storage_dir.display());
+        }
+
+        sqlx::query!(r#"DELETE FROM files WHERE created_at < $1"#, cutoff)
+            .execute(&self.pool)
+            .await?;
+
+        info!("File cleanup: purged {} files older than {} days", count, max_age_days);
         Ok(count)
     }
 }

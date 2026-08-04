@@ -142,6 +142,14 @@ async fn main() -> Result<()> {
             if let Err(e) = archive_bg.cleanup_old_archives(3).await {
                 tracing::error!("Archive cleanup failed: {}", e);
             }
+
+            // 7-day file/screenshot sweep. Event rows older than 7 days are archived and
+            // purged above; without this the underlying blobs in storage/files/ and the
+            // files table would grow forever, which is what makes the endpoint detail page
+            // and screenshot loads slow down over time.
+            if let Err(e) = archive_bg.cleanup_old_files(7).await {
+                tracing::error!("File cleanup failed: {}", e);
+            }
         }
     });
     
