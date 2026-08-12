@@ -223,7 +223,7 @@ export default function ArchivesPage() {
             <div className="mt-8 flex items-center gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
               <AlertCircle className="w-5 h-5 text-slate-500 flex-shrink-0" />
               <p className="text-xs text-slate-500 leading-relaxed">
-                Archives older than <span className="text-slate-300">3 days</span> are automatically purged from the vault to ensure maximum forensic privacy. 
+                Archives older than <span className="text-slate-300">2 days</span> are automatically purged from the vault to ensure maximum forensic privacy.
                 Please ensure you download and secure critical records immediately upon notification.
               </p>
             </div>

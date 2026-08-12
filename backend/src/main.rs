@@ -137,9 +137,9 @@ async fn main() -> Result<()> {
                 }
             }
 
-            // 3-day vault retention sweep. The archives page tells admins "archives older
-            // than 3 days are automatically purged" — this is what actually makes that true.
-            if let Err(e) = archive_bg.cleanup_old_archives(3).await {
+            // 2-day vault retention sweep. Admins have 2 days to download an archive
+            // after it lands in the vault; after that we reclaim the disk.
+            if let Err(e) = archive_bg.cleanup_old_archives(2).await {
                 tracing::error!("Archive cleanup failed: {}", e);
             }
 

@@ -5,8 +5,8 @@ import { Archive, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getArchives } from '@/lib/api'
 
-// Mirrors the 3-day cutoff in services/archive.rs::cleanup_old_archives.
-const ARCHIVE_TTL_DAYS = 3
+// Mirrors the 2-day cutoff in services/archive.rs::cleanup_old_archives.
+const ARCHIVE_TTL_DAYS = 2
 const ARCHIVE_TTL_MS = ARCHIVE_TTL_DAYS * 24 * 60 * 60 * 1000
 
 // Format a positive ms duration as 'Xd HH:MM:SS' (or 'HH:MM:SS' under 24h).
@@ -25,7 +25,7 @@ function formatCountdown(ms: number): string {
 
 // Banner shown to org admins when there's at least one forensic archive sitting in the vault.
 // Mirrors the ExpiryBanner pattern; the urgency is "you have N days to retrieve this before
-// the 3-day vault sweep deletes it." Dismissable per-session.
+// the 2-day vault sweep deletes it." Dismissable per-session.
 export default function ArchiveBanner() {
   const { user, isLoading } = useAuth()
   const [pendingCount, setPendingCount] = useState(0)
@@ -50,7 +50,7 @@ export default function ArchiveBanner() {
         const archives = await getArchives()
         if (archives && archives.length > 0) {
           setPendingCount(archives.length)
-          // Earliest-created archive = closest to its 3-day expiry.
+          // Earliest-created archive = closest to its 2-day expiry.
           const oldest = archives.reduce((min, a) =>
             new Date(a.created_at) < new Date(min.created_at) ? a : min
           )

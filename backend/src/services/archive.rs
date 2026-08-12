@@ -215,7 +215,7 @@ impl ArchiveService {
     }
 
     /// Delete archives older than `max_age_days`. Removes both the on-disk ZIP and the
-    /// `archives` row. The dashboard's vault page tells admins archives only live for 3 days;
+    /// `archives` row. The dashboard's vault page tells admins archives only live for 2 days;
     /// this is what makes that promise true. Cross-org sweep (the archives table doesn't have
     /// RLS, so a plain query is fine). Errors deleting a single file are logged but don't
     /// abort the rest of the cleanup.
