@@ -1128,6 +1128,77 @@ pub struct DownloadQuery {
     pub password: Option<String>,
 }
 
+/// One row on the "Critical" tab of the endpoint detail page: an image that
+/// the OCR pipeline flagged because its extracted text contained one or more
+/// sensitive keywords.
+#[derive(Debug, Serialize)]
+pub struct CriticalFile {
+    pub id: Uuid,
+    pub file_id: String,
+    pub file_name: String,
+    pub file_size: i64,
+    pub matches: Vec<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub ocr_processed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// List every critical (OCR-flagged) file for one endpoint, newest first. RLS
+/// on `files` (via `begin_rls_tx`) means an org can only ever see its own
+/// endpoints.
+pub async fn list_agent_critical_files(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<Vec<CriticalFile>>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows = sqlx::query(
+        r#"
+        SELECT id, file_id, file_name, file_size, ocr_matches, created_at, ocr_processed_at
+        FROM files
+        WHERE agent_id = $1
+          AND organization_id = $2
+          AND is_critical = TRUE
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 500
+        "#,
+    )
+    .bind(&agent_id)
+    .bind(target_org_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("list_agent_critical_files failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let out: Vec<CriticalFile> = rows
+        .into_iter()
+        .map(|r| CriticalFile {
+            id: r.get("id"),
+            file_id: r.get("file_id"),
+            file_name: r.get("file_name"),
+            file_size: r.get("file_size"),
+            matches: r.get::<Vec<String>, _>("ocr_matches"),
+            created_at: r.get("created_at"),
+            ocr_processed_at: r.try_get("ocr_processed_at").ok(),
+        })
+        .collect();
+    Ok(Json(out))
+}
+
 pub async fn list_agent_archives(
     State(state): State<AppState>,
     claims: Claims,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy, Archive, Key } from 'lucide-react'
+import { Home, CheckSquare, Bell, ChevronDown, ChevronRight, Flame, FileText, Monitor, Settings, LogOut, Activity, Shield, ShieldCheckIcon, Copy, Archive, Key, ShieldAlert } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAgents, getOrgDetails, Organization as OrgType } from '@/lib/api'
 
@@ -125,6 +125,10 @@ export default function Sidebar() {
                   <a href="/settings/enrollment" className={navItemClass('/settings/enrollment')}>
                     <Key className={iconClass('/settings/enrollment')} />
                     <span className="font-medium text-sm">Deployment Tokens</span>
+                  </a>
+                  <a href="/settings/keywords" className={navItemClass('/settings/keywords')}>
+                    <ShieldAlert className={iconClass('/settings/keywords')} />
+                    <span className="font-medium text-sm">Sensitive Keywords</span>
                   </a>
                 </>
               )}

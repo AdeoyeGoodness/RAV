@@ -80,6 +80,18 @@ async fn main() -> Result<()> {
     ));
     info!("Archive storage: {}", archive_service.storage_dir().display());
     
+    // Initialize OCR / content-scanning service. Wraps the local tesseract
+    // binary and runs the pending-files sweep spawned below.
+    let ocr_service = Arc::new(crate::services::ocr::OcrService::new(
+        db.pool().clone(),
+        file_storage_dir.clone(),
+    ));
+    if ocr_service.tesseract_available() {
+        info!("OCR: tesseract binary detected; sensitive-text scanning enabled");
+    } else {
+        tracing::warn!("OCR: tesseract not found on PATH — install `tesseract-ocr` to enable sensitive-text scanning");
+    }
+
     // Initialize Notification System
     let notification_service = Arc::new(crate::services::notifications::NotificationService::new(
         config.clone(),
@@ -99,6 +111,33 @@ async fn main() -> Result<()> {
         agent_dist_dir: agent_dist_dir.clone(),
         server_start_time: chrono::Utc::now(),
     };
+
+    // Spawn Background OCR Sweep — every 60s, claim up to N pending files,
+    // OCR each, match keywords, write flags back. Cheap when idle (single SQL
+    // query returns zero rows), heavy per file when there's a backlog. Bounded
+    // by batch_size so we can't peg the CPU.
+    let ocr_bg = ocr_service.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            let batch = match ocr_bg.claim_batch().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!("OCR: claim_batch failed: {}", e);
+                    continue;
+                }
+            };
+            if batch.is_empty() {
+                continue;
+            }
+            info!("OCR: processing {} pending file(s)", batch.len());
+            for file in batch {
+                if let Err(e) = ocr_bg.process_one(file).await {
+                    tracing::error!("OCR: process_one failed: {}", e);
+                }
+            }
+        }
+    });
 
     // Spawn Background Archiver Job
     let archive_bg = archive_service.clone();
@@ -179,6 +218,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/audits", get(api::org::list_org_audit_logs))
         .route("/api/v1/org/enrollment-tokens", get(api::org::list_enrollment_tokens).post(api::org::create_enrollment_token))
         .route("/api/v1/org/enrollment-tokens/:token_id", delete(api::org::revoke_enrollment_token))
+        .route("/api/v1/org/keywords", get(api::org::list_keywords).post(api::org::create_keyword))
+        .route("/api/v1/org/keywords/:id", delete(api::org::delete_keyword))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
@@ -196,6 +237,7 @@ async fn main() -> Result<()> {
         .layer(axum::extract::DefaultBodyLimit::max(20 * 1024 * 1024)) // Allow up to 20MB for screenshot uploads
         .route("/api/v1/files/:file_id", get(handlers::download_file))
         .route("/api/v1/agents/:agent_id/archives", get(handlers::list_agent_archives))
+        .route("/api/v1/agents/:agent_id/critical", get(handlers::list_agent_critical_files))
         .route("/api/v1/archives/:archive_id/download", post(handlers::download_archive))
         .route("/api/v1/archives", get(handlers::get_all_archives))
         .route("/api/v1/archives/collate", post(handlers::trigger_org_archive))

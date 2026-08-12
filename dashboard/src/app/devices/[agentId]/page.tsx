@@ -11,6 +11,7 @@ import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
+import CriticalSection from '@/components/CriticalSection'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
@@ -522,6 +523,9 @@ export default function DeviceDetailsPage() {
               clearTimestamp={clearTimestamp}
               onResetFilter={resetClearFilter}
             />
+
+            {/* Critical Section — OCR-flagged screenshots */}
+            <CriticalSection agentId={agentId} />
 
             {/* Browser History Section */}
             <BrowserHistoryViewer

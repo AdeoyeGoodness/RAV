@@ -1,6 +1,6 @@
 use tracing::info;
 use axum::{
-    extract::{State, Query},
+    extract::{State, Query, Path},
     http::StatusCode,
     Json,
 };
@@ -8,8 +8,8 @@ use crate::AppState;
 use crate::api::auth::Claims;
 use crate::db::models::{Organization, ActorType, EnrichedAuditLog};
 use uuid::Uuid;
-use chrono::Utc;
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use crate::api::admin::{PlatformStats, AuditLogQuery};
 
 #[derive(Debug, Serialize)]
@@ -118,7 +118,6 @@ pub async fn list_org_audit_logs(
 
 use rand::Rng;
 use sha2::Digest;
-use axum::extract::Path;
 use crate::db::models::{CreateEnrollmentToken, EnrollmentTokenResponse, EnrollmentToken};
 
 pub async fn create_enrollment_token(
@@ -312,3 +311,136 @@ pub async fn revoke_enrollment_token(
     Ok(StatusCode::OK)
 }
 
+// ============================================================================
+// Sensitive-keyword CRUD (drives the OCR content-scanning pipeline).
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+pub struct KeywordRow {
+    pub id: Uuid,
+    pub organization_id: Option<Uuid>,
+    pub keyword: String,
+    pub is_regex: bool,
+    pub is_global: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateKeyword {
+    pub keyword: String,
+    #[serde(default)]
+    pub is_regex: bool,
+}
+
+/// List every keyword rule the caller's org sees — platform globals
+/// (`organization_id IS NULL`) plus the org's own extras. RLS policy already
+/// enforces the union, so a straight SELECT under the org-scoped tx is enough.
+pub async fn list_keywords(
+    claims: Claims,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<KeywordRow>>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows = sqlx::query_as::<_, (Uuid, Option<Uuid>, String, bool, DateTime<Utc>)>(
+        "SELECT id, organization_id, keyword, is_regex, created_at
+         FROM sensitive_keywords
+         ORDER BY organization_id IS NULL DESC, keyword ASC",
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("list_keywords failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, organization_id, keyword, is_regex, created_at)| KeywordRow {
+                id,
+                organization_id,
+                keyword,
+                is_regex,
+                is_global: organization_id.is_none(),
+                created_at,
+            })
+            .collect(),
+    ))
+}
+
+/// Add one org-scoped keyword. Globals are seeded at migration time and are
+/// intentionally not creatable from the org UI — org admins can only extend
+/// the list with their own terms.
+pub async fn create_keyword(
+    claims: Claims,
+    State(state): State<AppState>,
+    Json(payload): Json<CreateKeyword>,
+) -> Result<Json<KeywordRow>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let keyword = payload.keyword.trim().to_string();
+    if keyword.is_empty() || keyword.len() > 200 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    // Reject clearly-broken regex up front so admins see the failure at add
+    // time, not silently during OCR scanning.
+    if payload.is_regex {
+        if regex::RegexBuilder::new(&keyword).case_insensitive(true).build().is_err() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row = sqlx::query_as::<_, (Uuid, Option<Uuid>, String, bool, DateTime<Utc>)>(
+        "INSERT INTO sensitive_keywords (organization_id, keyword, is_regex)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (organization_id, keyword) DO UPDATE SET is_regex = EXCLUDED.is_regex
+         RETURNING id, organization_id, keyword, is_regex, created_at",
+    )
+    .bind(org_id)
+    .bind(&keyword)
+    .bind(payload.is_regex)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("create_keyword failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(KeywordRow {
+        id: row.0,
+        organization_id: row.1,
+        keyword: row.2,
+        is_regex: row.3,
+        is_global: row.1.is_none(),
+        created_at: row.4,
+    }))
+}
+
+/// Delete one keyword. RLS + explicit org_id filter keep an org from touching
+/// another org's row; globals (organization_id NULL) can't be deleted through
+/// this endpoint at all.
+pub async fn delete_keyword(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let res = sqlx::query(
+        "DELETE FROM sensitive_keywords WHERE id = $1 AND organization_id = $2",
+    )
+    .bind(id)
+    .bind(org_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("delete_keyword failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if res.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}

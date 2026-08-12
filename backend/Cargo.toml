@@ -58,6 +58,10 @@ rand = "0.8"
 # Archiving
 zip = "0.6"
 
+# OCR sensitive-text scanning — regex matcher for keyword rules that opt into
+# real patterns; plain-substring rules don't need it.
+regex = "1.10"
+
 # Forensic HTML report generation — decode/downscale/re-encode screenshots to
 # base64-embed them inline (base64 dep already present below).
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
