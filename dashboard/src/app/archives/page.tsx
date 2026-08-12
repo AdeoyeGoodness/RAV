@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Archive, Download, Trash2, Calendar, Database, Shield, Lock, Search, AlertCircle, RefreshCw } from 'lucide-react'
-import { getArchives, downloadArchive, deleteArchive, collateArchives, triggerManualArchive, Archive as ArchiveType } from '@/lib/api'
+import { Archive, Download, Trash2, Calendar, Database, Shield, Lock, Search, AlertCircle, RefreshCw, Package } from 'lucide-react'
+import { getArchives, downloadArchive, downloadOrgBundle, deleteArchive, collateArchives, triggerManualArchive, Archive as ArchiveType } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
@@ -19,6 +19,10 @@ export default function ArchivesPage() {
   const [isVerifying, setIsVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCollating, setIsCollating] = useState(false)
+  const [bundleOpen, setBundleOpen] = useState(false)
+  const [bundlePassword, setBundlePassword] = useState('')
+  const [isBundling, setIsBundling] = useState(false)
+  const [bundleError, setBundleError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchArchives()
@@ -63,6 +67,37 @@ export default function ArchivesPage() {
       setError(err.response?.status === 401 ? 'Incorrect administrator password.' : 'Verification failed. Archive access denied.')
     } finally {
       setIsVerifying(false)
+    }
+  }
+
+  const handleBundleDownload = async () => {
+    if (!bundlePassword) return
+    setIsBundling(true)
+    setBundleError(null)
+    try {
+      const { blob, filename } = await downloadOrgBundle(bundlePassword)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      // Bundle burns every archive it contained — wipe local state to match.
+      setArchives([])
+      setBundleOpen(false)
+      setBundlePassword('')
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        setBundleError('Incorrect administrator password.')
+      } else if (err.response?.status === 404) {
+        setBundleError('The vault is empty — nothing to bundle.')
+      } else {
+        setBundleError('Bundle download failed. Check network status.')
+      }
+    } finally {
+      setIsBundling(false)
     }
   }
 
@@ -127,13 +162,22 @@ export default function ArchivesPage() {
                 >
                   <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
-                <button 
+                <button
                   onClick={handleCollate}
                   disabled={isCollating}
                   className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-sm transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 disabled:opacity-50"
                 >
                   {isCollating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
                   {isCollating ? 'Collating...' : 'Collate All Records'}
+                </button>
+                <button
+                  onClick={() => { setBundleOpen(true); setBundleError(null); setBundlePassword('') }}
+                  disabled={archives.length === 0}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Download every archive in the vault as one ZIP-of-ZIPs, one folder per endpoint"
+                >
+                  <Package className="w-4 h-4" />
+                  Download All (Bundle)
                 </button>
                 <div className="relative group">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
@@ -230,6 +274,70 @@ export default function ArchivesPage() {
           </div>
         </main>
       </div>
+
+      {/* Bundle Download Modal */}
+      {bundleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#050510]/80 backdrop-blur-sm">
+          <div className="bg-[#0C0E1C] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in duration-300">
+            <button
+              onClick={() => { setBundleOpen(false); setBundlePassword(''); setBundleError(null) }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-emerald-400 border border-emerald-500/20">
+                <Package className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Bundle & Download</h3>
+              <p className="text-sm text-slate-400">
+                Every archive in the vault (<span className="text-emerald-400 font-medium">{archives.length}</span>) will be packaged into a single ZIP — one folder per endpoint. All bundled archives are <span className="text-rose-400 font-medium">burned</span> after the download completes.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Admin Password</label>
+                <input
+                  type="password"
+                  value={bundlePassword}
+                  onChange={(e) => setBundlePassword(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && bundlePassword && !isBundling) handleBundleDownload() }}
+                  placeholder="••••••••••••"
+                  className="w-full px-4 py-3 bg-white/[0.02] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all text-sm text-slate-200"
+                  autoFocus
+                />
+              </div>
+
+              {bundleError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium animate-pulse">
+                  {bundleError}
+                </div>
+              )}
+
+              <button
+                onClick={handleBundleDownload}
+                disabled={isBundling || !bundlePassword}
+                className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-black rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+              >
+                {isBundling ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Verify & Bundle
+                  </>
+                )}
+              </button>
+
+              <p className="text-[10px] text-center text-slate-600 px-4">
+                Warning: every archive in the bundle will be permanently destroyed after a successful download.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verification Modal */}
       {selectedArchive && (

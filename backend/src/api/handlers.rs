@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use uuid::Uuid;
 use sha2::Digest;
+use std::io::Write as _;
 
 use crate::db::models::{CreateAgent, CreateEvent, Event, ActorType};
 use crate::services::audit::log_audit;
@@ -1505,6 +1506,189 @@ pub async fn get_all_archives(
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(archives))
+}
+
+/// Sanitize a name to use as a folder inside the bundle ZIP — strips anything
+/// that could produce a path-traversal or an OS-invalid path.
+fn sanitize_folder(s: &str) -> String {
+    let cleaned: String = s
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .collect();
+    if cleaned.trim_matches('_').is_empty() { "unknown".to_string() } else { cleaned }
+}
+
+/// Download every archive in the org as a single ZIP-of-ZIPs. Each per-agent
+/// archive lands under `{agent_display_name_or_id}/{original_filename}.zip`
+/// inside the outer bundle. Burn-after-download: every archive that made it
+/// into the bundle is removed from disk + DB in the same transaction, mirroring
+/// `download_archive` semantics.
+pub async fn download_org_bundle(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Json(params): Json<DownloadQuery>,
+) -> Result<Response<Body>, StatusCode> {
+    // 1. Password re-verification (users has FORCE RLS — bypass tx for self-auth).
+    let password = params.password.ok_or(StatusCode::UNAUTHORIZED)?;
+    let user_row = {
+        let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let row = sqlx::query!("SELECT password_hash FROM users WHERE id = $1", claims.sub)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        row
+    };
+    if !bcrypt::verify(&password, &user_row.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // 2. Resolve target org.
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    // 3. Fetch org name (bypass tx — organizations has no RLS).
+    let org_name = {
+        let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let r = sqlx::query!("SELECT name FROM organizations WHERE id = $1", target_org_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .map(|r| r.name)
+            .unwrap_or_else(|| "org".to_string());
+        tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        r
+    };
+
+    // 4. Fetch every archive + its agent display name inside one org-scoped tx.
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows = sqlx::query(
+        r#"
+        SELECT a.id, a.agent_id, a.filename, ag.display_name
+        FROM archives a
+        LEFT JOIN agents ag
+            ON ag.agent_id = a.agent_id AND ag.organization_id = a.organization_id
+        WHERE a.organization_id = $1
+        ORDER BY a.agent_id, a.created_at
+        "#,
+    )
+    .bind(target_org_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Bundle: fetch archives failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    if rows.is_empty() {
+        // Nothing to bundle — return 404 so the dashboard can show "vault is empty".
+        tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    // 5. Build the outer ZIP in memory. Stored (no re-compression) since each
+    // inner file is already a compressed zip.
+    let storage_dir = state.archive_service.storage_dir().to_path_buf();
+    let mut buf: Vec<u8> = Vec::new();
+    let mut burned_ids: Vec<Uuid> = Vec::new();
+    let mut burned_files: Vec<String> = Vec::new();
+    {
+        let cursor = std::io::Cursor::new(&mut buf);
+        let mut zip = zip::ZipWriter::new(cursor);
+        let options = zip::write::FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o644);
+
+        for row in &rows {
+            let id: Uuid = row.get("id");
+            let agent_id: String = row.get("agent_id");
+            let filename: String = row.get("filename");
+            let display_name: Option<String> = row.try_get("display_name").ok();
+
+            let path = storage_dir.join(&filename);
+            let data = match std::fs::read(&path) {
+                Ok(d) => d,
+                Err(e) => {
+                    // File already gone (prior download, background sweep, etc.) —
+                    // skip it in the bundle but let the outer transaction still clean
+                    // the row up so the vault doesn't show a ghost card.
+                    tracing::warn!("Bundle: skipping missing {} ({}): {}", filename, agent_id, e);
+                    burned_ids.push(id);
+                    continue;
+                }
+            };
+
+            let folder = sanitize_folder(display_name.as_deref().unwrap_or(&agent_id));
+            let inner_path = format!("{}/{}", folder, filename);
+            zip.start_file(&inner_path, options).map_err(|e| {
+                tracing::error!("Bundle: zip entry failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            zip.write_all(&data).map_err(|e| {
+                tracing::error!("Bundle: zip write failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            burned_ids.push(id);
+            burned_files.push(filename);
+        }
+        zip.finish().map_err(|e| {
+            tracing::error!("Bundle: zip finish failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    }
+
+    // 6. Burn every archive that made it into the bundle (files + DB rows).
+    for fname in &burned_files {
+        let _ = std::fs::remove_file(storage_dir.join(fname));
+    }
+    if !burned_ids.is_empty() {
+        let _ = sqlx::query("DELETE FROM archives WHERE id = ANY($1)")
+            .bind(&burned_ids)
+            .execute(&mut *tx)
+            .await;
+    }
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // 7. Audit log — best-effort, never fail the download on a logging error.
+    let (ip, ua) = extract_request_meta(&headers);
+    let _ = async {
+        let mut tx = state.db.begin_bypass_tx().await?;
+        log_audit(
+            &mut tx,
+            actor_type_from_role(&claims.role),
+            Some(claims.sub),
+            Some(target_org_id),
+            "BUNDLE_DOWNLOADED",
+            "ORGANIZATION",
+            Some(target_org_id.to_string()),
+            serde_json::json!({
+                "archives_bundled": burned_files.len(),
+                "burned_ids": burned_ids.len(),
+                "bytes": buf.len(),
+            }),
+            ip,
+            ua,
+        ).await?;
+        tx.commit().await
+    }.await;
+
+    // 8. Stream response.
+    let today = chrono::Utc::now().format("%Y%m%d").to_string();
+    let out_name = format!("{}-vault-{}.zip", sanitize_folder(&org_name), today);
+    Ok(Response::builder()
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", out_name))
+        .body(Body::from(buf))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }
 
 // ===========================================================================

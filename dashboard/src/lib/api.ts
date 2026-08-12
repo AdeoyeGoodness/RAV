@@ -402,6 +402,16 @@ export async function downloadArchive(archiveId: string, password: string): Prom
   return response.data
 }
 
+export async function downloadOrgBundle(password: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await api.post('/api/v1/archives/download-bundle', { password }, {
+    responseType: 'blob',
+  })
+  const disposition = (response.headers as any)['content-disposition'] || ''
+  const match = disposition.match(/filename="?([^";]+)"?/i)
+  const filename = match ? match[1] : `org-vault-${new Date().toISOString().slice(0, 10)}.zip`
+  return { blob: response.data, filename }
+}
+
 export async function deleteArchive(archiveId: string): Promise<void> {
   await api.delete(`/api/v1/archives/${archiveId}`)
 }
