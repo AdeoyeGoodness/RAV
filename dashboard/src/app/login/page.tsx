@@ -1,144 +1,10 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Shield, Lock, Mail, Loader2, AlertCircle, Eye, EyeOff, Fingerprint, Scan } from 'lucide-react'
 import { login as apiLogin } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
-
-// Animated grid canvas for left panel
-function CyberGrid() {
-    const canvasRef = useRef<HTMLCanvasElement>(null)
-
-    useEffect(() => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        let animationId: number
-        let time = 0
-
-        const resize = () => {
-            canvas.width = canvas.offsetWidth * window.devicePixelRatio
-            canvas.height = canvas.offsetHeight * window.devicePixelRatio
-            ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
-        }
-        resize()
-        window.addEventListener('resize', resize)
-
-        const particles: { x: number; y: number; vx: number; vy: number; size: number; opacity: number; color: string }[] = []
-        for (let i = 0; i < 50; i++) {
-            particles.push({
-                x: Math.random() * canvas.offsetWidth,
-                y: Math.random() * canvas.offsetHeight,
-                vx: (Math.random() - 0.5) * 0.5,
-                vy: (Math.random() - 0.5) * 0.5,
-                size: Math.random() * 2 + 0.5,
-                opacity: Math.random() * 0.5 + 0.2,
-                color: Math.random() > 0.5 ? '#00D9FF' : '#6C5CE7'
-            })
-        }
-
-        const draw = () => {
-            const w = canvas.offsetWidth
-            const h = canvas.offsetHeight
-            ctx.clearRect(0, 0, w, h)
-            time += 0.005
-
-            // Draw animated grid
-            const gridSize = 40
-            ctx.strokeStyle = 'rgba(0, 217, 255, 0.04)'
-            ctx.lineWidth = 0.5
-            for (let x = 0; x <= w; x += gridSize) {
-                const offset = Math.sin(time + x * 0.01) * 2
-                ctx.beginPath()
-                ctx.moveTo(x, 0)
-                ctx.lineTo(x + offset, h)
-                ctx.stroke()
-            }
-            for (let y = 0; y <= h; y += gridSize) {
-                const offset = Math.cos(time + y * 0.01) * 2
-                ctx.beginPath()
-                ctx.moveTo(0, y)
-                ctx.lineTo(w, y + offset)
-                ctx.stroke()
-            }
-
-            // Draw and connect nearby particles
-            particles.forEach((p, i) => {
-                p.x += p.vx
-                p.y += p.vy
-                if (p.x < 0 || p.x > w) p.vx *= -1
-                if (p.y < 0 || p.y > h) p.vy *= -1
-
-                ctx.beginPath()
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-                ctx.fillStyle = p.color.replace(')', `, ${p.opacity})`).replace('rgb', 'rgba').replace('#00D9FF', 'rgba(0, 217, 255').replace('#6C5CE7', 'rgba(108, 92, 231')
-                ctx.globalAlpha = p.opacity * (0.5 + Math.sin(time * 2 + i) * 0.5)
-                ctx.fill()
-
-                // Connect nearby particles
-                particles.slice(i + 1).forEach(p2 => {
-                    const dx = p.x - p2.x
-                    const dy = p.y - p2.y
-                    const dist = Math.sqrt(dx * dx + dy * dy)
-                    if (dist < 120) {
-                        ctx.beginPath()
-                        ctx.moveTo(p.x, p.y)
-                        ctx.lineTo(p2.x, p2.y)
-                        ctx.strokeStyle = `rgba(0, 217, 255, ${(1 - dist / 120) * 0.15})`
-                        ctx.globalAlpha = 1
-                        ctx.stroke()
-                    }
-                })
-            })
-            ctx.globalAlpha = 1
-
-            // Draw central shield glow
-            const cx = w / 2
-            const cy = h / 2
-            const glowRadius = 100 + Math.sin(time * 1.5) * 20
-            const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowRadius)
-            gradient.addColorStop(0, 'rgba(0, 217, 255, 0.08)')
-            gradient.addColorStop(0.5, 'rgba(108, 92, 231, 0.04)')
-            gradient.addColorStop(1, 'transparent')
-            ctx.fillStyle = gradient
-            ctx.fillRect(0, 0, w, h)
-
-            animationId = requestAnimationFrame(draw)
-        }
-        draw()
-
-        return () => {
-            cancelAnimationFrame(animationId)
-            window.removeEventListener('resize', resize)
-        }
-    }, [])
-
-    return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-}
-
-// Animated scanning line
-function ScanLine() {
-    return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div
-                className="absolute left-0 right-0 h-[1px] opacity-30"
-                style={{
-                    background: 'linear-gradient(90deg, transparent, #00D9FF, transparent)',
-                    animation: 'scanDown 4s ease-in-out infinite'
-                }}
-            />
-            <style jsx>{`
-                @keyframes scanDown {
-                    0%, 100% { top: -2%; }
-                    50% { top: 102%; }
-                }
-            `}</style>
-        </div>
-    )
-}
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -189,59 +55,88 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen flex" style={{ backgroundColor: '#050510' }}>
-            {/* ── Left Panel: Animated Visual ── */}
-            <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ backgroundColor: '#070714' }}>
-                <CyberGrid />
-                <ScanLine />
+            {/* ── Left Panel: Corporate ── */}
+            <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden" style={{ backgroundColor: '#0B1830' }}>
+                {/* Faint gridline backdrop — enterprise datasheet vibe, not cyberpunk */}
+                <div
+                    className="absolute inset-0 opacity-[0.045] pointer-events-none"
+                    style={{
+                        backgroundImage:
+                            'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)',
+                        backgroundSize: '56px 56px',
+                        maskImage: 'radial-gradient(ellipse at 35% 45%, black 30%, transparent 80%)',
+                        WebkitMaskImage: 'radial-gradient(ellipse at 35% 45%, black 30%, transparent 80%)',
+                    }}
+                />
+                {/* Warm gold wash, top-left. Muted — this is a boardroom, not a nightclub. */}
+                <div
+                    className="absolute -top-40 -left-40 w-[560px] h-[560px] rounded-full opacity-[0.07] pointer-events-none"
+                    style={{ background: 'radial-gradient(circle, #C8A253 0%, transparent 65%)' }}
+                />
+                {/* Cold steel wash, bottom-right */}
+                <div
+                    className="absolute -bottom-40 -right-40 w-[560px] h-[560px] rounded-full opacity-[0.06] pointer-events-none"
+                    style={{ background: 'radial-gradient(circle, #4A88C7 0%, transparent 65%)' }}
+                />
 
-                {/* Gradient overlays */}
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-purple-600/5" />
-                <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-[#050510] to-transparent" />
-                <div className="absolute top-0 left-0 right-0 h-48 bg-gradient-to-b from-[#050510]/50 to-transparent" />
-
-                {/* Center content */}
-                <div className={`absolute inset-0 flex flex-col items-center justify-center z-10 transition-all duration-1000 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-                    {/* Shield hologram */}
-                    <div className="relative mb-10">
-                        <div className="absolute inset-0 blur-[60px] rounded-full" style={{ background: 'radial-gradient(circle, rgba(0,217,255,0.2), rgba(108,92,231,0.15), transparent)' }} />
-                        <div className="relative w-28 h-28 flex items-center justify-center">
-                            <div className="absolute inset-0 rounded-2xl border border-cyan-400/20 rotate-45" style={{ animation: 'pulse 3s ease-in-out infinite' }} />
-                            <div className="absolute inset-2 rounded-2xl border border-purple-400/15 rotate-[30deg]" style={{ animation: 'pulse 3s ease-in-out infinite 0.5s' }} />
-                            <div className="absolute inset-4 rounded-2xl border border-cyan-400/10 rotate-[15deg]" style={{ animation: 'pulse 3s ease-in-out infinite 1s' }} />
-                            <Shield className="w-14 h-14 text-cyan-400/80" strokeWidth={1.2} />
-                        </div>
+                {/* Top brand mark */}
+                <div className="absolute top-10 left-12 flex items-center gap-3 z-10">
+                    <div className="w-9 h-9 flex items-center justify-center rounded-md border border-white/10 bg-white/[0.02]">
+                        <Shield className="w-4 h-4 text-white/80" strokeWidth={1.6} />
                     </div>
+                    <span className="text-white/85 text-xs font-semibold tracking-[0.28em]">
+                        RAV&nbsp;/&nbsp;SYSTEMS
+                    </span>
+                </div>
 
-                    <h2 className="text-4xl font-bold tracking-tight mb-3" style={{ background: 'linear-gradient(135deg, #00D9FF, #6C5CE7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                        RAV PLATFORM
-                    </h2>
-                    <p className="text-sm tracking-[0.3em] uppercase text-slate-500 mb-10">
-                        Digital Forensics & Endpoint Security
+                {/* Centered pillar */}
+                <div
+                    className={`relative z-10 flex flex-col justify-center max-w-[560px] w-full mx-auto px-16 transition-all duration-700 ${
+                        mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'
+                    }`}
+                >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/40 mb-7">
+                        Enterprise Digital Forensics
+                    </p>
+                    <h1
+                        className="text-white text-[52px] leading-[1.05] font-medium tracking-tight mb-6"
+                        style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                    >
+                        The forensic <br />
+                        command centre <br />
+                        for{' '}
+                        <span style={{ color: '#C8A253', fontStyle: 'italic' }}>
+                            modern enterprises.
+                        </span>
+                    </h1>
+                    <p className="text-white/55 text-[15px] leading-relaxed max-w-md mb-12">
+                        A single console for silent evidence collection, endpoint monitoring and
+                        chain-of-custody preservation across your entire fleet.
                     </p>
 
-                    {/* Status indicators */}
-                    <div className="flex gap-8 text-xs text-slate-600">
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>Systems Online</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: '0.5s' }} />
-                            <span>Encrypted</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" style={{ animationDelay: '1s' }} />
-                            <span>Monitoring</span>
-                        </div>
+                    <div className="space-y-3 border-t border-white/[0.07] pt-7">
+                        {[
+                            'AES-256 encryption in transit and at rest',
+                            'Role-based access — Super Admin & Org Admin scopes',
+                            'Chain-of-custody preserved · burn-after-reading',
+                        ].map((line) => (
+                            <div key={line} className="flex items-center gap-3 text-white/50 text-[13px]">
+                                <div className="w-1 h-1 rounded-full bg-white/40" />
+                                <span>{line}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
-                {/* Binary rain accents */}
-                <div className="absolute top-8 left-8 text-[10px] font-mono text-cyan-900/30 leading-relaxed select-none">
-                    01001010<br/>11010010<br/>00110101<br/>10101100
+                {/* Bottom-left footer */}
+                <div className="absolute bottom-10 left-12 text-white/28 text-[11px] tracking-wide">
+                    © 2026 RAV Systems · Enterprise Security Platform
                 </div>
-                <div className="absolute bottom-8 right-8 text-[10px] font-mono text-purple-900/30 leading-relaxed select-none text-right">
-                    11100011<br/>01010110<br/>10011001<br/>00101110
+
+                {/* Bottom-right operational chip */}
+                <div className="absolute bottom-10 right-12 flex items-center gap-2 text-white/40 text-[11px] tracking-wide">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/70" />
+                    <span>Operational</span>
                 </div>
             </div>
 
@@ -254,11 +149,11 @@ export default function LoginPage() {
                 <div className={`w-full max-w-[400px] relative z-10 transition-all duration-700 delay-300 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
                     {/* Mobile logo (shown on small screens) */}
                     <div className="lg:hidden flex flex-col items-center mb-10">
-                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg, #00D9FF, #6C5CE7)' }}>
-                            <Shield className="w-7 h-7 text-white" />
+                        <div className="w-12 h-12 rounded-md border border-white/10 bg-white/[0.02] flex items-center justify-center mb-4">
+                            <Shield className="w-6 h-6 text-white/80" strokeWidth={1.6} />
                         </div>
-                        <h1 className="text-2xl font-bold" style={{ background: 'linear-gradient(135deg, #00D9FF, #6C5CE7)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                            RAV PLATFORM
+                        <h1 className="text-xl font-semibold text-white tracking-[0.24em]">
+                            RAV&nbsp;/&nbsp;SYSTEMS
                         </h1>
                     </div>
 
