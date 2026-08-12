@@ -5,7 +5,10 @@
 --
 --   1) Extend `files` with the OCR pipeline state + match results.
 --   2) Add `sensitive_keywords` — per-org, with NULL org_id meaning "global
---      default seen by every organization." Seeded with the initial list.
+--      default seen by every organization." Seeded with the initial list
+--      BEFORE enabling FORCE RLS on the table, because FORCE RLS applies to
+--      the table owner too and the migration runs without a current_org_id
+--      session variable (so any INSERT here would fail the write policy).
 
 -- 1) OCR pipeline columns on files.
 ALTER TABLE files
@@ -36,6 +39,21 @@ CREATE TABLE IF NOT EXISTS sensitive_keywords (
     UNIQUE (organization_id, keyword)
 );
 
+-- Seed the initial global keyword list. MUST happen before FORCE RLS is
+-- enabled below, otherwise the write policy rejects these inserts (no session
+-- current_org_id is set during migration).
+INSERT INTO sensitive_keywords (organization_id, keyword) VALUES
+    (NULL, 'ARGUS'),
+    (NULL, 'BELLO'),
+    (NULL, 'TURJI'),
+    (NULL, 'ECHEFU'),
+    (NULL, 'BRIGHT'),
+    (NULL, 'BUAS'),
+    (NULL, 'RAV'),
+    (NULL, 'AGENT'),
+    (NULL, 'TELEMETRY')
+ON CONFLICT (organization_id, keyword) DO NOTHING;
+
 -- Read policy: an org sees its own keywords + all globals. Write policy: only
 -- rows scoped to the caller's org (globals are seeded here / by super-admin
 -- tooling, not by the org UI).
@@ -62,17 +80,3 @@ CREATE POLICY sensitive_keywords_write ON sensitive_keywords
         current_setting('app.current_org_id', true) = 'BYPASS'
         OR organization_id::text = current_setting('app.current_org_id', true)
     );
-
--- Seed the initial global keyword list. ON CONFLICT is a no-op so the migration
--- is idempotent if it runs after tweaks.
-INSERT INTO sensitive_keywords (organization_id, keyword) VALUES
-    (NULL, 'ARGUS'),
-    (NULL, 'BELLO'),
-    (NULL, 'TURJI'),
-    (NULL, 'ECHEFU'),
-    (NULL, 'BRIGHT'),
-    (NULL, 'BUAS'),
-    (NULL, 'RAV'),
-    (NULL, 'AGENT'),
-    (NULL, 'TELEMETRY')
-ON CONFLICT (organization_id, keyword) DO NOTHING;
