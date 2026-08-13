@@ -9,6 +9,7 @@ import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
+import { formatWATDate } from '@/lib/time'
 
 
 
@@ -241,7 +242,7 @@ export default function DevicesPage() {
                           <Activity className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
                           <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Registered:</span>
                           <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {new Date(agent.created_at).toLocaleDateString()}
+                            {formatWATDate(agent.created_at)}
                           </span>
                         </div>
                         <div className="flex items-center space-x-2 text-sm">

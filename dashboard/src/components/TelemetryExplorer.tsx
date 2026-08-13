@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getEvents, getAgents, Event, Agent } from '@/lib/api'
 import { format, isToday, isYesterday, parseISO, subHours, subDays } from 'date-fns'
+import { formatWATPattern } from '@/lib/time'
 import {
     Monitor,
     ChevronDown,
@@ -104,7 +105,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
         const link = document.createElement('a')
         const url = URL.createObjectURL(blob)
         link.setAttribute('href', url)
-        link.setAttribute('download', `telemetry_export_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`)
+        link.setAttribute('download', `telemetry_export_${formatWATPattern(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`)
         link.style.visibility = 'hidden'
         document.body.appendChild(link)
         link.click()
@@ -132,7 +133,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
             } else if (isYesterday(date)) {
                 dateKey = 'Yesterday'
             } else {
-                dateKey = format(date, 'MMMM d, yyyy')
+                dateKey = formatWATPattern(date, 'MMMM d, yyyy')
             }
 
             if (!groups[dateKey]) groups[dateKey] = []
@@ -478,7 +479,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                                                     {expandedRow === event.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                                 </td>
                                                 <td className="px-4 py-3 font-mono text-xs text-slate-400">
-                                                    {format(parseISO(event.timestamp), 'hh:mm:ss a')}
+                                                    {formatWATPattern(event.timestamp, 'hh:mm:ss a')}
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex items-center gap-2">

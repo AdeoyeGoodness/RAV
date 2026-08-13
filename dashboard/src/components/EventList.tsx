@@ -1,6 +1,6 @@
 'use client'
 
-import { format } from 'date-fns'
+import { formatWATPattern } from '@/lib/time'
 
 interface Event {
   id: string
@@ -56,7 +56,7 @@ export default function EventList({ events, loading }: EventListProps) {
             {events.map((event) => (
               <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                  {format(new Date(event.timestamp), 'yyyy-MM-dd HH:mm:ss')}
+                  {formatWATPattern(event.timestamp, 'yyyy-MM-dd HH:mm:ss')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                   {event.agent_id}

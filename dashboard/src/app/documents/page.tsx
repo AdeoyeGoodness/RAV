@@ -9,6 +9,7 @@ import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
+import { formatWATPattern } from '@/lib/time'
 
 interface Document {
   id: string
@@ -151,16 +152,7 @@ export default function DocumentsPage() {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  }
+  const formatDate = (timestamp: string) => formatWATPattern(timestamp, 'MMMM d, yyyy HH:mm:ss')
 
   const [downloadError, setDownloadError] = useState<string | null>(null)
 

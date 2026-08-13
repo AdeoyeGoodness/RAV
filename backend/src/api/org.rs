@@ -405,6 +405,24 @@ pub async fn create_keyword(
         tracing::error!("create_keyword failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Reschedule every image in this org for re-scan so the new keyword takes
+    // effect retroactively. OCR is idempotent — the background worker will
+    // recompute matches against the current keyword list and update
+    // is_critical accordingly.
+    let rescheduled = sqlx::query(
+        "UPDATE files
+         SET ocr_status = 'pending', ocr_processed_at = NULL, ocr_error = NULL
+         WHERE organization_id = $1 AND ocr_status IN ('done', 'failed')",
+    )
+    .bind(org_id)
+    .execute(&mut *tx)
+    .await
+    .map(|r| r.rows_affected())
+    .unwrap_or(0);
+    if rescheduled > 0 {
+        tracing::info!("Keyword '{}' added — rescheduled {} files for re-scan", keyword, rescheduled);
+    }
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(KeywordRow {

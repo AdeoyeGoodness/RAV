@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getAuditLogs, getOrgAuditLogs, getEvents, AuditLog, Event, getAgents, Agent } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { format, differenceInMinutes, isSameDay } from 'date-fns'
+import { differenceInMinutes, isSameDay } from 'date-fns'
+import { formatWATTime, formatWATPattern } from '@/lib/time'
 import {
     Shield,
     Activity,
@@ -261,7 +262,7 @@ export function NarrativeTimeline() {
                         timelineGroups.flatMap(group => group.items).map((item) => (
                             <div key={item.id} className="bg-[#0A0A0B] rounded-xl border border-white/5 overflow-hidden group hover:border-cyan-500/20 transition-all">
                                 <div className="px-5 py-3 border-b border-white/5 bg-white/[0.01] flex items-center gap-4">
-                                    <span className="text-xs font-mono font-bold text-cyan-400">{format(item.timestamp, 'HH:mm:ss')}</span>
+                                    <span className="text-xs font-mono font-bold text-cyan-400">{formatWATTime(item.timestamp)}</span>
                                     <span className="text-xs font-bold text-slate-200">{item.action}</span>
                                 </div>
                                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
@@ -303,7 +304,7 @@ export function NarrativeTimeline() {
                                 {/* Date Separator - Vertical Anchor - Indented Slightly */}
                                 {(gIdx === 0 || !isSameDay(group.startTime, timelineGroups[gIdx - 1].startTime)) && (
                                     <div className="absolute -left-[108px] top-5 text-[9px] font-black text-slate-700 uppercase tracking-[0.3em] origin-right transform -rotate-90">
-                                        {format(group.startTime, 'MMM dd')}
+                                        {formatWATPattern(group.startTime, 'MMM dd')}
                                     </div>
                                 )}
 
@@ -319,7 +320,7 @@ export function NarrativeTimeline() {
                                         <div className="flex gap-6 items-center w-full">
                                             <div className="flex flex-col items-center justify-center w-12 shrink-0">
                                                 <span className="text-[10px] font-black font-mono text-slate-600 tracking-tighter">
-                                                    {format(group.startTime, 'HH:mm')}
+                                                    {formatWATPattern(group.startTime, 'HH:mm')}
                                                 </span>
                                                 {group.items.length > 1 && !expandedGroups.has(group.id) && (
                                                     <div className="mt-1 flex gap-0.5">
@@ -386,7 +387,7 @@ export function NarrativeTimeline() {
                                             {group.items.map((item, iIdx) => (
                                                 <div key={item.id} className="p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative">
                                                     <div className="flex items-center gap-3 mb-3">
-                                                        <span className="text-[10px] font-mono text-slate-500">{format(item.timestamp, 'HH:mm:ss')}</span>
+                                                        <span className="text-[10px] font-mono text-slate-500">{formatWATTime(item.timestamp)}</span>
                                                         <span className="text-xs font-bold text-slate-300">{item.action}</span>
                                                     </div>
                                                     <div className="grid grid-cols-3 gap-4">

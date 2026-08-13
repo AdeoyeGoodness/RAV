@@ -4,6 +4,7 @@ import { Key, Plus, Copy, Check, Trash2, Loader2, ShieldCheck, CheckCircle2 } fr
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails, Organization } from '@/lib/api'
+import { formatWATPattern } from '@/lib/time'
 
 export default function EnrollmentTokensPage() {
   const [tokens, setTokens] = useState<EnrollmentToken[]>([])
@@ -178,7 +179,7 @@ export default function EnrollmentTokensPage() {
                               {token.max_agents ? `${token.max_agents}` : '∞'}
                           </td>
                           <td className={`px-6 py-5 text-sm font-mono ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
-                              {token.expires_at ? new Date(token.expires_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'Never'}
+                              {token.expires_at ? formatWATPattern(token.expires_at, 'd MMM yyyy') : 'Never'}
                           </td>
                           <td className="px-6 py-5">
                             <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold ${

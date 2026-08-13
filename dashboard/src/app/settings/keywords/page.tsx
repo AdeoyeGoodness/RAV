@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { ShieldAlert, Plus, Trash2, Globe, Building2, RefreshCw, AlertCircle, Regex } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
+import { formatWATDate } from '@/lib/time'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
@@ -241,7 +242,7 @@ export default function KeywordsSettings() {
                       )}
                       <code className="flex-1 text-sm text-slate-200 font-mono">{k.keyword}</code>
                       <span className="text-[10px] text-slate-600">
-                        {new Date(k.created_at).toLocaleDateString()}
+                        {formatWATDate(k.created_at)}
                       </span>
                       <button
                         onClick={() => remove(k.id)}

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
+import { formatWATTime, formatWATPattern } from '@/lib/time'
 import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown } from 'lucide-react'
 import { downloadFile, getEvents } from '@/lib/api'
 
@@ -403,7 +404,7 @@ export default function ScreenshotViewer({
                 ) : thumbnailUrls.has(event.id) ? (
                   <img
                     src={thumbnailUrls.get(event.id)}
-                    alt={`Screenshot ${format(parseSafeDate(event.timestamp), 'HH:mm:ss')}`}
+                    alt={`Screenshot ${formatWATTime(event.timestamp)}`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={() => {
                       setThumbnailErrors(prev => new Set(prev).add(event.id))
@@ -439,8 +440,8 @@ export default function ScreenshotViewer({
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-white tracking-wider uppercase">{format(parseSafeDate(event.timestamp), 'MMM dd, yyyy')}</p>
-                  <p className="text-xs font-mono text-blue-400">{format(parseSafeDate(event.timestamp), 'HH:mm:ss')}</p>
+                  <p className="text-xs font-bold text-white tracking-wider uppercase">{formatWATPattern(event.timestamp, 'MMM dd, yyyy')}</p>
+                  <p className="text-xs font-mono text-blue-400">{formatWATTime(event.timestamp)}</p>
                 </div>
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
                   <span className="bg-white/5 px-1.5 py-0.5 rounded">
@@ -477,7 +478,7 @@ export default function ScreenshotViewer({
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/5">
               <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-3">
                 <Camera className="w-5 h-5 text-blue-400" />
-                Snapshot taken on <span className="text-blue-400">{format(parseSafeDate(selectedScreenshot.timestamp), 'PPpp')}</span>
+                Snapshot taken on <span className="text-blue-400">{formatWATPattern(selectedScreenshot.timestamp, 'PPpp')}</span>
               </h3>
               <button
                 onClick={() => {

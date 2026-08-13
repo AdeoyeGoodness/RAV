@@ -12,6 +12,7 @@ import { KeyEvents } from '@/components/dashboard/KeyEvents'
 import { EnrolledAgents } from '@/components/dashboard/EnrolledAgents'
 import { UserInsights } from '@/components/dashboard/UserInsights'
 import { getAgents, getEvents, Agent } from '@/lib/api'
+import { formatWATTime } from '@/lib/time'
 import { useAuth } from '@/contexts/AuthContext'
 import { RefreshCw } from 'lucide-react'
 
@@ -132,7 +133,7 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-100 tracking-tight">Command Center</h2>
               <p className="text-xs text-slate-600 mt-0.5 font-mono">
-                {lastRefresh ? `Last sync ${lastRefresh.toLocaleTimeString()}` : 'Loading telemetry...'}
+                {lastRefresh ? `Last sync ${formatWATTime(lastRefresh)}` : 'Loading telemetry...'}
               </p>
             </div>
             <button

@@ -1,6 +1,7 @@
 'use client'
 
-import { format, isToday, isTomorrow, formatDistanceToNow } from 'date-fns'
+import { isToday, isTomorrow, formatDistanceToNow } from 'date-fns'
+import { formatWATPattern } from '@/lib/time'
 import { CheckCircle2, Circle, AlertCircle, Activity } from 'lucide-react'
 
 interface Event {
@@ -21,7 +22,7 @@ export default function RecentTasks({ events, loading }: RecentTasksProps) {
     const date = new Date(timestamp)
     if (isToday(date)) return 'Today'
     if (isTomorrow(date)) return 'Tomorrow'
-    return format(date, 'MMM d')
+    return formatWATPattern(date, 'MMM d')
   }
 
   const getEventIcon = (eventType: string) => {

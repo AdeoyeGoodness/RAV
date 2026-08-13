@@ -8,6 +8,7 @@ import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
+import { formatWATDate } from '@/lib/time'
 
 export default function ArchivesPage() {
   const { user } = useAuth()
@@ -233,9 +234,9 @@ export default function ArchivesPage() {
                           <td className="px-6 py-6 text-xs text-slate-400">
                             <div className="flex items-center gap-2 mb-1">
                               <Calendar className="w-3.5 h-3.5 text-slate-600" />
-                              {new Date(archive.start_date).toLocaleDateString()}
+                              {formatWATDate(archive.start_date)}
                             </div>
-                            <div className="text-[10px] text-slate-600">to {new Date(archive.end_date).toLocaleDateString()}</div>
+                            <div className="text-[10px] text-slate-600">to {formatWATDate(archive.end_date)}</div>
                           </td>
                           <td className="px-6 py-6">
                             <div className="text-xs text-slate-300 font-medium">{formatSize(archive.size_bytes)}</div>

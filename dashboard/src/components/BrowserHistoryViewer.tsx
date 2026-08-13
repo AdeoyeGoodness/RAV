@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { format } from 'date-fns'
+import { formatWATPattern } from '@/lib/time'
 import { Globe, Download, Search, RefreshCw, Calendar, Filter, ExternalLink, Eye } from 'lucide-react'
 import { getEvents } from '@/lib/api'
 
@@ -410,7 +410,7 @@ export default function BrowserHistoryViewer({
                         <span className="px-2 py-1 rounded bg-black/50 text-white uppercase" style={{ color: getBrowserColor(event.metadata?.browser) }}>
                           {(event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
@@ -437,7 +437,7 @@ export default function BrowserHistoryViewer({
                         <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
@@ -479,7 +479,7 @@ export default function BrowserHistoryViewer({
                         <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}
@@ -501,7 +501,7 @@ export default function BrowserHistoryViewer({
                         <span className="px-2 py-1 rounded bg-black/50 uppercase" style={{ color: getBrowserColor(event.metadata?.browser_type || event.metadata?.browser) }}>
                           {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                         </span>
-                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{format(new Date(event.timestamp), 'MMM dd, yyyy HH:mm:ss')}</span>
+                        <span className="px-2 py-1 rounded bg-black/50 text-slate-400">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
                       </div>
                     </>
                   )}

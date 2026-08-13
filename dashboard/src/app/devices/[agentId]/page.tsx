@@ -15,6 +15,7 @@ import CriticalSection from '@/components/CriticalSection'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
+import { formatWAT, formatWATDate } from '@/lib/time'
 
 interface Agent {
   id: string
@@ -378,14 +379,14 @@ export default function DeviceDetailsPage() {
                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Last Synchronized</p>
                        <p className="text-base font-medium text-white flex items-center gap-2">
                          <Clock className="w-4 h-4 text-slate-400" />
-                         {new Date(agent.last_seen).toLocaleString()}
+                         {formatWAT(agent.last_seen)}
                        </p>
                     </div>
                     <div>
                        <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Installed On</p>
                        <p className="text-base font-medium text-white flex items-center gap-2">
                          <Calendar className="w-4 h-4 text-slate-400" />
-                         {new Date(agent.created_at).toLocaleString()}
+                         {formatWAT(agent.created_at)}
                        </p>
                     </div>
                     <div>
@@ -673,7 +674,7 @@ function ArchivesList({ agentId }: { agentId: string }) {
                 UNLOCK & DOWNLOAD
               </button>
             </div>
-            <p className="text-sm font-bold text-white mb-1">Window: {new Date(archive.start_date).toLocaleDateString()} - {new Date(archive.end_date).toLocaleDateString()}</p>
+            <p className="text-sm font-bold text-white mb-1">Window: {formatWATDate(archive.start_date)} - {formatWATDate(archive.end_date)}</p>
             <div className="flex items-center gap-3 mt-2 text-[10px] font-mono text-slate-500">
                <span className="flex items-center gap-1"><Database className="w-3 h-3" /> {Math.round(archive.size_bytes / 1024)} KB</span>
                <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> {archive.event_count} events</span>

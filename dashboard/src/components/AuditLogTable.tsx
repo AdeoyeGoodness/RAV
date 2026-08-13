@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAuditLogs, getOrgAuditLogs, getOrganizations, AuditLog, Organization } from '@/lib/api'
-import { format } from 'date-fns'
+import { formatWATPattern } from '@/lib/time'
 import {
     Shield,
     User,
@@ -239,7 +239,7 @@ export function AuditLogTable() {
                                             {expandedRow === log.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                         </td>
                                         <td className="px-4 py-3 font-mono text-slate-300">
-                                            {format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}
+                                            {formatWATPattern(log.timestamp, 'yyyy-MM-dd HH:mm:ss')}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2">

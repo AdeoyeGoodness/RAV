@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { format, formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
+import { formatWATTime } from '@/lib/time'
 import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar, Clock } from 'lucide-react'
 import { getEvents } from '@/lib/api'
 
@@ -338,7 +339,7 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
                         <span className="bg-black/50 px-2 py-1 rounded text-slate-300">DEV: {details.device.substring(0, 30)}</span>
                         {details.fileSize && <span className="bg-black/50 px-2 py-1 rounded text-cyan-400">SIZE: {details.fileSize}</span>}
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(parseSafeDate(event.timestamp), { addSuffix: true })}</span>
-                        <span>{format(parseSafeDate(event.timestamp), 'HH:mm:ss')}</span>
+                        <span>{formatWATTime(event.timestamp)}</span>
                       </div>
                       {event.event_type === 'usb_file_transfer' && event.metadata?.file_path && (
                         <button

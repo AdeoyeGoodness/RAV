@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { ShieldAlert, Eye, Tag, RefreshCw, FileWarning } from 'lucide-react'
+import { formatWAT } from '@/lib/time'
 
 interface CriticalFile {
   id: string
@@ -152,7 +153,7 @@ export default function CriticalSection({ agentId }: Props) {
                   )}
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500">
-                  <span>{new Date(f.created_at).toLocaleString()}</span>
+                  <span>{formatWAT(f.created_at)}</span>
                   <span>{fmt(f.file_size)}</span>
                 </div>
               </div>
