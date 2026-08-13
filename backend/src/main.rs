@@ -112,30 +112,38 @@ async fn main() -> Result<()> {
         server_start_time: chrono::Utc::now(),
     };
 
-    // Spawn Background OCR Sweep — every 60s, claim up to N pending files,
-    // OCR each, match keywords, write flags back. Cheap when idle (single SQL
-    // query returns zero rows), heavy per file when there's a backlog. Bounded
-    // by batch_size so we can't peg the CPU.
+    // Spawn Background OCR Sweep — every OCR_INTERVAL_SECS (default 15s),
+    // claim up to OCR_BATCH_SIZE pending files, OCR each, match keywords,
+    // write flags back. Sleep is at the END of the loop so the very first
+    // tick runs immediately after boot (used to burn a full interval doing
+    // nothing before the first sweep). Cheap when idle (single SQL query
+    // returns zero rows); heavy per file when there's a backlog. Bounded
+    // by batch_size + interval so we can't peg the CPU.
     let ocr_bg = ocr_service.clone();
+    let ocr_interval_secs: u64 = std::env::var("OCR_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(15);
+    info!("OCR: sweep interval = {}s", ocr_interval_secs);
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             let batch = match ocr_bg.claim_batch().await {
                 Ok(b) => b,
                 Err(e) => {
                     tracing::error!("OCR: claim_batch failed: {}", e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(ocr_interval_secs)).await;
                     continue;
                 }
             };
-            if batch.is_empty() {
-                continue;
-            }
-            info!("OCR: processing {} pending file(s)", batch.len());
-            for file in batch {
-                if let Err(e) = ocr_bg.process_one(file).await {
-                    tracing::error!("OCR: process_one failed: {}", e);
+            if !batch.is_empty() {
+                info!("OCR: processing {} pending file(s)", batch.len());
+                for file in batch {
+                    if let Err(e) = ocr_bg.process_one(file).await {
+                        tracing::error!("OCR: process_one failed: {}", e);
+                    }
                 }
             }
+            tokio::time::sleep(tokio::time::Duration::from_secs(ocr_interval_secs)).await;
         }
     });
 

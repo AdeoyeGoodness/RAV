@@ -61,7 +61,7 @@ impl OcrService {
             batch_size: std::env::var("OCR_BATCH_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(10),
+                .unwrap_or(25),
         }
     }
 
