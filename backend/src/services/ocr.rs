@@ -101,7 +101,17 @@ impl OcrService {
 
     /// Grab the next batch of pending images to scan. Ignores non-image
     /// extensions (marks them `skipped` so we never look at them again).
+    ///
+    /// `files` has FORCE ROW LEVEL SECURITY from migration 014 — every read
+    /// and write here MUST run inside a tx that sets
+    /// `app.current_org_id = 'BYPASS'`, otherwise the policy silently filters
+    /// every query to zero rows and the worker looks like it's doing nothing.
     pub async fn claim_batch(&self) -> Result<Vec<PendingFile>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL app.current_org_id = 'BYPASS'")
+            .execute(&mut *tx)
+            .await?;
+
         // First pass: mark non-image pending rows as skipped so they stop
         // being reconsidered forever. Cheap — the partial index makes the
         // WHERE clause tight.
@@ -111,7 +121,7 @@ impl OcrService {
              WHERE ocr_status = 'pending'
                AND lower(file_name) !~ '\\.(png|jpe?g|webp|bmp|tiff?)$'",
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await;
 
         // Second pass: claim up to N image rows.
@@ -123,8 +133,10 @@ impl OcrService {
              LIMIT $1",
         )
         .bind(self.batch_size)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(rows
             .into_iter()
@@ -136,6 +148,7 @@ impl OcrService {
             })
             .collect())
     }
+
 
     /// Resolve the on-disk path for a file row. Blobs live at
     /// `<storage>/<file_id>.<ext>` — the ext is inferred from `file_name`.
@@ -176,13 +189,18 @@ impl OcrService {
 
         // If the blob is missing (already deleted by a sweep), record that
         // and move on so we don't wedge on the same row every batch.
+        // BYPASS tx because `files` has FORCE RLS (migration 014).
         if !path.exists() {
+            let mut tx = self.pool.begin().await?;
+            let _ = sqlx::query("SET LOCAL app.current_org_id = 'BYPASS'")
+                .execute(&mut *tx).await;
             let _ = sqlx::query(
                 "UPDATE files SET ocr_status = 'failed', ocr_error = 'blob missing', ocr_processed_at = NOW() WHERE id = $1",
             )
             .bind(file.id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await;
+            let _ = tx.commit().await;
             return Ok(());
         }
 
@@ -210,6 +228,12 @@ impl OcrService {
         .await
         .unwrap_or_else(|e| Err(format!("blocking join error: {}", e)));
 
+        // Any write to `files` must run inside a BYPASS-RLS tx.
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL app.current_org_id = 'BYPASS'")
+            .execute(&mut *tx)
+            .await?;
+
         match text_result {
             Ok(text) => {
                 let matches = Self::find_matches(&text, &keywords);
@@ -226,7 +250,7 @@ impl OcrService {
                 .bind(&matches)
                 .bind(is_critical)
                 .bind(file.id)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
                 if is_critical {
                     info!("OCR: {} flagged critical ({} hits)", file.file_id, matches.len());
@@ -243,11 +267,12 @@ impl OcrService {
                 )
                 .bind(err)
                 .bind(file.id)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await;
             }
         }
 
+        tx.commit().await?;
         Ok(())
     }
 }
