@@ -315,7 +315,7 @@ async fn secure_headers(
     // Note: We allow 'unsafe-inline' for styles due to some UI frameworks, but scripts are restricted.
     headers.insert(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://rav.handy.boats; frame-ancestors 'none';".parse().unwrap()
+        "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://yikes.cam; frame-ancestors 'none';".parse().unwrap()
     );
 
     // 2. Clickjacking Protection

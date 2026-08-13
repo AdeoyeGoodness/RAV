@@ -46,7 +46,7 @@ impl AppConfig {
             jwt_secret: env::var("JWT_SECRET")
                 .unwrap_or_else(|_| "change-me-in-production".to_string()),
             cors_allowed_origins: env::var("CORS_ALLOWED_ORIGINS")
-                .unwrap_or_else(|_| "http://localhost:3000,https://rav.handy.boats".to_string()),
+                .unwrap_or_else(|_| "http://localhost:3000,https://yikes.cam".to_string()),
             smtp_host: env::var("SMTP_HOST")
                 .unwrap_or_else(|_| "smtp.gmail.com".to_string()),
             smtp_port: env::var("SMTP_PORT")

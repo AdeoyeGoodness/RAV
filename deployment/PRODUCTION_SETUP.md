@@ -243,9 +243,10 @@ These are known and intentionally deferred — track and close them:
 3. **Rotate any secret that was ever pasted into a chat/terminal log**
    (`JWT_SECRET`, `S3_SECRET_KEY` / MinIO password, DB password). Rotating
    `JWT_SECRET` invalidates existing sessions (expected).
-4. **Stale CSP origin.** The backend sends a Content-Security-Policy referencing
-   `https://rav.handy.boats` (an old domain). Harmless today because the dashboard
-   is same-origin, but worth cleaning up in the backend source.
+4. **CSP origin.** The backend sends a Content-Security-Policy whose `connect-src`
+   references `https://yikes.cam`. Keep this in sync with the deployment domain if
+   it ever changes (`backend/src/main.rs`); harmless when the dashboard is
+   same-origin since `'self'` already covers it.
 5. **MinIO console exposure.** `/console/` is reachable from all three subnets.
    Restrict it further (extra `allow`/`deny` in its nginx block) if the console
    should be admin-only.

@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-DOMAIN_NAME=${DOMAIN_NAME:-"rav.handy.boats"}
+DOMAIN_NAME=${DOMAIN_NAME:-"yikes.cam"}
 DB_PASSWORD=${DB_PASSWORD:-"rav_password"}
 REDIS_PASSWORD=${REDIS_PASSWORD:-""}
 
