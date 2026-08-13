@@ -861,13 +861,26 @@ pub async fn download_file(
     let content_type = match std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()) {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
         Some("pdf") => "application/pdf",
         _ => "application/octet-stream",
     };
-    
+
+    // Images render inline in <img> tags (Critical section thumbnails, forensic reports).
+    // Non-images (pdf, arbitrary blobs) still force a download prompt.
+    let disposition = if content_type.starts_with("image/") {
+        format!("inline; filename=\"{}\"", file_name)
+    } else {
+        format!("attachment; filename=\"{}\"", file_name)
+    };
+
     Ok(Response::builder()
         .header(header::CONTENT_TYPE, content_type)
-        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", file_name))
+        .header(header::CONTENT_DISPOSITION, disposition)
+        // Let the browser cache a decoded screenshot for a few minutes so the
+        // Critical grid doesn't re-hit the backend for every scroll / refresh.
+        .header(header::CACHE_CONTROL, "private, max-age=300")
         .body(Body::from(file_data))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
 }
