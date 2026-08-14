@@ -1,19 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, Sun, Moon } from 'lucide-react'
-import { useTheme } from '@/contexts/ThemeContext'
+import { Search } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATTime } from '@/lib/time'
 
 export default function Header() {
-  const { theme, toggleTheme } = useTheme()
   const { user, isLoading } = useAuth()
-  const [mounted, setMounted] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
 
   useEffect(() => {
-    setMounted(true)
     setNow(new Date())
     const id = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(id)
@@ -76,28 +72,9 @@ export default function Header() {
         </div>
       </div>
 
-      {/* Right — theme + operator chip */}
+      {/* Right — operator chip */}
       <div className="flex items-center gap-3">
-        <button
-          onClick={toggleTheme}
-          className="w-9 h-9 rounded-[3px] flex items-center justify-center transition-colors"
-          style={{ background: 'var(--ct-panel)', border: '1px solid var(--ct-line)' }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ct-accent-border)')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ct-line)')}
-          title={`Switch to ${mounted && theme === 'dark' ? 'light' : 'dark'} mode`}
-        >
-          {mounted ? (
-            theme === 'dark' ? (
-              <Sun className="w-4 h-4 text-ct-ink2" />
-            ) : (
-              <Moon className="w-4 h-4 text-ct-ink2" />
-            )
-          ) : (
-            <div className="w-4 h-4" />
-          )}
-        </button>
-
-        <div className="flex items-center gap-3 pl-3 border-l border-ct-line">
+        <div className="flex items-center gap-3">
           {isLoading ? (
             <div className="h-9 w-32 rounded animate-pulse bg-ct-line" />
           ) : (
