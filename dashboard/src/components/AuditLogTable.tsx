@@ -12,6 +12,7 @@ import {
     ChevronRight,
     Building2
 } from 'lucide-react'
+import { Eyebrow, StatusPill, ActionButton } from '@/components/ct/primitives'
 
 export function AuditLogTable() {
     const [logs, setLogs] = useState<AuditLog[]>([])
@@ -88,31 +89,40 @@ export function AuditLogTable() {
 
     const getActorIcon = (type: string) => {
         switch (type) {
-            case 'super_admin': return <Shield className="w-4 h-4 text-purple-400" />
-            case 'org_admin': return <User className="w-4 h-4 text-blue-400" />
-            case 'system': return <Server className="w-4 h-4 text-gray-400" />
-            default: return <User className="w-4 h-4 text-gray-400" />
+            case 'super_admin': return <Shield className="w-3.5 h-3.5 text-ct-accent" />
+            case 'org_admin': return <User className="w-3.5 h-3.5 text-ct-accent" />
+            case 'system': return <Server className="w-3.5 h-3.5 text-ct-ink3" />
+            default: return <User className="w-3.5 h-3.5 text-ct-ink3" />
         }
     }
 
+    const getActionTone = (action: string): 'crit' | 'ok' | 'accent' => {
+        if (action.includes('DELETE') || action.includes('WIPE')) return 'crit'
+        if (action.includes('CREATE') || action.includes('RESTORE')) return 'ok'
+        return 'accent'
+    }
+
+    const inputBase = 'bg-ct-bg2 border border-ct-line rounded-sm px-2 py-1.5 text-[12px] text-ct-ink font-mono focus:border-ct-accent-border outline-none transition-colors'
+
     return (
         <div className="space-y-4">
-            {/* Disclaimer / Trust Signal */}
-            <div className="bg-slate-900 border border-slate-800 p-3 rounded-md flex items-center gap-2 text-xs text-slate-400">
-                <Shield className="w-4 h-4 text-green-500" />
-                <span>AUDIT LEDGER IS IMMUTABLE. UPDATES ARE APPEND-ONLY.</span>
+            {/* Trust Signal */}
+            <div
+                className="p-3 rounded-sm flex items-center gap-2 border"
+                style={{ background: 'var(--ct-bg2)', borderColor: 'var(--ct-line)' }}
+            >
+                <Shield className="w-3.5 h-3.5 text-ct-ok" />
+                <Eyebrow>Audit Ledger is immutable / append-only</Eyebrow>
             </div>
 
             {/* Toolbar */}
-            <div className="flex flex-wrap gap-2 items-end bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-                {/* Organization filter: super_admin only (the org_admin endpoint is already scoped
-                    to their own org, so this dropdown is meaningless for them and we hide it). */}
+            <div className="flex flex-wrap gap-3 items-end p-4 rounded-sm bg-ct-bg2 border border-ct-line">
                 {user?.role === 'super_admin' && (
                     <div className="flex flex-col gap-1">
-                        <label className="text-xs text-slate-400">Organization</label>
+                        <Eyebrow>Organization</Eyebrow>
                         <div className="relative">
                             <select
-                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 pl-8 text-sm text-slate-200 outline-none focus:border-purple-500 w-48 appearance-none"
+                                className={inputBase + ' pl-8 w-48 appearance-none'}
                                 value={filters.organization_id}
                                 onChange={(e) => setFilters({ ...filters, organization_id: e.target.value })}
                             >
@@ -121,15 +131,15 @@ export function AuditLogTable() {
                                     <option key={org.id} value={org.id}>{org.name}</option>
                                 ))}
                             </select>
-                            <Building2 className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            <Building2 className="w-3.5 h-3.5 text-ct-ink3 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
                     </div>
                 )}
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-xs text-slate-400">Actor Type</label>
+                    <Eyebrow>Actor Type</Eyebrow>
                     <select
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
+                        className={inputBase + ' w-40'}
                         value={filters.actor_type}
                         onChange={(e) => setFilters({ ...filters, actor_type: e.target.value })}
                     >
@@ -141,7 +151,6 @@ export function AuditLogTable() {
                                 <option value="system">System</option>
                             </>
                         ) : (
-                            // Org admins only care about their own admin actions in their ledger.
                             <>
                                 <option value="">All Actions</option>
                                 <option value="org_admin">Org Admin</option>
@@ -151,20 +160,18 @@ export function AuditLogTable() {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-xs text-slate-400">Action Type</label>
+                    <Eyebrow>Action Type</Eyebrow>
                     {user?.role === 'super_admin' ? (
                         <input
                             type="text"
                             placeholder="e.g. ORG_CREATED"
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
+                            className={inputBase + ' w-48'}
                             value={filters.action_type}
                             onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
                         />
                     ) : (
-                        // For org admins, expose the 5 destructive actions explicitly so they
-                        // don't have to remember + spell the action_type strings.
                         <select
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500 min-w-[200px]"
+                            className={inputBase + ' min-w-[200px]'}
                             value={filters.action_type}
                             onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
                         >
@@ -181,115 +188,107 @@ export function AuditLogTable() {
 
                 {user?.role === 'super_admin' && (
                     <div className="flex flex-col gap-1">
-                        <label className="text-xs text-slate-400">Target Type</label>
+                        <Eyebrow>Target Type</Eyebrow>
                         <input
                             type="text"
                             placeholder="e.g. AGENT"
-                            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 outline-none focus:border-purple-500"
+                            className={inputBase + ' w-40'}
                             value={filters.target_type}
                             onChange={(e) => setFilters({ ...filters, target_type: e.target.value })}
                         />
                     </div>
                 )}
 
-                <button
-                    onClick={() => fetchLogs()}
-                    className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1 h-[30px]"
-                >
-                    <Search className="w-4 h-4" /> Filter
-                </button>
+                <ActionButton onClick={() => fetchLogs()} variant="primary">
+                    <span className="inline-flex items-center gap-2">
+                        <Search className="w-3 h-3" /> Filter
+                    </span>
+                </ActionButton>
 
                 <div className="flex-1" />
 
-                <button
-                    onClick={handleExport}
-                    className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1 h-[30px]"
-                >
-                    <Download className="w-4 h-4" /> CSV Export
-                </button>
+                <ActionButton onClick={handleExport} variant="ghost">
+                    <span className="inline-flex items-center gap-2">
+                        <Download className="w-3 h-3" /> CSV Export
+                    </span>
+                </ActionButton>
             </div>
 
             {/* Table */}
-            <div className="border border-slate-700 rounded-lg overflow-hidden">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-800 text-slate-400 font-medium">
+            <div className="border border-ct-line rounded-sm overflow-hidden">
+                <table className="w-full text-[13px] text-left">
+                    <thead className="bg-ct-bg2 border-b border-ct-line">
                         <tr>
                             <th className="px-4 py-3 w-8"></th>
-                            <th className="px-4 py-3">Timestamp (UTC)</th>
-                            <th className="px-4 py-3">Actor</th>
-                            <th className="px-4 py-3">Action</th>
-                            <th className="px-4 py-3">Target</th>
-                            <th className="px-4 py-3">IP Address</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Timestamp (UTC)</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Actor</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Action</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Target</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>IP Address</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800 bg-slate-900/50">
+                    <tbody className="divide-y divide-ct-line bg-ct-panel">
                         {loading ? (
-                            <tr><td colSpan={6} className="text-center py-8 text-slate-500">Loading ledger...</td></tr>
+                            <tr><td colSpan={6} className="text-center py-8 text-ct-ink3 text-[12px] font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading ledger…</td></tr>
                         ) : logs.length === 0 ? (
-                            <tr><td colSpan={6} className="text-center py-8 text-slate-500">No audit records found matching criteria.</td></tr>
+                            <tr><td colSpan={6} className="text-center py-8 text-ct-ink3 text-[13px]">No audit records found matching criteria.</td></tr>
                         ) : (
                             logs.map((log) => (
                                 <>
                                     <tr
                                         key={log.id}
-                                        className="hover:bg-slate-800/50 cursor-pointer transition-colors"
+                                        className="hover:bg-ct-bg2 cursor-pointer transition-colors"
                                         onClick={() => setExpandedRow(expandedRow === log.id ? null : log.id)}
                                     >
-                                        <td className="px-4 py-3 text-slate-500">
+                                        <td className="px-4 py-3 text-ct-ink3">
                                             {expandedRow === log.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                         </td>
-                                        <td className="px-4 py-3 font-mono text-slate-300">
+                                        <td className="px-4 py-3 font-mono text-ct-ink2 tabular-nums">
                                             {formatWATPattern(log.timestamp, 'yyyy-MM-dd HH:mm:ss')}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2">
                                                 {getActorIcon(log.actor_type)}
-                                                <span className="capitalize text-slate-200">{log.actor_type.replace('_', ' ')}</span>
+                                                <span className="capitalize text-ct-ink">{log.actor_type.replace('_', ' ')}</span>
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`
-                        px-2 py-0.5 rounded text-xs font-medium border
-                        ${log.action_type.includes('DELETE') ? 'bg-red-900/30 text-red-400 border-red-800' :
-                                                    log.action_type.includes('CREATE') ? 'bg-green-900/30 text-green-400 border-green-800' :
-                                                        'bg-blue-900/30 text-blue-400 border-blue-800'}
-                      `}>
+                                            <StatusPill tone={getActionTone(log.action_type)} dot={false}>
                                                 {log.action_type}
-                                            </span>
+                                            </StatusPill>
                                         </td>
-                                        <td className="px-4 py-3 text-slate-400">
-                                            {log.target_type}: <span className="text-slate-300">{log.target_id?.substring(0, 8)}...</span>
+                                        <td className="px-4 py-3 text-ct-ink2">
+                                            {log.target_type}: <span className="text-ct-ink font-mono">{log.target_id?.substring(0, 8)}…</span>
                                         </td>
-                                        <td className="px-4 py-3 text-slate-500 font-mono text-xs">
+                                        <td className="px-4 py-3 text-ct-ink3 font-mono text-[11px]">
                                             {log.ip_address || '-'}
                                         </td>
                                     </tr>
 
-                                    {/* Expanded Detail View */}
                                     {expandedRow === log.id && (
-                                        <tr className="bg-slate-950/50">
-                                            <td colSpan={6} className="px-4 py-4 border-t border-slate-800">
+                                        <tr className="bg-ct-bg2">
+                                            <td colSpan={6} className="px-4 py-4 border-t border-ct-line">
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
-                                                        <h4 className="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">Metadata</h4>
-                                                        <pre className="bg-black/50 p-2 rounded border border-slate-800 text-xs font-mono text-green-400 overflow-auto max-h-40">
+                                                        <Eyebrow className="mb-2">Metadata</Eyebrow>
+                                                        <pre className="bg-ct-bg p-3 rounded-sm border border-ct-line text-[11px] font-mono text-ct-ok overflow-auto max-h-40">
                                                             {JSON.stringify(log.metadata, null, 2)}
                                                         </pre>
                                                     </div>
                                                     <div className="space-y-2">
-                                                        <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Technical Details</h4>
-                                                        <div className="grid grid-cols-[100px_1fr] gap-y-1 text-xs">
-                                                            <span className="text-slate-500">Record ID:</span>
-                                                            <span className="font-mono text-slate-400">{log.id}</span>
+                                                        <Eyebrow>Technical Details</Eyebrow>
+                                                        <div className="grid grid-cols-[110px_1fr] gap-y-1 text-[11px]">
+                                                            <span className="text-ct-ink3">Record ID:</span>
+                                                            <span className="font-mono text-ct-ink2">{log.id}</span>
 
-                                                            <span className="text-slate-500">Full Target ID:</span>
-                                                            <span className="font-mono text-slate-400">{log.target_id}</span>
+                                                            <span className="text-ct-ink3">Full Target ID:</span>
+                                                            <span className="font-mono text-ct-ink2">{log.target_id}</span>
 
-                                                            <span className="text-slate-500">Actor ID:</span>
-                                                            <span className="font-mono text-slate-400">{log.actor_id}</span>
+                                                            <span className="text-ct-ink3">Actor ID:</span>
+                                                            <span className="font-mono text-ct-ink2">{log.actor_id}</span>
 
-                                                            <span className="text-slate-500">User Agent:</span>
-                                                            <span className="text-slate-400 truncate">{log.user_agent || 'N/A'}</span>
+                                                            <span className="text-ct-ink3">User Agent:</span>
+                                                            <span className="text-ct-ink2 truncate">{log.user_agent || 'N/A'}</span>
                                                         </div>
                                                     </div>
                                                 </div>

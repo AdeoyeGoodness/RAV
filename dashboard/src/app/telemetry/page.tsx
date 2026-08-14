@@ -5,6 +5,7 @@ import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
+import { SectionHead } from '@/components/ct/primitives'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function TelemetryPage() {
@@ -12,34 +13,27 @@ export default function TelemetryPage() {
 
     if (isLoading || !user) {
         return (
-            <div className="min-h-screen bg-[#020408] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+            <div className="min-h-screen bg-ct-bg flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 rounded-full animate-spin" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: 'var(--ct-line2)', borderTopColor: 'var(--ct-accent)' }} />
+                    <span className="text-[10px] font-mono uppercase text-ct-ink3" style={{ letterSpacing: '0.24em' }}>Loading telemetry</span>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex h-screen bg-[#020408] text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
-            {/* Global Ambient Background Effects */}
-            <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-blue-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-purple-600/20 blur-[150px] rounded-full pointer-events-none mix-blend-screen" />
-
+        <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
             <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden ml-64 relative z-10">
+            <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
                 <ExpiryBanner />
                 <ArchiveBanner />
-                <main className="flex-1 overflow-auto p-8 space-y-6 mt-20">
-                    {/* Page Header */}
-                    <div>
-                        <h1 className="text-2xl font-bold text-white">Telemetry Explorer</h1>
-                        <p className="text-slate-400 text-sm mt-1">
-                            Explore events across your organization
-                        </p>
-                    </div>
-
+                <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+                    <SectionHead
+                        eyebrow="Signals / Ledger"
+                        title="Telemetry Explorer"
+                    />
                     <TelemetryExplorer />
                 </main>
             </div>

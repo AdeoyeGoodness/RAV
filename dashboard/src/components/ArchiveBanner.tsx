@@ -85,13 +85,19 @@ export default function ArchiveBanner() {
   const isCritical = (daysLeft ?? 3) <= 1
   const isUrgent = (daysLeft ?? 3) <= 2
 
-  const bannerClasses = isCritical
-    ? 'from-red-900/90 to-red-800/90 border-red-500/50'
-    : isUrgent
-      ? 'from-orange-900/80 to-red-900/80 border-orange-500/40'
-      : 'from-sky-900/70 to-indigo-900/70 border-sky-500/30'
-
-  const pulseClass = isCritical ? 'animate-pulse' : ''
+  const tone: 'crit' | 'warn' | 'accent' = isCritical ? 'crit' : isUrgent ? 'warn' : 'accent'
+  const bgColor =
+    tone === 'crit' ? 'var(--ct-crit-soft)' :
+    tone === 'warn' ? 'var(--ct-warn-soft)' :
+    'var(--ct-accent-soft)'
+  const borderColor =
+    tone === 'crit' ? 'var(--ct-crit-border)' :
+    tone === 'warn' ? 'var(--ct-warn-border)' :
+    'var(--ct-accent-border)'
+  const accentColor =
+    tone === 'crit' ? 'var(--ct-crit)' :
+    tone === 'warn' ? 'var(--ct-warn)' :
+    'var(--ct-accent)'
 
   const msLeft = deleteAt !== null ? Math.max(0, deleteAt - now) : 0
   const countdown = formatCountdown(msLeft)
@@ -107,59 +113,51 @@ export default function ArchiveBanner() {
     return `${pendingCount} forensic ${archiveWord} ready in the vault. ${countdown} left before automatic deletion.`
   })()
 
+  const label = isCritical ? 'LAST CHANCE' : isUrgent ? 'EXPIRING SOON' : 'VAULT READY'
+
   return (
     <div
       id="archive-banner"
-      className={`
-        w-full bg-gradient-to-r ${bannerClasses}
-        backdrop-blur-sm border-b
-        px-6 py-3
-        flex items-center justify-between
-        relative z-50
-        transition-all duration-500 ease-out
-      `}
+      className="w-full px-6 py-2.5 flex items-center justify-between relative z-50 border-b"
+      style={{ background: bgColor, borderColor, color: 'var(--ct-ink)' }}
       role="alert"
       aria-live="polite"
     >
-      <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
-        <div className={`flex-shrink-0 ${pulseClass}`}>
-          <Archive className={`w-5 h-5 ${isCritical ? 'text-red-300' : isUrgent ? 'text-orange-300' : 'text-sky-300'}`} />
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex-shrink-0" style={{ color: accentColor }}>
+          <Archive className="w-4 h-4" />
         </div>
 
         <div className="flex items-center gap-3 min-w-0">
-          <span className={`
-            text-xs font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full
-            ${isCritical
-              ? 'bg-red-500/20 text-red-300'
-              : isUrgent
-                ? 'bg-orange-500/20 text-orange-300'
-                : 'bg-sky-500/20 text-sky-300'
-            }
-          `}>
-            {isCritical ? 'LAST CHANCE' : isUrgent ? 'EXPIRING SOON' : 'VAULT READY'}
+          <span
+            className="font-mono text-[10px] uppercase font-medium px-2 py-0.5 rounded-sm border"
+            style={{
+              color: accentColor,
+              borderColor,
+              background: 'transparent',
+              letterSpacing: '0.18em',
+            }}
+          >
+            {label}
           </span>
-          <p className="text-sm text-white/90 font-medium truncate">
-            {message}
-          </p>
+          <p className="text-[12px] font-medium truncate text-ct-ink">{message}</p>
           <a
             href="/archives"
-            className="text-xs text-white/80 hover:text-white underline underline-offset-2 ml-2 whitespace-nowrap"
+            className="text-[11px] font-mono uppercase underline underline-offset-2 ml-2 whitespace-nowrap"
+            style={{ color: accentColor, letterSpacing: '0.18em' }}
           >
-            Open Vault →
+            Open Vault
           </a>
         </div>
       </div>
 
       <button
         onClick={() => setDismissed(true)}
-        className="flex-shrink-0 ml-4 p-1.5 rounded-lg
-          hover:bg-white/10 transition-colors
-          text-white/50 hover:text-white/90
-          focus:outline-none focus:ring-2 focus:ring-white/20"
+        className="flex-shrink-0 ml-4 p-1.5 rounded-sm hover:bg-ct-panel-hi transition-colors text-ct-ink3 hover:text-ct-ink focus:outline-none"
         aria-label="Dismiss archive notification"
         title="Dismiss"
       >
-        <X className="w-4 h-4" />
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   )

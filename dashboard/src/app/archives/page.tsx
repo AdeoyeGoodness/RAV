@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Archive, Download, Trash2, Calendar, Database, Shield, Lock, Search, AlertCircle, RefreshCw, Package } from 'lucide-react'
+import { Archive, Download, Calendar, Database, Shield, Lock, Search, AlertCircle, RefreshCw, Package } from 'lucide-react'
 import { getArchives, downloadArchive, downloadOrgBundle, deleteArchive, collateArchives, triggerManualArchive, Archive as ArchiveType } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -9,6 +9,7 @@ import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATDate } from '@/lib/time'
+import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
 export default function ArchivesPage() {
   const { user } = useAuth()
@@ -49,7 +50,7 @@ export default function ArchivesPage() {
 
     try {
       const blob = await downloadArchive(selectedArchive.id, password)
-      
+
       // Create a URL and trigger download
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -58,12 +59,12 @@ export default function ArchivesPage() {
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
-      
+
       // Post-download cleanup (Burn After Reading)
       setArchives(prev => prev.filter(a => a.id !== selectedArchive.id))
       setSelectedArchive(null)
       setPassword('')
-      
+
     } catch (err: any) {
       setError(err.response?.status === 401 ? 'Incorrect administrator password.' : 'Verification failed. Archive access denied.')
     } finally {
@@ -118,7 +119,7 @@ export default function ArchivesPage() {
     }
   }
 
-  const filteredArchives = archives.filter(a => 
+  const filteredArchives = archives.filter(a =>
     a.agent_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     a.filename.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -131,274 +132,270 @@ export default function ArchivesPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
+  const inputBase = 'w-full px-4 py-3 bg-ct-bg2 border border-ct-line rounded-sm focus:border-ct-accent-border outline-none transition-colors text-[13px] text-ct-ink font-mono placeholder:text-ct-ink4'
+
   return (
-    <div className="flex h-screen bg-[#050510] text-slate-300">
+    <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden ml-64">
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
-
-        <main className="flex-1 overflow-y-auto p-8 lg:p-12 mt-20 ml-64">
-          <div className="max-w-6xl mx-auto">
-            {/* Page Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-              <div>
-                <div className="flex items-center gap-3 mb-2 text-sky-400">
-                  <Archive className="w-5 h-5" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Telemetry Records</span>
-                </div>
-                <h1 className="text-4xl font-extrabold text-white tracking-tight">Forensic Vault</h1>
-                <p className="mt-3 text-slate-400 max-w-xl text-lg leading-relaxed">
-                  Manage the automated weekly telemetry archives. All records adhere to the 
-                  <span className="text-rose-400 font-medium ml-1">"Burn After Reading"</span> protocol.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={fetchArchives}
-                  className="p-2.5 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all text-slate-400"
-                  title="Refresh Vault"
-                >
-                  <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={handleCollate}
-                  disabled={isCollating}
-                  className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-sm transition-all shadow-lg shadow-sky-500/20 flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isCollating ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
-                  {isCollating ? 'Collating...' : 'Collate All Records'}
-                </button>
-                <button
+        <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+          <SectionHead
+            eyebrow="Compliance / Vault"
+            title="Forensic Vault"
+            right={
+              <div className="flex items-center gap-2">
+                <ActionButton onClick={fetchArchives} variant="ghost">
+                  <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+                </ActionButton>
+                <ActionButton onClick={handleCollate} disabled={isCollating} variant="primary">
+                  <span className="inline-flex items-center gap-2">
+                    {isCollating ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
+                    {isCollating ? 'Collating…' : 'Collate All Records'}
+                  </span>
+                </ActionButton>
+                <ActionButton
                   onClick={() => { setBundleOpen(true); setBundleError(null); setBundlePassword('') }}
                   disabled={archives.length === 0}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Download every archive in the vault as one ZIP-of-ZIPs, one folder per endpoint"
+                  variant="primary"
                 >
-                  <Package className="w-4 h-4" />
-                  Download All (Bundle)
-                </button>
-                <div className="relative group">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-sky-400 transition-colors" />
-                  <input
-                    type="text"
-                    placeholder="Search by Agent ID or Filename..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2.5 bg-white/[0.02] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500/50 transition-all text-sm w-64 text-slate-200"
-                  />
-                </div>
+                  <span className="inline-flex items-center gap-2">
+                    <Package className="w-3 h-3" />
+                    Download All (Bundle)
+                  </span>
+                </ActionButton>
               </div>
+            }
+          />
+          <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
+            Manage the automated weekly telemetry archives. All records adhere to the{' '}
+            <span className="text-ct-crit">Burn After Reading</span> protocol.
+          </p>
+
+          {/* Search bar */}
+          <Panel>
+            <div className="p-3 flex items-center gap-3 border-b border-ct-line bg-ct-bg2">
+              <Search className="w-4 h-4 text-ct-ink3" />
+              <input
+                type="text"
+                placeholder="Search by Agent ID or Filename…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent border-none outline-none w-full text-[13px] text-ct-ink font-mono placeholder:text-ct-ink4"
+              />
             </div>
 
-            {/* Archive List */}
-            <div className="bg-[#0C0E1C] border border-white/[0.06] rounded-3xl overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white/[0.04] bg-white/[0.01]">
-                      <th className="px-6 py-5 text-[10px] uppercase font-bold tracking-widest text-slate-500">Record Info</th>
-                      <th className="px-6 py-5 text-[10px] uppercase font-bold tracking-widest text-slate-500">Telemetry Range</th>
-                      <th className="px-6 py-5 text-[10px] uppercase font-bold tracking-widest text-slate-500">Volume</th>
-                      <th className="px-6 py-5 text-[10px] uppercase font-bold tracking-widest text-slate-500">Lifecycle</th>
-                      <th className="px-6 py-5 text-[10px] uppercase font-bold tracking-widest text-slate-500 text-right">Action</th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-ct-line bg-ct-bg2">
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Record Info</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Telemetry Range</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Volume</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Lifecycle</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium text-right" style={{ letterSpacing: '0.18em' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ct-line">
+                  {isLoading ? (
+                    Array(3).fill(0).map((_, i) => (
+                      <tr key={i}>
+                        <td colSpan={5} className="px-6 py-8 h-16 bg-ct-bg2 animate-pulse" />
+                      </tr>
+                    ))
+                  ) : filteredArchives.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-16 text-center">
+                        <div className="flex flex-col items-center gap-3">
+                          <Database className="w-8 h-8 text-ct-ink4" />
+                          <p className="text-[13px] text-ct-ink3 font-medium">No forensic archives found in vault.</p>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {isLoading ? (
-                      Array(3).fill(0).map((_, i) => (
-                        <tr key={i} className="animate-pulse">
-                          <td colSpan={5} className="px-6 py-8 h-16 bg-white/[0.01]" />
-                        </tr>
-                      ))
-                    ) : filteredArchives.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-20 text-center">
-                          <div className="flex flex-col items-center gap-4">
-                            <Database className="w-12 h-12 text-slate-800" />
-                            <p className="text-slate-500 font-medium">No forensic archives found in vault.</p>
+                  ) : (
+                    filteredArchives.map((archive) => (
+                      <tr key={archive.id} className="hover:bg-ct-bg2 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="text-[13px] font-medium text-ct-ink mb-1">{archive.agent_id}</div>
+                          <div className="text-[10px] font-mono text-ct-ink3">{archive.filename}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2 text-[12px] text-ct-ink2 mb-1">
+                            <Calendar className="w-3 h-3 text-ct-ink3" />
+                            <span className="font-mono">{formatWATDate(archive.start_date)}</span>
                           </div>
+                          <div className="text-[10px] text-ct-ink3 font-mono">to {formatWATDate(archive.end_date)}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-[13px] text-ct-ink font-mono tabular-nums">{formatSize(archive.size_bytes)}</div>
+                          <div className="text-[10px] text-ct-ink3 font-mono tabular-nums">{archive.event_count} packets</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <StatusPill tone="crit">
+                            <Shield className="w-3 h-3" />
+                            Burn on Download
+                          </StatusPill>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <ActionButton onClick={() => setSelectedArchive(archive)} variant="primary">
+                            <span className="inline-flex items-center gap-2">
+                              <Download className="w-3 h-3" />
+                              Retrieve
+                            </span>
+                          </ActionButton>
                         </td>
                       </tr>
-                    ) : (
-                      filteredArchives.map((archive) => (
-                        <tr key={archive.id} className="group hover:bg-white/[0.01] transition-all">
-                          <td className="px-6 py-6">
-                            <div>
-                              <div className="text-sm font-bold text-slate-200 mb-1">{archive.agent_id}</div>
-                              <div className="text-[10px] font-mono text-slate-500">{archive.filename}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-6 text-xs text-slate-400">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Calendar className="w-3.5 h-3.5 text-slate-600" />
-                              {formatWATDate(archive.start_date)}
-                            </div>
-                            <div className="text-[10px] text-slate-600">to {formatWATDate(archive.end_date)}</div>
-                          </td>
-                          <td className="px-6 py-6">
-                            <div className="text-xs text-slate-300 font-medium">{formatSize(archive.size_bytes)}</div>
-                            <div className="text-[10px] text-slate-500">{archive.event_count} telemetry packets</div>
-                          </td>
-                          <td className="px-6 py-6">
-                            <div className="flex items-center gap-2 text-[10px] text-rose-400 font-bold uppercase tracking-widest">
-                              <Shield className="w-3 h-3" />
-                              Burn on Download
-                            </div>
-                          </td>
-                          <td className="px-6 py-6 text-right">
-                            <button
-                              onClick={() => setSelectedArchive(archive)}
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/20 rounded-xl transition-all font-bold text-xs"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              Retrieve
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
+          </Panel>
 
-            <div className="mt-8 flex items-center gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-              <AlertCircle className="w-5 h-5 text-slate-500 flex-shrink-0" />
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Archives older than <span className="text-slate-300">2 days</span> are automatically purged from the vault to ensure maximum forensic privacy.
-                Please ensure you download and secure critical records immediately upon notification.
-              </p>
-            </div>
+          <div className="flex items-center gap-3 p-4 rounded-sm bg-ct-panel border border-ct-line">
+            <AlertCircle className="w-4 h-4 text-ct-ink3 flex-shrink-0" />
+            <p className="text-[12px] text-ct-ink3">
+              Archives older than <span className="text-ct-ink font-medium">2 days</span> are automatically purged from the vault to ensure maximum forensic privacy.
+              Ensure you download and secure critical records immediately upon notification.
+            </p>
           </div>
         </main>
       </div>
 
       {/* Bundle Download Modal */}
       {bundleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#050510]/80 backdrop-blur-sm">
-          <div className="bg-[#0C0E1C] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in duration-300">
-            <button
-              onClick={() => { setBundleOpen(false); setBundlePassword(''); setBundleError(null) }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
-            >
-              ✕
-            </button>
-
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-emerald-400 border border-emerald-500/20">
-                <Package className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Bundle & Download</h3>
-              <p className="text-sm text-slate-400">
-                Every archive in the vault (<span className="text-emerald-400 font-medium">{archives.length}</span>) will be packaged into a single ZIP — one folder per endpoint. All bundled archives are <span className="text-rose-400 font-medium">burned</span> after the download completes.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ct-bg/85 backdrop-blur-sm">
+          <Panel className="w-full max-w-md">
+            <PanelHead
+              title={
+                <span className="flex items-center gap-2 text-ct-accent">
+                  <Package className="w-4 h-4" />
+                  Bundle &amp; Download
+                </span>
+              }
+              right={
+                <button
+                  onClick={() => { setBundleOpen(false); setBundlePassword(''); setBundleError(null) }}
+                  className="text-ct-ink3 hover:text-ct-ink transition-colors font-mono text-[13px]"
+                >
+                  ✕
+                </button>
+              }
+            />
+            <div className="p-6 space-y-5">
+              <p className="text-[13px] text-ct-ink2">
+                Every archive in the vault (<span className="text-ct-accent font-medium">{archives.length}</span>) will be packaged into a single ZIP — one folder per endpoint.
+                All bundled archives are <span className="text-ct-crit font-medium">burned</span> after the download completes.
               </p>
-            </div>
 
-            <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Admin Password</label>
+                <Eyebrow className="mb-2">Admin Password</Eyebrow>
                 <input
                   type="password"
                   value={bundlePassword}
                   onChange={(e) => setBundlePassword(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && bundlePassword && !isBundling) handleBundleDownload() }}
                   placeholder="••••••••••••"
-                  className="w-full px-4 py-3 bg-white/[0.02] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500/50 transition-all text-sm text-slate-200"
+                  className={inputBase}
                   autoFocus
                 />
               </div>
 
               {bundleError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium animate-pulse">
+                <div
+                  className="p-3 rounded-sm border text-[12px] font-medium"
+                  style={{ background: 'var(--ct-crit-soft)', borderColor: 'var(--ct-crit-border)', color: 'var(--ct-crit)' }}
+                >
                   {bundleError}
                 </div>
               )}
 
-              <button
+              <ActionButton
                 onClick={handleBundleDownload}
                 disabled={isBundling || !bundlePassword}
-                className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-black rounded-2xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                variant="primary"
+                className="w-full py-3"
               >
-                {isBundling ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Verify & Bundle
-                  </>
-                )}
-              </button>
+                <span className="inline-flex items-center justify-center gap-2">
+                  {isBundling ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  {isBundling ? 'Bundling…' : 'Verify & Bundle'}
+                </span>
+              </ActionButton>
 
-              <p className="text-[10px] text-center text-slate-600 px-4">
-                Warning: every archive in the bundle will be permanently destroyed after a successful download.
+              <p className="text-[10px] text-center text-ct-ink3 px-4 font-mono uppercase" style={{ letterSpacing: '0.14em' }}>
+                Every archive burned after successful download
               </p>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
 
       {/* Verification Modal */}
       {selectedArchive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-[#050510]/80 backdrop-blur-sm">
-          <div className="bg-[#0C0E1C] border border-white/10 p-8 rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in duration-300">
-            <button 
-              onClick={() => { setSelectedArchive(null); setPassword(''); setError(null); }}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
-            >
-              ✕
-            </button>
-
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 text-sky-400 border border-sky-500/20">
-                <Lock className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Auth Required</h3>
-              <p className="text-sm text-slate-400">
-                You are accessing sensitive forensic telemetry for agent <span className="text-sky-400 font-medium">{(selectedArchive as any).agent_id}</span>. Please verify your administrative identity.
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ct-bg/85 backdrop-blur-sm">
+          <Panel className="w-full max-w-md">
+            <PanelHead
+              title={
+                <span className="flex items-center gap-2 text-ct-accent">
+                  <Lock className="w-4 h-4" />
+                  Auth Required
+                </span>
+              }
+              right={
+                <button
+                  onClick={() => { setSelectedArchive(null); setPassword(''); setError(null); }}
+                  className="text-ct-ink3 hover:text-ct-ink transition-colors font-mono text-[13px]"
+                >
+                  ✕
+                </button>
+              }
+            />
+            <div className="p-6 space-y-5">
+              <p className="text-[13px] text-ct-ink2">
+                You are accessing sensitive forensic telemetry for agent{' '}
+                <span className="text-ct-accent font-medium font-mono">{(selectedArchive as any).agent_id}</span>.
+                Please verify your administrative identity.
               </p>
-            </div>
 
-            <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 ml-1">Admin Password</label>
+                <Eyebrow className="mb-2">Admin Password</Eyebrow>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full px-4 py-3 bg-white/[0.02] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500/50 transition-all text-sm text-slate-200"
+                  className={inputBase}
                 />
               </div>
 
               {error && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium animate-pulse">
+                <div
+                  className="p-3 rounded-sm border text-[12px] font-medium"
+                  style={{ background: 'var(--ct-crit-soft)', borderColor: 'var(--ct-crit-border)', color: 'var(--ct-crit)' }}
+                >
                   {error}
                 </div>
               )}
 
-              <button
+              <ActionButton
                 onClick={handleDownload}
                 disabled={isVerifying || !password}
-                className="w-full py-4 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-bold text-sm shadow-lg shadow-sky-500/20 transition-all flex items-center justify-center gap-2"
+                variant="primary"
+                className="w-full py-3"
               >
-                {isVerifying ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    Verify & Download
-                  </>
-                )}
-              </button>
-              
-              <p className="text-[10px] text-center text-slate-600 px-4">
-                Warning: This archive will be permanently destroyed after a successful download session.
+                <span className="inline-flex items-center justify-center gap-2">
+                  {isVerifying ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  {isVerifying ? 'Verifying…' : 'Verify & Download'}
+                </span>
+              </ActionButton>
+
+              <p className="text-[10px] text-center text-ct-ink3 px-4 font-mono uppercase" style={{ letterSpacing: '0.14em' }}>
+                Archive permanently destroyed after successful download
               </p>
             </div>
-          </div>
+          </Panel>
         </div>
       )}
     </div>

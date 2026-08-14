@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, ShieldCheck, Activity, Key, ChevronRight, Search, Loader2, UserPlus, ExternalLink, Mail, User as UserIcon, Copy, Check, Trash2, Undo2, AlertCircle, Pencil, Server } from 'lucide-react'
+import { Building2, Plus, ShieldCheck, Activity, Mail, Copy, Check, Trash2, Undo2, Pencil, Server, UserPlus, Search, Loader2 } from 'lucide-react'
 import { getOrganizations, createOrganization, updateOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
-
-
+import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill, Stat } from '@/components/ct/primitives'
 
 export default function AdminPage() {
     const { user, isLoading } = useAuth()
@@ -90,18 +89,6 @@ export default function AdminPage() {
         }
     }
 
-    const switchContext = (orgId: string | null, orgName: string) => {
-        if (orgId) {
-            localStorage.setItem('rav_organization_id', orgId)
-            localStorage.setItem('rav_organization_name', orgName)
-            alert(`Switched context to ${orgName}`)
-        } else {
-            localStorage.removeItem('rav_organization_id')
-            localStorage.removeItem('rav_organization_name')
-        }
-        router.push('/')
-    }
-
     const toggleStatus = async (orgId: string, currentStatus: string) => {
         const newStatus = currentStatus === 'active' ? 'paused' : 'active'
         try {
@@ -167,7 +154,7 @@ export default function AdminPage() {
     }
 
     const handleRestore = async (org: Organization) => {
-        if (!confirm(`Restore deleted data for "${org.name}"?\n\nThis will recover all soft-deleted Agents, Events, and Files.\n\nType "RESTORE" to confirm.`)) return
+        if (!confirm(`Restore deleted data for "${org.name}"?\n\nThis will recover all soft-deleted Agents, Events, and Files.`)) return
 
         try {
             const res = await restoreOrganizationData(org.id)
@@ -190,414 +177,457 @@ export default function AdminPage() {
         }, 2000)
     }
 
-    // Removed token generation function since it's no longer needed in super admin view
-
     const filteredOrgs = organizations.filter(org =>
         org.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     if (isLoading || !user || user.role !== 'super_admin') {
         return (
-            <div className="min-h-screen bg-[#05050A] flex items-center justify-center">
+            <div className="min-h-screen bg-ct-bg flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
-                    <p className="text-xs text-slate-600 font-mono">Verifying access...</p>
+                    <div className="w-8 h-8 rounded-full animate-spin" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: 'var(--ct-line2)', borderTopColor: 'var(--ct-accent)' }} />
+                    <span className="text-[10px] font-mono uppercase text-ct-ink3" style={{ letterSpacing: '0.24em' }}>Verifying access</span>
                 </div>
             </div>
         )
     }
 
+    const inputBase = 'w-full px-4 py-3 rounded-sm border border-ct-line bg-ct-bg2 focus:border-ct-accent-border outline-none transition-colors text-[13px] text-ct-ink font-mono placeholder:text-ct-ink4'
+
     return (
-        <div className="flex h-screen bg-[#050510] text-slate-300 font-sans selection:bg-sky-500/20 overflow-hidden relative">
-            <div className="absolute top-[-20%] left-[-10%] w-[40%] h-[40%] bg-sky-900/10 blur-[180px] rounded-full pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-10%] w-[40%] h-[40%] bg-violet-900/8 blur-[180px] rounded-full pointer-events-none" />
+        <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
             <Sidebar />
-            <div className="flex-1 ml-64 relative z-10">
+            <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
-                <main className="pt-20 p-6 overflow-y-auto h-full scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
-                    <div className="max-w-7xl mx-auto space-y-6">
-                        <div className="flex justify-between items-center mb-6">
-                            <div>
-                                <h1 className="text-2xl font-bold mb-1 text-slate-200 tracking-tight">Organization Management</h1>
-                                <p className="text-sm text-slate-500">Global oversight of all enterprise tenants and licenses</p>
-                            </div>
-                            <button
-                                onClick={() => setIsModalOpen(true)}
-                                className="flex items-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_20px_rgba(2,132,199,0.2)] hover:shadow-[0_0_25px_rgba(2,132,199,0.3)] border border-sky-500/50"
-                            >
-                                <Plus className="w-4 h-4 mr-2" />
-                                New Organization
-                            </button>
-                        </div>
+                <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+                    <SectionHead
+                        eyebrow="Platform / Tenants"
+                        title="Organization Management"
+                        right={
+                            <ActionButton onClick={() => setIsModalOpen(true)} variant="primary">
+                                <span className="inline-flex items-center gap-2">
+                                    <Plus className="w-3 h-3" />
+                                    New Organization
+                                </span>
+                            </ActionButton>
+                        }
+                    />
+                    <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
+                        Global oversight of all enterprise tenants and licenses.
+                    </p>
 
-                        {/* Stats Overview */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
-                                <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400">
-                                    <Building2 className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Total Orgs</p>
-                                    <p className="text-2xl font-bold text-slate-200">{organizations.length}</p>
-                                </div>
-                            </div>
-                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
-                                <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-400">
-                                    <ShieldCheck className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Active Tokens</p>
-                                    <p className="text-2xl font-bold text-slate-200">{organizations.filter(o => o.status === 'active').length}</p>
-                                </div>
-                            </div>
-                            <div className="p-5 rounded-2xl bg-[#0C0E1C]/90 border border-white/[0.06] shadow-xl flex items-center space-x-4">
-                                <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
-                                    <Activity className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Platform Status</p>
-                                    <p className="text-lg font-bold text-emerald-500">Operational</p>
-                                </div>
-                            </div>
+                    {/* Stats */}
+                    <Panel>
+                        <div className="grid grid-cols-1 md:grid-cols-3">
+                            <Stat
+                                label="Total Orgs"
+                                value={organizations.length}
+                            />
+                            <Stat
+                                label="Active Tokens"
+                                value={organizations.filter(o => o.status === 'active').length}
+                                tone="accent"
+                            />
+                            <Stat
+                                label="Platform Status"
+                                value={<span className="text-[24px]">Operational</span>}
+                                tone="ok"
+                                last
+                            />
                         </div>
+                    </Panel>
 
-                        {/* List */}
-                        <div className="rounded-2xl border border-white/[0.06] overflow-hidden transition-all bg-[#0C0E1C]/90 shadow-xl">
-                            <div className="p-4 flex items-center border-b border-white/[0.04]">
-                                <Search className="w-4 h-4 mr-3 text-slate-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Filter by name or token..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="bg-transparent border-none outline-none w-full text-sm text-slate-200 placeholder:text-slate-600"
-                                />
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="bg-[#080A14]/40 border-b border-white/[0.04]">
+                    {/* List */}
+                    <Panel>
+                        <div className="p-3 flex items-center gap-3 border-b border-ct-line bg-ct-bg2">
+                            <Search className="w-4 h-4 text-ct-ink3" />
+                            <input
+                                type="text"
+                                placeholder="Filter by name…"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="bg-transparent border-none outline-none w-full text-[13px] text-ct-ink font-mono placeholder:text-ct-ink4"
+                            />
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-ct-bg2 border-b border-ct-line">
+                                    <tr>
+                                        <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Organization</th>
+                                        <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Created At</th>
+                                        <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Status</th>
+                                        <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Max Agents</th>
+                                        <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium text-right" style={{ letterSpacing: '0.18em' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-ct-line">
+                                    {loading ? (
                                         <tr>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Organization Name</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Created At</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Max Agents</th>
-                                            <th className="px-6 py-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                                            <td colSpan={5} className="px-6 py-12 text-center">
+                                                <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-ct-ink3" />
+                                                <p className="text-[11px] text-ct-ink3 font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading organizations</p>
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/[0.04]">
-                                        {loading ? (
-                                            <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center">
-                                                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-500" />
-                                                    <p className="text-xs text-slate-500">Loading organizations...</p>
-                                                </td>
-                                            </tr>
-                                        ) : filteredOrgs.map(org => (
-                                            <tr key={org.id} className="hover:bg-white/[0.02] transition-colors group">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center">
-                                                        <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center mr-3 font-semibold text-xs text-sky-400">
-                                                            {org.name.charAt(0)}
-                                                        </div>
-                                                        <span className="font-medium text-sm text-slate-200">{org.name}</span>
+                                    ) : filteredOrgs.map(org => (
+                                        <tr key={org.id} className="hover:bg-ct-bg2 transition-colors group">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center">
+                                                    <div
+                                                        className="w-7 h-7 rounded-sm flex items-center justify-center mr-3 font-mono text-[11px] text-ct-accent border border-ct-accent-border"
+                                                        style={{ background: 'var(--ct-accent-soft)' }}
+                                                    >
+                                                        {org.name.charAt(0)}
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-[11px] font-mono text-slate-400">
-                                                    {new Date(org.created_at_ms).toLocaleString('en-NG', {
-                                                        timeZone: 'Africa/Lagos',
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit',
-                                                    })}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold ${org.status === 'active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
-                                                        {org.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2 text-slate-300">
-                                                        <Server className="w-3.5 h-3.5 text-slate-500" />
-                                                        <span className="text-sm font-mono">{org.max_agents}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <div className="flex items-center justify-end space-x-1.5 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                        <button
-                                                            onClick={() => { setSelectedOrg(org); setIsAdminModalOpen(true); }}
-                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-sky-500/10 hover:border-sky-500/20 text-slate-400 hover:text-sky-400 transition-colors"
-                                                            title="Onboard Organization Admin"
-                                                        >
-                                                            <UserPlus className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => openEditMaxAgents(org)}
-                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-violet-500/10 hover:border-violet-500/20 text-slate-400 hover:text-violet-400 transition-colors"
-                                                            title="Edit Max Agents Limit"
-                                                        >
-                                                            <Pencil className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => toggleStatus(org.id, org.status)}
-                                                            className="text-[11px] px-2.5 py-1.5 rounded-lg border border-white/[0.06] hover:bg-white/[0.03] text-slate-400 hover:text-slate-300 transition-colors"
-                                                        >
-                                                            {org.status === 'active' ? 'Pause' : 'Activate'}
-                                                        </button>
-
-                                                        <button
-                                                            onClick={() => handleDelete(org)}
-                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-rose-500/10 hover:border-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
-                                                            title="Delete Organization"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleRestore(org)}
-                                                            className="p-1.5 rounded-lg border border-white/[0.06] hover:bg-emerald-500/10 hover:border-emerald-500/20 text-slate-400 hover:text-emerald-400 transition-colors"
-                                                            title="Restore Deleted Data"
-                                                        >
-                                                            <Undo2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                    <span className="font-medium text-[13px] text-ct-ink">{org.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-[11px] font-mono text-ct-ink3 tabular-nums">
+                                                {new Date(org.created_at_ms).toLocaleString('en-NG', {
+                                                    timeZone: 'Africa/Lagos',
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                })}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <StatusPill tone={org.status === 'active' ? 'ok' : 'crit'}>
+                                                    {org.status}
+                                                </StatusPill>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-2 text-ct-ink2">
+                                                    <Server className="w-3 h-3 text-ct-ink3" />
+                                                    <span className="text-[13px] font-mono tabular-nums">{org.max_agents}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={() => { setSelectedOrg(org); setIsAdminModalOpen(true); }}
+                                                        className="p-1.5 rounded-sm border border-ct-line hover:border-ct-accent-border text-ct-ink3 hover:text-ct-accent transition-colors"
+                                                        title="Onboard Organization Admin"
+                                                    >
+                                                        <UserPlus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openEditMaxAgents(org)}
+                                                        className="p-1.5 rounded-sm border border-ct-line hover:border-ct-accent-border text-ct-ink3 hover:text-ct-accent transition-colors"
+                                                        title="Edit Max Agents Limit"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleStatus(org.id, org.status)}
+                                                        className="text-[11px] font-mono uppercase px-2.5 py-1 rounded-sm border border-ct-line hover:border-ct-line2 text-ct-ink3 hover:text-ct-ink2 transition-colors"
+                                                        style={{ letterSpacing: '0.14em' }}
+                                                    >
+                                                        {org.status === 'active' ? 'Pause' : 'Activate'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(org)}
+                                                        className="p-1.5 rounded-sm border border-ct-line hover:border-ct-crit-border text-ct-ink3 hover:text-ct-crit transition-colors"
+                                                        title="Delete Organization"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRestore(org)}
+                                                        className="p-1.5 rounded-sm border border-ct-line hover:border-ct-ok-border text-ct-ink3 hover:text-ct-ok transition-colors"
+                                                        title="Restore Deleted Data"
+                                                    >
+                                                        <Undo2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                    </div>
+                    </Panel>
                 </main>
             </div>
 
             {/* Create Org Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-white/[0.06] p-8 shadow-2xl">
-                        <h2 className="text-xl font-bold mb-6 text-slate-200">Register New Organization</h2>
-                        <form onSubmit={handleCreate} className="space-y-4">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/85 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <PanelHead title="Register New Organization" />
+                        <form onSubmit={handleCreate} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Organization Name</label>
+                                <Eyebrow className="mb-2">Organization Name</Eyebrow>
                                 <input
                                     type="text"
                                     required
                                     value={newOrg.name}
                                     onChange={(e) => setNewOrg({ ...newOrg, name: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
+                                    className={inputBase}
                                 />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Org Admin Email</label>
+                                <Eyebrow className="mb-2">Org Admin Email</Eyebrow>
                                 <div className="relative flex items-center">
-                                    <Mail className="absolute left-3 w-4 h-4 text-slate-500" />
+                                    <Mail className="absolute left-3 w-4 h-4 text-ct-ink3" />
                                     <input
                                         type="email"
                                         required
                                         value={newOrg.admin_email}
                                         onChange={(e) => setNewOrg({ ...newOrg, admin_email: e.target.value })}
-                                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
+                                        className={inputBase + ' pl-10'}
                                         placeholder="admin@organization.com"
                                     />
                                 </div>
-                                <p className="text-[10px] mt-1.5 text-slate-600 font-medium">A temporary password will be securely generated.</p>
+                                <p className="text-[10px] mt-1.5 text-ct-ink3 font-mono" style={{ letterSpacing: '0.12em' }}>
+                                    A TEMPORARY PASSWORD WILL BE GENERATED
+                                </p>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Max Agents Limit</label>
+                                <Eyebrow className="mb-2">Max Agents Limit</Eyebrow>
                                 <input
                                     type="number"
                                     required
                                     value={newOrg.max_agents}
                                     onChange={(e) => setNewOrg({ ...newOrg, max_agents: parseInt(e.target.value) || 0 })}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
+                                    className={inputBase}
                                     placeholder="1000"
                                     min="1"
                                 />
                             </div>
-                            <div className="flex space-x-3 mt-8 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsModalOpen(false)}
-                                    className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
-                                >
+                            <div className="flex gap-3 mt-6 pt-2">
+                                <ActionButton onClick={() => setIsModalOpen(false)} variant="ghost" className="flex-1 py-3">
                                     Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50"
-                                >
+                                </ActionButton>
+                                <ActionButton type="submit" variant="primary" className="flex-1 py-3">
                                     Create Organization
-                                </button>
+                                </ActionButton>
                             </div>
                         </form>
-                    </div>
+                    </Panel>
                 </div>
             )}
 
             {/* Credentials Hand-off Modal */}
             {createdCredentials && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-emerald-500/30 p-8 shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-emerald-800" />
-                        
-                        <div className="mb-6">
-                            <h2 className="text-xl font-bold text-slate-200">Organization Created</h2>
-                            <p className="text-xs mt-1 text-slate-400">Securely hand off these one-time credentials to the Organizational Admin of <span className="text-slate-300 font-semibold">{createdCredentials.orgName}</span>. They will be forced to rotate this password upon their first login.</p>
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-ct-bg/90 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <div className="border-b border-ct-line" style={{ background: 'var(--ct-ok-soft)' }}>
+                            <div className="px-6 py-4">
+                                <div className="text-[14px] font-semibold text-ct-ink" style={{ letterSpacing: '-0.005em' }}>
+                                    Organization Created
+                                </div>
+                                <Eyebrow className="mt-1">
+                                    One-time credentials for {createdCredentials.orgName}
+                                </Eyebrow>
+                            </div>
                         </div>
-                        
-                        <div className="space-y-4 mb-8">
+                        <div className="p-6 space-y-4">
+                            <p className="text-[12px] text-ct-ink2">
+                                Securely hand off these one-time credentials to the Organizational Admin. They will be forced to rotate this password upon their first login.
+                            </p>
+
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Admin Email</label>
-                                <div className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] text-sm text-slate-300 font-mono">
+                                <Eyebrow className="mb-2">Admin Email</Eyebrow>
+                                <div className="w-full px-4 py-3 rounded-sm border border-ct-line bg-ct-bg2 text-[12px] text-ct-ink font-mono">
                                     {createdCredentials.email}
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Temporary Password</label>
+                                <Eyebrow className="mb-2">Temporary Password</Eyebrow>
                                 <div className="relative">
-                                    <div className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] text-sm text-emerald-400 font-mono">
+                                    <div className="w-full px-4 py-3 rounded-sm border border-ct-line bg-ct-bg2 text-[12px] text-ct-ok font-mono pr-12">
                                         {createdCredentials.password}
                                     </div>
                                     <button
                                         onClick={() => copyToClipboard(`URL: https://rav.local/login\nEmail: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`, 'creds')}
-                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-emerald-400 transition-colors"
+                                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-sm hover:bg-ct-panel-hi text-ct-ink3 hover:text-ct-ok transition-colors"
                                         title="Copy All Credentials"
                                     >
-                                        {copiedTokenIds.has('creds') ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                                        {copiedTokenIds.has('creds') ? <Check className="w-4 h-4 text-ct-ok" /> : <Copy className="w-4 h-4" />}
                                     </button>
                                 </div>
                             </div>
-                        </div>
 
-                        <button
-                            onClick={() => setCreatedCredentials(null)}
-                            className="w-full py-3 rounded-xl font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors border border-white/[0.06]"
-                        >
-                            I have securely copied these credentials
-                        </button>
-                    </div>
+                            <ActionButton onClick={() => setCreatedCredentials(null)} variant="ghost" className="w-full py-3">
+                                I have securely copied these credentials
+                            </ActionButton>
+                        </div>
+                    </Panel>
                 </div>
             )}
-            
+
             {/* Delete Confirmation Modal */}
             {deleteModal.isOpen && deleteModal.org && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-all duration-300">
-                    <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-rose-500/30 p-8 shadow-2xl relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-rose-800" />
-
-                        <div className="mb-6 text-center">
-                            <div className="w-14 h-14 rounded-full bg-rose-500/10 flex items-center justify-center mx-auto mb-4 border border-rose-500/20">
-                                <Trash2 className="w-6 h-6 text-rose-500" />
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/90 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <div className="border-b border-ct-line" style={{ background: 'var(--ct-crit-soft)' }}>
+                            <div className="px-6 py-4 flex items-center gap-3">
+                                <Trash2 className="w-4 h-4 text-ct-crit" />
+                                <div>
+                                    <div className="text-[14px] font-semibold text-ct-ink" style={{ letterSpacing: '-0.005em' }}>
+                                        Delete Organization?
+                                    </div>
+                                    <Eyebrow className="mt-1 text-ct-crit">Irreversible</Eyebrow>
+                                </div>
                             </div>
-                            <h2 className="text-lg font-bold text-slate-200 mb-2">Delete Organization?</h2>
-                            <p className="text-xs text-slate-400">
-                                This action is <span className="text-rose-400 font-semibold">irreversible</span>.
-                                It will permanently destroy <strong className="text-slate-300">{deleteModal.org.name}</strong> and all associated agents, users, and events.
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <p className="text-[13px] text-ct-ink2 text-center">
+                                This will permanently destroy <strong className="text-ct-ink">{deleteModal.org.name}</strong> and all associated agents, users, and events.
                             </p>
-                        </div>
 
-                        <div className="mb-6">
-                            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500 text-center">
-                                Type <span className="text-slate-300 select-all font-mono bg-white/[0.04] px-1 py-0.5 rounded mx-1">{deleteModal.org.name}</span> to confirm
-                            </label>
-                            <input
-                                type="text"
-                                value={deleteModal.inputValue}
-                                onChange={(e) => setDeleteModal(prev => ({ ...prev, inputValue: e.target.value }))}
-                                className={`w-full px-4 py-3 rounded-xl border bg-[#05050A] focus:outline-none transition-all text-sm font-mono text-center text-slate-200 ${deleteModal.inputValue === deleteModal.org.name ? 'border-rose-500/50' : 'border-white/[0.06]'}`}
-                                placeholder={deleteModal.org.name}
-                                autoFocus
-                            />
-                        </div>
+                            <div>
+                                <Eyebrow className="mb-2 text-center">
+                                    Type <span className="text-ct-ink font-mono">{deleteModal.org.name}</span> to confirm
+                                </Eyebrow>
+                                <input
+                                    type="text"
+                                    value={deleteModal.inputValue}
+                                    onChange={(e) => setDeleteModal(prev => ({ ...prev, inputValue: e.target.value }))}
+                                    className={inputBase + ' text-center'}
+                                    placeholder={deleteModal.org.name}
+                                    autoFocus
+                                    style={{
+                                        borderColor: deleteModal.inputValue === deleteModal.org.name ? 'var(--ct-crit-border)' : undefined,
+                                    }}
+                                />
+                            </div>
 
-                        <div className="flex space-x-3">
-                            <button
-                                onClick={() => setDeleteModal({ isOpen: false, org: null, inputValue: '' })}
-                                className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={confirmDelete}
-                                disabled={deleteModal.inputValue !== deleteModal.org.name}
-                                className={`flex-1 py-3 rounded-xl font-semibold text-white transition-all ${deleteModal.inputValue === deleteModal.org.name
-                                    ? 'bg-rose-600 hover:bg-rose-500 shadow-[0_0_15px_rgba(225,29,72,0.3)] border border-rose-500/50'
-                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/[0.02]'
-                                    }`}
-                            >
-                                Delete Forever
-                            </button>
+                            <div className="flex gap-3">
+                                <ActionButton onClick={() => setDeleteModal({ isOpen: false, org: null, inputValue: '' })} variant="ghost" className="flex-1 py-3">
+                                    Cancel
+                                </ActionButton>
+                                <ActionButton
+                                    onClick={confirmDelete}
+                                    disabled={deleteModal.inputValue !== deleteModal.org.name}
+                                    variant="danger"
+                                    className="flex-1 py-3"
+                                >
+                                    Delete Forever
+                                </ActionButton>
+                            </div>
                         </div>
-                    </div>
+                    </Panel>
                 </div>
             )}
 
             {/* Edit Max Agents Modal */}
             {editAgentsModal.isOpen && editAgentsModal.org && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                    <form
-                        onSubmit={confirmEditMaxAgents}
-                        className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-violet-500/30 p-8 shadow-2xl relative overflow-hidden"
-                    >
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500 to-violet-800" />
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/90 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <form onSubmit={confirmEditMaxAgents}>
+                            <PanelHead
+                                title={
+                                    <span className="flex items-center gap-2">
+                                        <Server className="w-4 h-4 text-ct-accent" />
+                                        Update Max Agents
+                                    </span>
+                                }
+                                meta={`Adjust the agent quota for ${editAgentsModal.org.name}`}
+                            />
+                            <div className="p-6 space-y-4">
+                                <div className="flex items-center justify-between px-4 py-3 rounded-sm border border-ct-line bg-ct-bg2">
+                                    <Eyebrow>Current Limit</Eyebrow>
+                                    <span className="text-[13px] font-mono text-ct-ink tabular-nums">{editAgentsModal.org.max_agents}</span>
+                                </div>
+                                <div>
+                                    <Eyebrow className="mb-2">New Max Agents</Eyebrow>
+                                    <input
+                                        type="number"
+                                        required
+                                        min={1}
+                                        autoFocus
+                                        value={Number.isFinite(editAgentsModal.value) ? editAgentsModal.value : ''}
+                                        onChange={(e) => setEditAgentsModal(s => ({ ...s, value: parseInt(e.target.value) || 0 }))}
+                                        className={inputBase}
+                                    />
+                                    <p className="text-[10px] mt-1.5 text-ct-ink3">
+                                        Existing enrollment tokens won&apos;t change — the org admin can&apos;t issue new tokens above this cap.
+                                    </p>
+                                </div>
 
-                        <div className="mb-6 flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-violet-500/10 flex items-center justify-center border border-violet-500/20">
-                                <Server className="w-5 h-5 text-violet-400" />
+                                <div className="flex gap-3 pt-2">
+                                    <ActionButton
+                                        onClick={() => setEditAgentsModal({ isOpen: false, org: null, value: 0, submitting: false })}
+                                        variant="ghost"
+                                        className="flex-1 py-3"
+                                    >
+                                        Cancel
+                                    </ActionButton>
+                                    <ActionButton
+                                        type="submit"
+                                        disabled={editAgentsModal.submitting || editAgentsModal.value === editAgentsModal.org.max_agents || editAgentsModal.value < 1}
+                                        variant="primary"
+                                        className="flex-1 py-3"
+                                    >
+                                        {editAgentsModal.submitting ? (
+                                            <span className="inline-flex items-center gap-2">
+                                                <Loader2 className="w-3 h-3 animate-spin" /> Updating…
+                                            </span>
+                                        ) : 'Update Limit'}
+                                    </ActionButton>
+                                </div>
                             </div>
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-200">Update Max Agents</h2>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    Adjust the agent quota for <strong className="text-slate-300">{editAgentsModal.org.name}</strong>.
-                                </p>
-                            </div>
-                        </div>
+                        </form>
+                    </Panel>
+                </div>
+            )}
 
-                        <div className="mb-6 space-y-4">
-                            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/[0.04] bg-[#05050A]">
-                                <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500">Current Limit</span>
-                                <span className="text-sm font-mono text-slate-300">{editAgentsModal.org.max_agents}</span>
-                            </div>
+            {/* Onboard Admin Modal */}
+            {isAdminModalOpen && selectedOrg && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/85 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <PanelHead
+                            title={
+                                <span className="flex items-center gap-2">
+                                    <UserPlus className="w-4 h-4 text-ct-accent" />
+                                    Onboard Admin
+                                </span>
+                            }
+                            meta={`For ${selectedOrg.name}`}
+                        />
+                        <form onSubmit={handleCreateAdmin} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">New Max Agents</label>
+                                <Eyebrow className="mb-2">Full Name</Eyebrow>
                                 <input
-                                    type="number"
+                                    type="text"
                                     required
-                                    min={1}
-                                    autoFocus
-                                    value={Number.isFinite(editAgentsModal.value) ? editAgentsModal.value : ''}
-                                    onChange={(e) => setEditAgentsModal(s => ({ ...s, value: parseInt(e.target.value) || 0 }))}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-violet-500/50 outline-none transition-all text-sm text-slate-200 font-mono"
+                                    value={newAdmin.full_name}
+                                    onChange={(e) => setNewAdmin({ ...newAdmin, full_name: e.target.value })}
+                                    className={inputBase}
                                 />
-                                <p className="text-[10px] mt-1.5 text-slate-600">
-                                    Existing enrollment tokens won't change — but the org admin can't issue new tokens above this cap.
-                                </p>
                             </div>
-                        </div>
-
-                        <div className="flex space-x-3">
-                            <button
-                                type="button"
-                                onClick={() => setEditAgentsModal({ isOpen: false, org: null, value: 0, submitting: false })}
-                                className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={editAgentsModal.submitting || editAgentsModal.value === editAgentsModal.org.max_agents || editAgentsModal.value < 1}
-                                className={`flex-1 py-3 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 ${
-                                    editAgentsModal.submitting || editAgentsModal.value === editAgentsModal.org.max_agents || editAgentsModal.value < 1
-                                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/[0.02]'
-                                        : 'bg-violet-600 hover:bg-violet-500 shadow-[0_0_15px_rgba(139,92,246,0.3)] border border-violet-500/50'
-                                }`}
-                            >
-                                {editAgentsModal.submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                                Update Limit
-                            </button>
-                        </div>
-                    </form>
+                            <div>
+                                <Eyebrow className="mb-2">Email</Eyebrow>
+                                <input
+                                    type="email"
+                                    required
+                                    value={newAdmin.email}
+                                    onChange={(e) => setNewAdmin({ ...newAdmin, email: e.target.value })}
+                                    className={inputBase}
+                                />
+                            </div>
+                            <div>
+                                <Eyebrow className="mb-2">Password</Eyebrow>
+                                <input
+                                    type="password"
+                                    required
+                                    value={newAdmin.password}
+                                    onChange={(e) => setNewAdmin({ ...newAdmin, password: e.target.value })}
+                                    className={inputBase}
+                                />
+                            </div>
+                            <div className="flex gap-3 mt-6 pt-2">
+                                <ActionButton onClick={() => setIsAdminModalOpen(false)} variant="ghost" className="flex-1 py-3">
+                                    Cancel
+                                </ActionButton>
+                                <ActionButton type="submit" variant="primary" className="flex-1 py-3">
+                                    Create Admin
+                                </ActionButton>
+                            </div>
+                        </form>
+                    </Panel>
                 </div>
             )}
         </div>

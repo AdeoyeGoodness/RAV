@@ -1,10 +1,13 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Copy, Check, Trash2, Loader2, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import { Key, Plus, Copy, Check, Loader2, CheckCircle2 } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
-import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails, Organization } from '@/lib/api'
+import ExpiryBanner from '@/components/ExpiryBanner'
+import ArchiveBanner from '@/components/ArchiveBanner'
+import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails } from '@/lib/api'
 import { formatWATPattern } from '@/lib/time'
+import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
 export default function EnrollmentTokensPage() {
   const [tokens, setTokens] = useState<EnrollmentToken[]>([])
@@ -12,7 +15,7 @@ export default function EnrollmentTokensPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
-  
+
   // New token state
   const [newToken, setNewToken] = useState({
     label: '',
@@ -26,7 +29,7 @@ export default function EnrollmentTokensPage() {
     const tmr = new Date()
     tmr.setDate(tmr.getDate() + 1)
     setNewToken(prev => ({ ...prev, expires_at: tmr.toISOString().split('T')[0] }))
-    
+
     fetchData()
   }, [])
 
@@ -34,8 +37,8 @@ export default function EnrollmentTokensPage() {
     setIsLoading(true)
     try {
       const [tokensData, orgData] = await Promise.all([
-          getEnrollmentTokens(),
-          getOrgDetails()
+        getEnrollmentTokens(),
+        getOrgDetails()
       ])
       setTokens(tokensData)
       setOrgMaxAgents(orgData.max_agents)
@@ -52,10 +55,10 @@ export default function EnrollmentTokensPage() {
     try {
       let finalExpiry: string | undefined = undefined;
       if (newToken.expires_at) {
-          const now = new Date();
-          const selectedDate = new Date(newToken.expires_at);
-          selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
-          finalExpiry = selectedDate.toISOString();
+        const now = new Date();
+        const selectedDate = new Date(newToken.expires_at);
+        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+        finalExpiry = selectedDate.toISOString();
       }
 
       const res = await createEnrollmentToken({
@@ -63,7 +66,7 @@ export default function EnrollmentTokensPage() {
         max_agents: newToken.max_agents,
         expires_at: finalExpiry
       })
-      
+
       setGeneratedToken(res.raw_token)
       setNewToken({ ...newToken, label: '', max_agents: 1 })
       fetchData()
@@ -75,7 +78,7 @@ export default function EnrollmentTokensPage() {
 
   const handleRevoke = async (tokenId: string) => {
     if (!confirm('Are you sure you want to revoke this token? Devices using it will immediately be rejected.')) return
-    
+
     try {
       await revokeEnrollmentToken(tokenId)
       fetchData()
@@ -101,225 +104,214 @@ export default function EnrollmentTokensPage() {
   }, 0)
   const remainingAgents = Math.max(0, orgMaxAgents - allocatedAgents)
 
+  const inputBase = 'w-full px-4 py-3 rounded-sm border border-ct-line bg-ct-bg2 focus:border-ct-accent-border outline-none transition-colors text-[13px] text-ct-ink font-mono placeholder:text-ct-ink4'
+
   return (
-    <div className="flex h-screen bg-[#050510] text-slate-300 font-sans selection:bg-sky-500/20 overflow-hidden relative">
-      <div className="absolute top-[-20%] left-[-10%] w-[40%] h-[40%] bg-sky-900/10 blur-[180px] rounded-full pointer-events-none" />
+    <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
       <Sidebar />
-      <div className="flex-1 ml-64 relative z-10 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden ml-64">
         <Header />
-        <main className="pt-24 p-8 overflow-y-auto h-full scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/5">
-          <div className="max-w-5xl mx-auto space-y-6">
-            <header className="flex justify-between items-center mb-10">
-              <div className="flex items-center gap-4">
-                <div className="bg-sky-500/10 p-3 rounded-2xl">
-                  <Key className="w-8 h-8 text-sky-400" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-white tracking-tight">Deployment Tokens</h1>
-                  <p className="text-slate-500 text-sm mt-1">Manage secure, short-lived tokens for deploying agents to your endpoints.</p>
-                </div>
-              </div>
-              <button
-                  onClick={() => { setNewToken(prev => ({ ...prev, max_agents: Math.max(1, remainingAgents) })); setIsModalOpen(true); setGeneratedToken(null); }}
-                  className="flex items-center px-5 py-3 rounded-xl text-sm font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_20px_rgba(2,132,199,0.2)] hover:shadow-[0_0_25px_rgba(2,132,199,0.3)] border border-sky-500/50"
+        <ExpiryBanner />
+        <ArchiveBanner />
+        <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+          <SectionHead
+            eyebrow="Fleet / Enrollment"
+            title="Deployment Tokens"
+            right={
+              <ActionButton
+                onClick={() => { setNewToken(prev => ({ ...prev, max_agents: Math.max(1, remainingAgents) })); setIsModalOpen(true); setGeneratedToken(null); }}
+                variant="primary"
               >
-                  <Plus className="w-4 h-4 mr-2" />
+                <span className="inline-flex items-center gap-2">
+                  <Plus className="w-3 h-3" />
                   Generate Token
-              </button>
-            </header>
+                </span>
+              </ActionButton>
+            }
+          />
+          <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
+            Manage secure, short-lived tokens for deploying agents to your endpoints.
+          </p>
 
-            <div className="rounded-2xl border border-white/[0.06] overflow-hidden transition-all bg-[#0C0E1C]/90 shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-[#080A14]/40 border-b border-white/[0.04]">
+          <Panel>
+            <PanelHead
+              title="Issued Tokens"
+              meta={`${allocatedAgents} of ${orgMaxAgents} slots allocated · ${remainingAgents} free`}
+            />
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-ct-bg2 border-b border-ct-line">
+                  <tr>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Label</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Enrolled / Max</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Expires At</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Status</th>
+                    <th className="px-6 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium text-right" style={{ letterSpacing: '0.18em' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-ct-line">
+                  {isLoading ? (
                     <tr>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Label</th>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Enrolled / Max</th>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Expires At</th>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-[10px] font-semibold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                      <td colSpan={5} className="px-6 py-12 text-center">
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2 text-ct-ink3" />
+                        <p className="text-[12px] text-ct-ink3 font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading tokens</p>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {isLoading ? (
-                        <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center">
-                                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-500" />
-                                <p className="text-xs text-slate-500">Loading tokens...</p>
-                            </td>
-                        </tr>
-                    ) : tokens.length === 0 ? (
-                        <tr>
-                            <td colSpan={5} className="px-6 py-12 text-center">
-                                <Key className="w-8 h-8 mx-auto mb-3 text-slate-600 opacity-50" />
-                                <p className="text-sm text-slate-400 font-medium">No deployment tokens found.</p>
-                                <p className="text-xs text-slate-500 mt-1">Generate a new token to start enrolling devices.</p>
-                            </td>
-                        </tr>
-                    ) : tokens.map(token => {
-                      const isExpired = token.expires_at && new Date(token.expires_at) < new Date();
-                      const isRevoked = token.revoked;
-                      const isInactive = isExpired || isRevoked;
+                  ) : tokens.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center">
+                        <Key className="w-6 h-6 mx-auto mb-3 text-ct-ink4" />
+                        <p className="text-[13px] text-ct-ink2 font-medium">No deployment tokens found.</p>
+                        <p className="text-[11px] text-ct-ink3 mt-1">Generate a new token to start enrolling devices.</p>
+                      </td>
+                    </tr>
+                  ) : tokens.map(token => {
+                    const isExpired = token.expires_at && new Date(token.expires_at) < new Date();
+                    const isRevoked = token.revoked;
+                    const isInactive = isExpired || isRevoked;
 
-                      return (
-                        <tr key={token.token_id} className={`hover:bg-white/[0.02] transition-colors group ${isInactive ? 'opacity-60 grayscale-[0.3]' : ''}`}>
-                          <td className="px-6 py-5">
-                            <div className="flex items-center">
-                                <span className={`font-medium text-sm ${isInactive ? 'text-slate-400' : 'text-slate-200'}`}>
-                                  {token.label || 'Unnamed Token'}
-                                </span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 font-mono mt-1" title={token.token_id}>
-                              {token.token_id.split('-')[0]}...
-                            </div>
-                          </td>
-                          <td className="px-6 py-5 text-sm text-slate-400">
-                              <span className="text-slate-200 font-medium">{token.agent_count}</span>
-                              {' / '}
-                              {token.max_agents ? `${token.max_agents}` : '∞'}
-                          </td>
-                          <td className={`px-6 py-5 text-sm font-mono ${isExpired ? 'text-rose-400' : 'text-slate-400'}`}>
-                              {token.expires_at ? formatWATPattern(token.expires_at, 'd MMM yyyy') : 'Never'}
-                          </td>
-                          <td className="px-6 py-5">
-                            <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-bold ${
-                              isRevoked ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' 
-                              : isExpired ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
-                                {isRevoked ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                              <div className="flex items-center justify-end space-x-2">
-                                  {!isInactive && (
-                                    <button
-                                        onClick={() => handleRevoke(token.token_id)}
-                                        className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                                    >
-                                        Revoke
-                                    </button>
-                                  )}
+                    return (
+                      <tr key={token.token_id} className={`hover:bg-ct-bg2 transition-colors group ${isInactive ? 'opacity-60' : ''}`}>
+                        <td className="px-6 py-4">
+                          <div className="text-[13px] font-medium text-ct-ink">
+                            {token.label || 'Unnamed Token'}
+                          </div>
+                          <div className="text-[10px] text-ct-ink3 font-mono mt-1" title={token.token_id}>
+                            {token.token_id.split('-')[0]}…
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-[13px] text-ct-ink2 font-mono tabular-nums">
+                          <span className="text-ct-ink font-medium">{token.agent_count}</span>
+                          {' / '}
+                          {token.max_agents ? `${token.max_agents}` : '∞'}
+                        </td>
+                        <td className={`px-6 py-4 text-[13px] font-mono tabular-nums ${isExpired ? 'text-ct-crit' : 'text-ct-ink2'}`}>
+                          {token.expires_at ? formatWATPattern(token.expires_at, 'd MMM yyyy') : 'Never'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <StatusPill tone={isRevoked ? 'crit' : isExpired ? 'warn' : 'ok'}>
+                            {isRevoked ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
+                          </StatusPill>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            {!isInactive && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ActionButton onClick={() => handleRevoke(token.token_id)} variant="danger">
+                                  Revoke
+                                </ActionButton>
                               </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
+          </Panel>
         </main>
 
         {/* Generate Token Modal */}
         {isModalOpen && !generatedToken && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-white/[0.06] p-8 shadow-2xl">
-                    <h2 className="text-xl font-bold mb-2 text-slate-200">Generate Deployment Token</h2>
-                    <p className="text-xs text-slate-500 mb-6">Create a secure enrollment key for new endpoints.</p>
-                    <form onSubmit={handleCreate} className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Label / Campaign Name</label>
-                            <input
-                                type="text"
-                                required
-                                value={newToken.label}
-                                onChange={(e) => setNewToken({ ...newToken, label: e.target.value })}
-                                placeholder="e.g. Finance Dept Rollout"
-                                className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">
-                                    Max Enrollments ({remainingAgents} of {orgMaxAgents} remaining)
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max={remainingAgents}
-                                    value={newToken.max_agents}
-                                    onChange={(e) => {
-                                        const val = parseInt(e.target.value);
-                                        if (!isNaN(val) && val >= 1 && val <= remainingAgents) {
-                                            setNewToken({ ...newToken, max_agents: val })
-                                        }
-                                    }}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Expiry Date</label>
-                                <input
-                                    type="date"
-                                    required
-                                    min={new Date().toISOString().split('T')[0]}
-                                    value={newToken.expires_at}
-                                    onChange={(e) => setNewToken({ ...newToken, expires_at: e.target.value })}
-                                    style={{ colorScheme: 'dark' }}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/[0.06] bg-[#05050A] focus:border-sky-500/50 outline-none transition-all text-sm text-slate-200"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex space-x-3 mt-8 pt-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsModalOpen(false)}
-                                className="flex-1 py-3 rounded-xl font-medium border border-white/[0.06] hover:bg-white/[0.02] text-slate-400 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={remainingAgents < 1}
-                                className="flex-1 py-3 rounded-xl font-semibold text-white bg-sky-600 hover:bg-sky-500 transition-all shadow-[0_0_15px_rgba(2,132,199,0.3)] border border-sky-500/50 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-sky-600"
-                            >
-                                {remainingAgents < 1 ? 'No Slots Remaining' : 'Generate Secure Key'}
-                            </button>
-                        </div>
-                    </form>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/85 backdrop-blur-sm">
+            <Panel className="w-full max-w-md">
+              <PanelHead title="Generate Deployment Token" meta="Enrollment key for new endpoints" />
+              <form onSubmit={handleCreate} className="p-6 space-y-4">
+                <div>
+                  <Eyebrow className="mb-2">Label / Campaign Name</Eyebrow>
+                  <input
+                    type="text"
+                    required
+                    value={newToken.label}
+                    onChange={(e) => setNewToken({ ...newToken, label: e.target.value })}
+                    placeholder="e.g. Finance Dept Rollout"
+                    className={inputBase}
+                  />
                 </div>
-            </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Eyebrow className="mb-2">Max Enrollments</Eyebrow>
+                    <input
+                      type="number"
+                      min="1"
+                      max={remainingAgents}
+                      value={newToken.max_agents}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val >= 1 && val <= remainingAgents) {
+                          setNewToken({ ...newToken, max_agents: val })
+                        }
+                      }}
+                      className={inputBase}
+                    />
+                    <p className="text-[10px] mt-1.5 text-ct-ink3 font-mono" style={{ letterSpacing: '0.12em' }}>
+                      {remainingAgents} OF {orgMaxAgents} REMAINING
+                    </p>
+                  </div>
+                  <div>
+                    <Eyebrow className="mb-2">Expiry Date</Eyebrow>
+                    <input
+                      type="date"
+                      required
+                      min={new Date().toISOString().split('T')[0]}
+                      value={newToken.expires_at}
+                      onChange={(e) => setNewToken({ ...newToken, expires_at: e.target.value })}
+                      style={{ colorScheme: 'dark' }}
+                      className={inputBase}
+                    />
+                  </div>
+                </div>
+                <div className="flex space-x-3 mt-6 pt-2">
+                  <ActionButton onClick={() => setIsModalOpen(false)} variant="ghost" className="flex-1 py-3">
+                    Cancel
+                  </ActionButton>
+                  <ActionButton type="submit" disabled={remainingAgents < 1} variant="primary" className="flex-1 py-3">
+                    {remainingAgents < 1 ? 'No Slots Remaining' : 'Generate Secure Key'}
+                  </ActionButton>
+                </div>
+              </form>
+            </Panel>
+          </div>
         )}
 
         {/* Display Generated Token Modal */}
         {isModalOpen && generatedToken && (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                <div className="w-full max-w-md rounded-2xl border bg-[#0C0E1C] border-emerald-500/30 p-8 shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-emerald-800" />
-                    
-                    <div className="mb-6 flex items-center gap-3">
-                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                        <div>
-                          <h2 className="text-xl font-bold text-slate-200">Token Generated</h2>
-                          <p className="text-xs mt-1 text-slate-400">This raw token will <strong className="text-rose-400">never be shown again</strong>.</p>
-                        </div>
-                    </div>
-                    
-                    <div className="mb-8">
-                        <label className="block text-[10px] font-semibold uppercase tracking-wider mb-2 text-slate-500">Deployment Token</label>
-                        <div className="relative">
-                            <div className="w-full px-4 py-4 rounded-xl border border-white/[0.06] bg-[#05050A] text-sm text-emerald-400 font-mono break-all pr-12">
-                                {generatedToken}
-                            </div>
-                            <button
-                                onClick={() => copyToClipboard(generatedToken)}
-                                className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-emerald-400 transition-colors"
-                                title="Copy Token"
-                            >
-                                {copiedToken === generatedToken ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                            </button>
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={() => setIsModalOpen(false)}
-                        className="w-full py-3 rounded-xl font-semibold text-white bg-slate-800 hover:bg-slate-700 transition-colors border border-white/[0.06]"
-                    >
-                        I have securely copied this token
-                    </button>
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-ct-bg/90 backdrop-blur-sm">
+            <Panel className="w-full max-w-md" >
+              <div className="border-b border-ct-line" style={{ background: 'var(--ct-ok-soft)' }}>
+                <div className="px-6 py-4 flex items-center gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-ct-ok" />
+                  <div>
+                    <div className="text-[14px] font-semibold text-ct-ink" style={{ letterSpacing: '-0.005em' }}>Token Generated</div>
+                    <Eyebrow className="mt-1 text-ct-crit">Never shown again</Eyebrow>
+                  </div>
                 </div>
-            </div>
+              </div>
+              <div className="p-6 space-y-5">
+                <div>
+                  <Eyebrow className="mb-2">Deployment Token</Eyebrow>
+                  <div className="relative">
+                    <div className="w-full px-4 py-4 rounded-sm border border-ct-line bg-ct-bg2 text-[12px] text-ct-ok font-mono break-all pr-12">
+                      {generatedToken}
+                    </div>
+                    <button
+                      onClick={() => copyToClipboard(generatedToken)}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-sm hover:bg-ct-panel-hi text-ct-ink3 hover:text-ct-ok transition-colors"
+                      title="Copy Token"
+                    >
+                      {copiedToken === generatedToken ? <Check className="w-4 h-4 text-ct-ok" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <ActionButton onClick={() => setIsModalOpen(false)} variant="ghost" className="w-full py-3">
+                  I have securely copied this token
+                </ActionButton>
+              </div>
+            </Panel>
+          </div>
         )}
       </div>
     </div>

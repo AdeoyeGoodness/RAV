@@ -10,6 +10,7 @@ import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATPattern } from '@/lib/time'
+import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
 interface Document {
   id: string
@@ -97,11 +98,6 @@ export default function DocumentsPage() {
     }
   }
 
-  const resetClearFilter = () => {
-    setClearTimestamp(null)
-    loadDocuments() // Reload to show all documents
-  }
-
   const handleDeleteAllDocuments = async () => {
     // Get unique agent IDs from documents
     const agentIds = [...new Set(documents.map(d => d.agent_id))]
@@ -115,7 +111,7 @@ export default function DocumentsPage() {
       ? `device "${agentIds[0]}"`
       : `${agentIds.length} devices`
 
-    if (!confirm(`⚠️ WARNING: This will PERMANENTLY DELETE ALL ${documents.length} document events from the backend database for ${agentList}.\n\nThis action cannot be undone. Are you absolutely sure?`)) {
+    if (!confirm(`WARNING: This will PERMANENTLY DELETE ALL ${documents.length} document events from the backend database for ${agentList}.\n\nThis action cannot be undone. Are you absolutely sure?`)) {
       return
     }
 
@@ -130,7 +126,7 @@ export default function DocumentsPage() {
         const result = await deleteAgentEvents(agentId)
         totalDeleted += result.deleted_count
       }
-      alert(`✅ Successfully deleted ${totalDeleted} document events`)
+      alert(`Successfully deleted ${totalDeleted} document events`)
       // Clear and reload
       setDocuments([])
       setSelectedDocument(null)
@@ -138,7 +134,7 @@ export default function DocumentsPage() {
       loadDocuments()
     } catch (error: any) {
       console.error('Failed to delete documents:', error)
-      alert(`❌ Failed to delete documents: ${error.message || 'Unknown error'}`)
+      alert(`Failed to delete documents: ${error.message || 'Unknown error'}`)
     } finally {
       setDeleting(false)
     }
@@ -205,15 +201,6 @@ Timestamp: ${formatDate(doc.timestamp)}
 Agent ID: ${doc.agent_id}
 Event ID: ${doc.id}
 ${backupFileId ? `Backup File ID: ${backupFileId}\nFile was backed up and can be downloaded.` : 'Note: File was not backed up (may be too large or from USB removal).'}
-
-IMPORTANT NOTES:
-================
-1. This is metadata information about the file transfer event.
-2. The actual file is located at: ${metadata.file_path || 'Unknown path'}
-3. ${backupFileId ? 'A backup of this file is available and was attempted to download above.' : 'This file was not backed up. To access it:'}
-   - If on USB drive: Ensure the USB device is still connected
-   - If on system: Navigate to the file path shown above
-   - Files may have been moved or deleted since the transfer was logged
 `
 
       const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
@@ -232,446 +219,255 @@ IMPORTANT NOTES:
     }
   }
 
-  const getDirectionColor = (direction: string) => {
-    return direction === 'to_usb'
-      ? 'text-[#00D9FF] bg-[#00D9FF]/10 border-[#00D9FF]/30'
-      : 'text-[#6C5CE7] bg-[#6C5CE7]/10 border-[#6C5CE7]/30'
-  }
-
-  const getDirectionIcon = (direction: string) => {
-    return direction === 'to_usb'
-      ? <Download className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-      : <File className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-purple)' }} />
-  }
-
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-[#05050A] flex items-center justify-center">
+      <div className="min-h-screen bg-ct-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin"></div>
-          <p className="text-xs text-slate-600 font-mono">Loading documents...</p>
+          <div className="w-8 h-8 rounded-full animate-spin" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: 'var(--ct-line2)', borderTopColor: 'var(--ct-accent)' }} />
+          <span className="text-[10px] font-mono uppercase text-ct-ink3" style={{ letterSpacing: '0.24em' }}>Loading documents</span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="flex-1 flex flex-col overflow-hidden ml-64">
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
-        <main className="pt-20 p-8 overflow-y-auto h-full">
-          <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => router.back()}
-                  className="p-2 rounded-lg transition-colors"
-                  style={{ color: 'var(--text-primary)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                >
-                  <ArrowLeft className="w-5 h-5 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                </button>
-                <div>
-                  <h1 className="text-2xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Documents</h1>
-                  <p className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Tracked files from USB transfers</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
+        <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+          <SectionHead
+            eyebrow="Fleet / Documents"
+            title="Documents"
+            right={
+              <div className="flex items-center gap-2">
+                <ActionButton onClick={() => router.back()} variant="ghost">
+                  <span className="inline-flex items-center gap-2">
+                    <ArrowLeft className="w-3 h-3" />
+                    Back
+                  </span>
+                </ActionButton>
+                <ActionButton
                   onClick={handleDeleteAllDocuments}
                   disabled={loading || deleting || documents.length === 0}
-                  className="px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 border"
-                  style={{ backgroundColor: 'rgba(255, 107, 107, 0.2)', color: '#FF6B6B', borderColor: 'rgba(255, 107, 107, 0.3)' }}
-                  onMouseEnter={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.3)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'
-                    }
-                  }}
-                  title="Delete all documents from backend (permanent)"
+                  variant="danger"
                 >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>{deleting ? 'Deleting...' : 'Delete All'}</span>
-                </button>
-                <button
-                  onClick={clearDocuments}
-                  disabled={loading || documents.length === 0}
-                  className="px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                  style={{ backgroundColor: 'var(--bg-tertiary)', color: '#FF6B6B' }}
-                  onMouseEnter={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 107, 107, 0.2)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'
-                    }
-                  }}
-                  title="Clear displayed documents (frontend only)"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Clear</span>
-                </button>
-                <button
-                  onClick={loadDocuments}
-                  disabled={loading}
-                  className="px-4 py-2 rounded-lg transition-all disabled:opacity-50 flex items-center space-x-2"
-                  style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}
-                  onMouseEnter={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!e.currentTarget.disabled) {
-                      e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'
-                    }
-                  }}
-                >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin transition-colors" style={{ borderColor: 'var(--accent-cyan)' }} />
-                      <span>Refreshing...</span>
-                    </>
-                  ) : (
-                    <span>Refresh</span>
-                  )}
-                </button>
+                  <span className="inline-flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" />
+                    {deleting ? 'Deleting…' : 'Delete All'}
+                  </span>
+                </ActionButton>
+                <ActionButton onClick={clearDocuments} disabled={loading || documents.length === 0} variant="ghost">
+                  <span className="inline-flex items-center gap-2">
+                    <Trash2 className="w-3 h-3" />
+                    Clear
+                  </span>
+                </ActionButton>
+                <ActionButton onClick={loadDocuments} disabled={loading} variant="primary">
+                  {loading ? 'Refreshing…' : 'Refresh'}
+                </ActionButton>
               </div>
-            </div>
+            }
+          />
+          <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
+            Tracked files from USB transfers.
+          </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Documents List */}
-              <div className="lg:col-span-1">
-                <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                  <h2 className="text-lg font-semibold mb-4 transition-colors" style={{ color: 'var(--text-primary)' }}>
-                    Tracked Files ({documents.length})
-                  </h2>
-                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                    {loading ? (
-                      <div className="flex items-center gap-2 py-2">
-                        <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-500 rounded-full animate-spin"></div>
-                        <p className="text-xs text-slate-500">Loading...</p>
-                      </div>
-                    ) : documents.length === 0 ? (
-                      <div className="py-6 text-center">
-                        <FileText className="w-8 h-8 mx-auto mb-2 text-slate-700" />
-                        <p className="text-xs text-slate-500 mb-1">No documents tracked</p>
-                        <p className="text-[10px] text-slate-700">USB file transfers will appear here when detected by the agent</p>
-                      </div>
-                    ) : (
-                      documents.map((doc) => (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Documents List */}
+            <div className="lg:col-span-1">
+              <Panel>
+                <PanelHead title="Tracked Files" meta={`${documents.length} records`} />
+                <div className="p-4 space-y-2 max-h-[600px] overflow-y-auto">
+                  {loading ? (
+                    <div className="flex items-center gap-2 py-2">
+                      <div className="w-4 h-4 rounded-full animate-spin" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: 'var(--ct-line2)', borderTopColor: 'var(--ct-accent)' }} />
+                      <p className="text-[11px] text-ct-ink3 font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading</p>
+                    </div>
+                  ) : documents.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <FileText className="w-7 h-7 mx-auto mb-2 text-ct-ink4" />
+                      <p className="text-[12px] text-ct-ink3 mb-1">No documents tracked</p>
+                      <p className="text-[10px] text-ct-ink4">USB file transfers will appear here when detected by the agent</p>
+                    </div>
+                  ) : (
+                    documents.map((doc) => {
+                      const isActive = selectedDocument?.id === doc.id
+                      return (
                         <button
                           key={doc.id}
                           onClick={() => {
                             setSelectedDocument(doc)
                             router.push(`/documents?id=${doc.id}`, { scroll: false })
                           }}
-                          className={`w-full text-left p-3 rounded-lg border transition-all ${selectedDocument?.id === doc.id ? '' : ''
-                            }`}
-                          style={selectedDocument?.id === doc.id
-                            ? { backgroundColor: 'rgba(0, 217, 255, 0.2)', borderColor: 'var(--accent-cyan)' }
-                            : { backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }
-                          }
-                          onMouseEnter={(e) => {
-                            if (selectedDocument?.id !== doc.id) {
-                              e.currentTarget.style.borderColor = 'var(--accent-cyan)'
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (selectedDocument?.id !== doc.id) {
-                              e.currentTarget.style.borderColor = 'var(--border-color)'
-                            }
+                          className="w-full text-left p-3 rounded-sm border transition-colors"
+                          style={{
+                            background: isActive ? 'var(--ct-accent-soft)' : 'var(--ct-bg2)',
+                            borderColor: isActive ? 'var(--ct-accent-border)' : 'var(--ct-line)',
                           }}
                         >
                           <div className="flex items-start space-x-2">
-                            <FileText className="w-4 h-4 mt-0.5 flex-shrink-0 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
+                            <FileText className="w-4 h-4 mt-0.5 flex-shrink-0 text-ct-accent" />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate transition-colors" style={{ color: 'var(--text-primary)' }}>
+                              <p className="text-[13px] font-medium truncate text-ct-ink">
                                 {doc.metadata.file_name || 'Unknown File'}
                               </p>
-                              <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
+                              <p className="text-[11px] mt-1 text-ct-ink3 font-mono tabular-nums">
                                 {doc.metadata.file_size ? formatFileSize(doc.metadata.file_size) : 'Unknown size'}
                               </p>
                             </div>
                           </div>
                         </button>
-                      ))
+                      )
+                    })
+                  )}
+                </div>
+              </Panel>
+            </div>
+
+            {/* Document Details */}
+            <div className="lg:col-span-2">
+              {selectedDocument ? (
+                <Panel>
+                  <PanelHead
+                    title={selectedDocument.metadata.file_name || 'Unknown File'}
+                    meta={selectedDocument.metadata.file_path || 'Path not available'}
+                    right={
+                      <div className="flex items-center gap-2">
+                        <ActionButton
+                          onClick={() => {
+                            const filePath = selectedDocument.metadata?.file_path
+                            const driveLetter = selectedDocument.metadata?.drive_letter
+                            if (filePath) {
+                              const isUSBDrive = driveLetter && filePath.startsWith(driveLetter)
+                              navigator.clipboard.writeText(filePath).then(() => {
+                                const message = isUSBDrive
+                                  ? `USB Drive File Access\n\nPath: ${filePath}\n\nEnsure the USB drive (${driveLetter}) is still connected. The path has been copied to your clipboard.`
+                                  : `File Path Copied.\n\nPath: ${filePath}\n\nOpen File Explorer, paste and press Enter.`
+                                alert(message)
+                              }).catch(() => {
+                                alert(`File Path: ${filePath}`)
+                              })
+                            }
+                          }}
+                          variant="ghost"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <FileText className="w-3 h-3" />
+                            Open Location
+                          </span>
+                        </ActionButton>
+                        <ActionButton onClick={() => handleDownload(selectedDocument)} variant="primary">
+                          <span className="inline-flex items-center gap-2">
+                            <Download className="w-3 h-3" />
+                            {selectedDocument.metadata?.backup_file_id ? 'Download File' : 'Download Info'}
+                          </span>
+                        </ActionButton>
+                      </div>
+                    }
+                  />
+                  <div className="p-6 space-y-5">
+                    {selectedDocument.metadata?.backup_file_id && (
+                      <StatusPill tone="ok">File backed up</StatusPill>
+                    )}
+                    {downloadError && (
+                      <div
+                        className="text-[12px] px-3 py-2 rounded-sm border"
+                        style={{ background: 'var(--ct-crit-soft)', borderColor: 'var(--ct-crit-border)', color: 'var(--ct-crit)' }}
+                      >
+                        {downloadError}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-sm border border-ct-line bg-ct-bg2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileText className="w-3.5 h-3.5 text-ct-accent" />
+                          <Eyebrow>File Size</Eyebrow>
+                        </div>
+                        <p className="text-[15px] font-mono tabular-nums text-ct-ink">
+                          {selectedDocument.metadata.file_size ? formatFileSize(selectedDocument.metadata.file_size) : 'Unknown'}
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-sm border border-ct-line bg-ct-bg2">
+                        <div className="flex items-center gap-2 mb-2">
+                          {selectedDocument.metadata.direction === 'to_usb'
+                            ? <Download className="w-3.5 h-3.5 text-ct-accent" />
+                            : <File className="w-3.5 h-3.5 text-ct-accent" />}
+                          <Eyebrow>Direction</Eyebrow>
+                        </div>
+                        <p className="text-[15px] font-medium text-ct-ink">
+                          {selectedDocument.metadata.direction === 'to_usb'
+                            ? 'Copied TO USB'
+                            : 'Copied FROM USB'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-sm border border-ct-line bg-ct-bg2">
+                      <Eyebrow className="mb-4">Details</Eyebrow>
+                      <div className="space-y-3">
+                        {[
+                          { icon: Calendar, label: 'Timestamp', value: formatDate(selectedDocument.timestamp) },
+                          { icon: HardDrive, label: 'Device', value: selectedDocument.metadata.device_name || selectedDocument.metadata.device_id || 'Unknown' },
+                          { icon: User, label: 'Agent ID', value: selectedDocument.agent_id, mono: true },
+                          { icon: File, label: 'Platform', value: selectedDocument.metadata.platform || 'Unknown' },
+                        ].map(row => (
+                          <div key={row.label} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <row.icon className="w-3.5 h-3.5 text-ct-ink3" />
+                              <span className="text-[12px] text-ct-ink3">{row.label}</span>
+                            </div>
+                            <span className={`text-[12px] text-ct-ink ${row.mono ? 'font-mono tabular-nums' : ''}`}>
+                              {row.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {selectedDocument.metadata.file_path && (
+                      <div className="p-4 rounded-sm border border-ct-line bg-ct-bg2">
+                        <div className="flex items-center justify-between mb-2">
+                          <Eyebrow>Full Path</Eyebrow>
+                          {selectedDocument.metadata.drive_letter && (
+                            <StatusPill tone="warn">USB Drive</StatusPill>
+                          )}
+                        </div>
+                        <p className="text-[12px] font-mono break-all mb-2 text-ct-ink2">
+                          {selectedDocument.metadata.file_path}
+                        </p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedDocument.metadata.file_path || '').then(() => {
+                              alert('Path copied to clipboard.')
+                            })
+                          }}
+                          className="text-[11px] font-mono uppercase text-ct-accent hover:brightness-125"
+                          style={{ letterSpacing: '0.18em' }}
+                        >
+                          Copy Path
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
-
-              {/* Document Details */}
-              <div className="lg:col-span-2">
-                {selectedDocument ? (
-                  <div className="border rounded-2xl p-6 transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                    <div className="flex items-start justify-between mb-6">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-3 rounded-lg transition-colors" style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)' }}>
-                          <FileText className="w-6 h-6 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                        </div>
-                        <div>
-                          <h2 className="text-xl font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {selectedDocument.metadata.file_name || 'Unknown File'}
-                          </h2>
-                          <p className="text-sm mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                            {selectedDocument.metadata.file_path || 'Path not available'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => {
-                              const filePath = selectedDocument.metadata?.file_path
-                              const driveLetter = selectedDocument.metadata?.drive_letter
-
-                              if (filePath) {
-                                // Check if it's a USB drive path
-                                const isUSBDrive = driveLetter && filePath.startsWith(driveLetter)
-
-                                if (navigator.platform.includes('Win')) {
-                                  // Try to open the file directly using Windows shell command
-                                  // First, copy path to clipboard
-                                  navigator.clipboard.writeText(filePath).then(() => {
-                                    const message = isUSBDrive
-                                      ? `⚠️ USB Drive File Access\n\n` +
-                                      `Path: ${filePath}\n\n` +
-                                      `IMPORTANT:\n` +
-                                      `1. Ensure the USB drive (${driveLetter}) is still connected\n` +
-                                      `2. The path has been copied to your clipboard\n` +
-                                      `3. Open File Explorer (Win + E)\n` +
-                                      `4. Paste the path in the address bar (Ctrl + V)\n` +
-                                      `5. Press Enter to navigate\n\n` +
-                                      `If the USB is disconnected, the file won't be accessible.`
-                                      : `File Path Copied!\n\n` +
-                                      `Path: ${filePath}\n\n` +
-                                      `1. Open File Explorer (Win + E)\n` +
-                                      `2. Paste the path in the address bar (Ctrl + V)\n` +
-                                      `3. Press Enter to navigate`
-
-                                    alert(message)
-
-                                    // Also try to open the folder in File Explorer
-                                    if ((window as any).electron || (window as any).require) {
-                                      // If Electron app, we could use shell.openPath
-                                      try {
-                                        const { shell } = (window as any).require('electron')
-                                        const folderPath = filePath.substring(0, filePath.lastIndexOf('\\'))
-                                        shell.openPath(folderPath)
-                                      } catch (e) {
-                                        // Not Electron, continue
-                                      }
-                                    }
-                                  }).catch(() => {
-                                    alert(`File Path: ${filePath}\n\n${isUSBDrive ? '⚠️ Ensure USB drive is connected!\n\n' : ''}Copy this path and paste it in File Explorer.`)
-                                  })
-                                } else {
-                                  alert(`File Path: ${filePath}\n\n${isUSBDrive ? '⚠️ Ensure USB drive is connected!\n\n' : ''}Navigate to this path to access the file.`)
-                                }
-                              }
-                            }}
-                            className="px-4 py-2 rounded-lg transition-all flex items-center space-x-2 font-medium"
-                            style={{ backgroundColor: 'var(--accent-purple)', color: '#ffffff' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#5A4FD6'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-purple)'; }}
-                            title="Copy file path and open location"
-                          >
-                            <FileText className="w-4 h-4" />
-                            <span>Open Location</span>
-                          </button>
-                          <button
-                            onClick={() => handleDownload(selectedDocument)}
-                            className="px-4 py-2 rounded-lg transition-all flex items-center space-x-2 font-medium"
-                            style={{ backgroundColor: 'var(--accent-cyan)', color: 'var(--bg-primary)' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#00B8E6'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--accent-cyan)'; }}
-                            title={selectedDocument.metadata?.backup_file_id ? "Download actual file (backed up)" : "Download metadata information"}
-                          >
-                            <Download className="w-4 h-4" />
-                            <span>{selectedDocument.metadata?.backup_file_id ? 'Download File' : 'Download Info'}</span>
-                          </button>
-                          {selectedDocument.metadata?.backup_file_id && (
-                            <span className="text-xs transition-colors" style={{ color: '#00FF88' }}>✓ File backed up</span>
-                          )}
-                        </div>
-                        {downloadError && (
-                          <p className="text-xs px-3 py-1 rounded transition-colors" style={{ color: '#FF6B6B', backgroundColor: 'rgba(255, 107, 107, 0.1)' }}>
-                            {downloadError}
-                          </p>
-                        )}
-                        {selectedDocument.metadata?.drive_letter && (
-                          <div className="mt-2 p-3 border rounded-lg max-w-xs transition-colors" style={{ backgroundColor: 'rgba(255, 107, 107, 0.1)', borderColor: 'rgba(255, 107, 107, 0.3)' }}>
-                            <p className="text-xs font-semibold mb-1 transition-colors" style={{ color: '#FF6B6B' }}>⚠️ USB Drive File</p>
-                            <p className="text-xs transition-colors" style={{ color: 'rgba(255, 107, 107, 0.8)' }}>
-                              This file is on a USB drive. Browsers cannot access USB drives directly for security reasons.
-                            </p>
-                            <p className="text-xs mt-2 transition-colors" style={{ color: 'rgba(255, 107, 107, 0.8)' }}>
-                              <strong>To access:</strong> Ensure USB is connected, then manually navigate to the path in File Explorer.
-                            </p>
-                          </div>
-                        )}
-                        {!selectedDocument.metadata?.drive_letter && (
-                          <p className="text-xs text-right max-w-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                            Note: Download Info provides metadata. Use "Open Location" to copy the path.
-                          </p>
-                        )}
-                      </div>
+                </Panel>
+              ) : (
+                <Panel>
+                  <div className="p-10 text-center">
+                    <div className="w-11 h-11 mx-auto mb-3 rounded-sm border border-ct-line bg-ct-bg2 flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-ct-ink4" />
                     </div>
-
-                    {/* Document Information */}
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-lg border transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center space-x-2 mb-2">
-                            <FileText className="w-4 h-4 transition-colors" style={{ color: 'var(--accent-cyan)' }} />
-                            <span className="text-xs uppercase transition-colors" style={{ color: 'var(--text-tertiary)' }}>File Size</span>
-                          </div>
-                          <p className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {selectedDocument.metadata.file_size
-                              ? formatFileSize(selectedDocument.metadata.file_size)
-                              : 'Unknown'}
-                          </p>
-                        </div>
-
-                        <div className={`p-4 rounded-lg border transition-colors ${getDirectionColor(selectedDocument.metadata.direction || '')}`}>
-                          <div className="flex items-center space-x-2 mb-2">
-                            {getDirectionIcon(selectedDocument.metadata.direction || '')}
-                            <span className="text-xs uppercase transition-colors" style={{ color: 'var(--text-tertiary)' }}>Direction</span>
-                          </div>
-                          <p className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {selectedDocument.metadata.direction === 'to_usb'
-                              ? 'Copied TO USB'
-                              : 'Copied FROM USB'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-4 rounded-lg border transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
-                        <h3 className="text-sm font-semibold mb-4 transition-colors" style={{ color: 'var(--text-primary)' }}>Details</h3>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Calendar className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                              <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Timestamp</span>
-                            </div>
-                            <span className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {formatDate(selectedDocument.timestamp)}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <HardDrive className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                              <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Device</span>
-                            </div>
-                            <span className="text-sm transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {selectedDocument.metadata.device_name || selectedDocument.metadata.device_id || 'Unknown'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <User className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                              <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Agent ID</span>
-                            </div>
-                            <span className="text-sm font-mono transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {selectedDocument.agent_id}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <File className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                              <span className="text-sm transition-colors" style={{ color: 'var(--text-tertiary)' }}>Platform</span>
-                            </div>
-                            <span className="text-sm capitalize transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {selectedDocument.metadata.platform || 'Unknown'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* File Path */}
-                      {selectedDocument.metadata.file_path && (
-                        <div className="p-4 rounded-lg border transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-sm font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>Full Path</h3>
-                            {selectedDocument.metadata.drive_letter && (
-                              <span className="text-xs px-2 py-1 rounded transition-colors" style={{ backgroundColor: 'rgba(255, 107, 107, 0.2)', color: '#FF6B6B' }}>
-                                USB Drive - Ensure Connected
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm font-mono break-all mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                            {selectedDocument.metadata.file_path}
-                          </p>
-                          {selectedDocument.metadata.drive_letter && (
-                            <div className="mt-3 p-3 border rounded-lg transition-colors" style={{ backgroundColor: 'rgba(255, 107, 107, 0.1)', borderColor: 'rgba(255, 107, 107, 0.3)' }}>
-                              <p className="text-xs font-semibold mb-2 transition-colors" style={{ color: '#FF6B6B' }}>
-                                ⚠️ USB Drive File - Browser Cannot Access Directly
-                              </p>
-                              <div className="text-xs space-y-2 transition-colors" style={{ color: 'rgba(255, 107, 107, 0.9)' }}>
-                                <p>
-                                  <strong>Drive:</strong> {selectedDocument.metadata.drive_letter}
-                                </p>
-                                <p>
-                                  <strong>Why "Open Location" doesn't work:</strong> Web browsers block direct access to USB drives and local files for security reasons. This is a browser security limitation, not a bug in the system.
-                                </p>
-                                <p className="font-semibold mt-2">How to Access the File:</p>
-                                <ol className="list-decimal list-inside ml-2 space-y-1">
-                                  <li>Ensure the USB drive ({selectedDocument.metadata.drive_letter}) is still connected</li>
-                                  <li>Open File Explorer (Press <kbd className="px-1.5 py-0.5 rounded border text-[10px] transition-colors" style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-color)', color: 'var(--accent-cyan)' }}>Win + E</kbd>)</li>
-                                  <li>Click the "📋 Copy Path" button below to copy the file path</li>
-                                  <li>In File Explorer, click the address bar and paste (Ctrl + V)</li>
-                                  <li>Press Enter - File Explorer will navigate to the file location</li>
-                                </ol>
-                                <p className="mt-2 italic transition-colors" style={{ color: 'rgba(255, 107, 107, 0.7)' }}>
-                                  If the USB drive has been disconnected, reconnect it first, then follow the steps above.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(selectedDocument.metadata.file_path || '').then(() => {
-                                alert('Path copied to clipboard!')
-                              })
-                            }}
-                            className="mt-2 text-xs transition-colors"
-                            style={{ color: 'var(--accent-cyan)' }}
-                            onMouseEnter={(e) => { e.currentTarget.style.color = '#00FF88'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--accent-cyan)'; }}
-                          >
-                            📋 Copy Path
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="border rounded-2xl p-10 text-center transition-colors" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                    <div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-slate-800/50 border border-white/[0.04] flex items-center justify-center">
-                      <FileText className="w-6 h-6 text-slate-600" />
-                    </div>
-                    <p className="text-sm font-medium mb-1 text-slate-400">No document selected</p>
-                    <p className="text-xs text-slate-600">
-                      Select a tracked file from the sidebar to view transfer details, metadata, and download options
+                    <p className="text-[13px] font-medium mb-1 text-ct-ink2">No document selected</p>
+                    <p className="text-[11px] text-ct-ink3">
+                      Select a tracked file from the sidebar to view transfer details, metadata, and download options.
                     </p>
                   </div>
-                )}
-              </div>
+                </Panel>
+              )}
             </div>
           </div>
         </main>
@@ -679,4 +475,3 @@ IMPORTANT NOTES:
     </div>
   )
 }
-

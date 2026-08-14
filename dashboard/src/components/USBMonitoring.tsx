@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { formatWATTime } from '@/lib/time'
-import { RefreshCw, Download, Upload, Usb, X, FileText, Eye, Trash2, Calendar, Clock } from 'lucide-react'
+import { RefreshCw, Download, Upload, Usb, X, Eye, Trash2, Calendar, Clock } from 'lucide-react'
 import { getEvents } from '@/lib/api'
+import { Panel, PanelHead, Chip, StatusPill } from '@/components/ct/primitives'
 
 interface Event {
   id: string
@@ -64,68 +65,51 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
     : allEvents
 
   // Filter USB events - explicitly exclude browser_download events
-  // to prevent them from appearing in USB monitoring section
   const usbEvents = events.filter(e => {
-    // Never show browser downloads in USB monitoring
     if (e.event_type === 'browser_download' || e.event_type === 'browser_history_visited' || e.event_type === 'browser_search_query') {
       return false
     }
-    // Only show actual USB-related events
-    return e.event_type === 'usb_inserted' || 
-           e.event_type === 'usb_removed' || 
-           e.event_type === 'usb_file_transfer'
+    return e.event_type === 'usb_inserted' ||
+      e.event_type === 'usb_removed' ||
+      e.event_type === 'usb_file_transfer'
   })
 
-  // Apply date filter
   const dateFilteredEvents = dateFilter
     ? usbEvents.filter(e => {
-        const eventDate = parseSafeDate(e.timestamp)
-        // Parse the picked day in LOCAL time (new Date('YYYY-MM-DD') is UTC
-        // midnight and shifts a day in negative-UTC zones).
-        const filterDate = new Date(`${dateFilter}T00:00:00`)
-        // Compare dates (ignore time)
-        return eventDate.toDateString() === filterDate.toDateString()
-      })
+      const eventDate = parseSafeDate(e.timestamp)
+      const filterDate = new Date(`${dateFilter}T00:00:00`)
+      return eventDate.toDateString() === filterDate.toDateString()
+    })
     : usbEvents
 
-  // Apply type filter
-  const filteredEvents = filter === 'all' 
-    ? dateFilteredEvents 
+  const filteredEvents = filter === 'all'
+    ? dateFilteredEvents
     : dateFilteredEvents.filter(e => e.event_type === filter)
 
-  // Group events by type
   const insertedEvents = usbEvents.filter(e => e.event_type === 'usb_inserted')
   const removedEvents = usbEvents.filter(e => e.event_type === 'usb_removed')
   const transferEvents = usbEvents.filter(e => e.event_type === 'usb_file_transfer')
-  
-  // Separate active transfers from existing files (if we add metadata flag later)
-  // For now, all transfers are shown together
 
   const getEventIcon = (eventType: string, direction?: string) => {
     switch (eventType) {
       case 'usb_inserted':
-        return <Usb className="w-5 h-5 text-[#00FF88]" />
+        return <Usb className="w-4 h-4 text-ct-ok" />
       case 'usb_removed':
-        return <X className="w-5 h-5 text-[#FF6B6B]" />
+        return <X className="w-4 h-4 text-ct-crit" />
       case 'usb_file_transfer':
-        return direction === 'to_usb' 
-          ? <Upload className="w-5 h-5 text-[#00D9FF]" />
-          : <Download className="w-5 h-5 text-[#6C5CE7]" />
+        return direction === 'to_usb'
+          ? <Upload className="w-4 h-4 text-ct-accent" />
+          : <Download className="w-4 h-4 text-ct-accent" />
       default:
-        return <Usb className="w-5 h-5 text-[#00D9FF]" />
+        return <Usb className="w-4 h-4 text-ct-accent" />
     }
   }
 
-  const getEventColor = (eventType: string) => {
+  const getEventTone = (eventType: string): 'ok' | 'crit' | 'accent' => {
     switch (eventType) {
-      case 'usb_inserted':
-        return 'border-[#00FF88]/30 bg-[#00FF88]/10'
-      case 'usb_removed':
-        return 'border-[#FF6B6B]/30 bg-[#FF6B6B]/10'
-      case 'usb_file_transfer':
-        return 'border-[#00D9FF]/30 bg-[#00D9FF]/10'
-      default:
-        return 'border-[#00D9FF]/30 bg-[#00D9FF]/10'
+      case 'usb_inserted': return 'ok'
+      case 'usb_removed': return 'crit'
+      default: return 'accent'
     }
   }
 
@@ -140,7 +124,7 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
           ? 'Copied FROM USB (to system)'
           : 'Copied FROM USB'
       const deviceName = metadata.device_name || metadata.device_id || 'Unknown Device'
-      
+
       return {
         title: `${direction}: ${fileName}`,
         subtitle: filePath,
@@ -167,9 +151,6 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
   }
 
-  // Function declaration (hoisted) so it can be called from the date filter
-  // above; as a `const` arrow it sat in the temporal dead zone and crashed
-  // ("Cannot access before initialization") when a date was selected.
   function parseSafeDate(ts: string) {
     let iso = ts.replace(' ', 'T')
     if (!iso.endsWith('Z') && !iso.match(/[+-]\d{2}:\d{2}$/)) {
@@ -178,189 +159,177 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
     return new Date(iso)
   }
 
-
   return (
-    <div className="bg-slate-900/50 backdrop-blur-xl border border-white/10 rounded-2xl p-7 shadow-xl">
-      {/* Header with Filters */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-6 border-b border-white/5">
-        <div className="flex items-center space-x-4 flex-wrap gap-y-3">
-          <div className="flex items-center gap-3 mr-4">
-            <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
-              <Usb className="w-5 h-5" />
-            </div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">USB Activity</h2>
-          </div>
-          <div className="flex items-center space-x-2">
-            {/* Date Filter */}
-            <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 focus-within:border-cyan-500/30 transition-colors">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="px-2 py-1 bg-transparent border-none text-sm text-slate-300 focus:outline-none transition-all max-w-[140px]"
-                title="Filter events by date"
-                style={{ colorScheme: 'dark' }}
-              />
-              {dateFilter && (
-                <button
-                  onClick={() => setDateFilter('')}
-                  className="p-1 rounded bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all"
-                  title="Clear date filter"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center space-x-2 bg-black/40 p-1 rounded-xl border border-white/5">
+    <Panel>
+      <PanelHead
+        title={
+          <span className="flex items-center gap-2">
+            <Usb className="w-4 h-4 text-ct-accent" />
+            USB Activity
+          </span>
+        }
+        live={autoRefresh}
+        right={
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                filter === 'all'
-                  ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.3)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
+              onClick={() => setAutoRefresh(v => !v)}
+              className="font-mono text-[10px] uppercase px-2 py-1 rounded-sm border transition-colors"
+              style={{
+                color: autoRefresh ? 'var(--ct-accent)' : 'var(--ct-ink3)',
+                borderColor: autoRefresh ? 'var(--ct-accent-border)' : 'var(--ct-line2)',
+                background: autoRefresh ? 'var(--ct-accent-soft)' : 'transparent',
+                letterSpacing: '0.18em',
+              }}
             >
-              All ({dateFilter ? dateFilteredEvents.length : usbEvents.length})
+              Auto {autoRefresh ? 'On' : 'Off'}
             </button>
-            <button
-              onClick={() => setFilter('usb_inserted')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                filter === 'usb_inserted'
-                  ? 'bg-emerald-500 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Inserted ({insertedEvents.length})
-            </button>
-            <button
-              onClick={() => setFilter('usb_removed')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                filter === 'usb_removed'
-                  ? 'bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.3)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Removed ({removedEvents.length})
-            </button>
-            <button
-              onClick={() => setFilter('usb_file_transfer')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-                filter === 'usb_file_transfer'
-                  ? 'bg-violet-500 text-white shadow-[0_0_15px_rgba(139,92,246,0.3)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              Transfers ({transferEvents.length})
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setAutoRefresh(v => !v)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all border ${
-              autoRefresh
-                ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.1)]'
-                : 'bg-black/40 text-slate-500 border-white/5 hover:text-slate-300'
-            }`}
-          >
-            Auto: {autoRefresh ? 'ON' : 'OFF'}
-          </button>
-          {onClear && (
-            <button
-              onClick={onClear}
-              disabled={loading || events.length === 0}
-              className="p-2 rounded-lg bg-black/40 border border-white/5 text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Clear displayed data"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-          <button
-            onClick={() => fetchEvents(false)}
-            disabled={loading}
-            className="p-2 rounded-lg bg-black/40 border border-white/5 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/30 transition-all disabled:opacity-50"
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-cyan-300' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Events List */}
-      <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
-        {loading ? (
-          <div className="text-center py-16 bg-black/20 rounded-xl border border-white/5">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-slate-500" />
-            <p className="text-slate-400 font-medium">Loading USB events...</p>
-          </div>
-        ) : filteredEvents.length === 0 ? (
-          <div className="text-center py-16 bg-black/20 rounded-xl border border-dashed border-white/10">
-            <Usb className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-            <p className="text-lg font-bold mb-2 text-slate-300">No USB events found</p>
-            <p className="text-sm text-slate-500">
-              {clearTimestamp 
-                ? 'Waiting for new events after clear...'
-                : filter === 'all' 
-                  ? 'Plug in a USB device to see events here'
-                  : `No ${filter.replace('usb_', '').replace('_', ' ')} events found`}
-            </p>
-            {clearTimestamp && onResetFilter && (
+            {onClear && (
               <button
-                onClick={onResetFilter}
-                className="mt-6 px-5 py-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all font-bold text-xs uppercase tracking-wider"
+                onClick={onClear}
+                disabled={loading || events.length === 0}
+                className="p-1.5 rounded-sm border border-ct-line text-ct-crit hover:bg-ct-panel-hi hover:border-ct-crit-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Clear displayed data"
               >
-                Show All Events
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button
+              onClick={() => fetchEvents(false)}
+              disabled={loading}
+              className="p-1.5 rounded-sm border border-ct-line text-ct-accent hover:bg-ct-panel-hi hover:border-ct-accent-border transition-colors disabled:opacity-50"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        }
+      />
+
+      <div className="p-6 space-y-5">
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-sm bg-ct-bg2 border border-ct-line">
+            <Calendar className="w-3.5 h-3.5 text-ct-ink3" />
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="bg-transparent border-none text-[12px] text-ct-ink2 font-mono focus:outline-none max-w-[140px]"
+              title="Filter events by date"
+              style={{ colorScheme: 'dark' }}
+            />
+            {dateFilter && (
+              <button
+                onClick={() => setDateFilter('')}
+                className="p-0.5 text-ct-crit hover:brightness-125 transition-all"
+                title="Clear date filter"
+              >
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
-        ) : (
-          filteredEvents.map((event) => {
-            const details = formatEventDetails(event)
-            return (
-              <div
-                key={event.id}
-                className={`p-5 rounded-xl border ${getEventColor(event.event_type)} hover:brightness-110 transition-all bg-white/[0.02]`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-4 flex-1">
-                    <div className={`p-2.5 rounded-lg bg-black/40 ${getEventColor(event.event_type).split(' ')[0]}`}>
+          <div className="flex items-center gap-1.5">
+            <Chip active={filter === 'all'} onClick={() => setFilter('all')}>
+              All ({dateFilter ? dateFilteredEvents.length : usbEvents.length})
+            </Chip>
+            <Chip tone="ok" active={filter === 'usb_inserted'} onClick={() => setFilter('usb_inserted')}>
+              Inserted ({insertedEvents.length})
+            </Chip>
+            <Chip tone="crit" active={filter === 'usb_removed'} onClick={() => setFilter('usb_removed')}>
+              Removed ({removedEvents.length})
+            </Chip>
+            <Chip active={filter === 'usb_file_transfer'} onClick={() => setFilter('usb_file_transfer')}>
+              Transfers ({transferEvents.length})
+            </Chip>
+          </div>
+        </div>
+
+        {/* Events List */}
+        <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+          {loading ? (
+            <div className="text-center py-16 rounded-sm border border-ct-line bg-ct-bg2">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-ct-ink3" />
+              <p className="text-[12px] text-ct-ink3 font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading USB events</p>
+            </div>
+          ) : filteredEvents.length === 0 ? (
+            <div className="text-center py-16 rounded-sm border border-dashed border-ct-line bg-ct-bg2">
+              <Usb className="w-10 h-10 mx-auto mb-3 text-ct-ink4" />
+              <p className="text-[13px] font-medium mb-1 text-ct-ink2">No USB events found</p>
+              <p className="text-[11px] text-ct-ink3">
+                {clearTimestamp
+                  ? 'Waiting for new events after clear…'
+                  : filter === 'all'
+                    ? 'Plug in a USB device to see events here.'
+                    : `No ${filter.replace('usb_', '').replace('_', ' ')} events found.`}
+              </p>
+              {clearTimestamp && onResetFilter && (
+                <button
+                  onClick={onResetFilter}
+                  className="mt-5 px-4 py-2 rounded-sm border border-ct-accent-border text-ct-accent text-[11px] font-mono uppercase transition-colors hover:brightness-125"
+                  style={{ background: 'var(--ct-accent-soft)', letterSpacing: '0.18em' }}
+                >
+                  Show All Events
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredEvents.map((event) => {
+              const details = formatEventDetails(event)
+              const tone = getEventTone(event.event_type)
+              return (
+                <div
+                  key={event.id}
+                  className="p-4 rounded-sm border border-ct-line bg-ct-bg2 hover:bg-ct-panel-hi transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="p-2 rounded-sm border"
+                      style={{
+                        borderColor:
+                          tone === 'ok' ? 'var(--ct-ok-border)' :
+                          tone === 'crit' ? 'var(--ct-crit-border)' :
+                          'var(--ct-accent-border)',
+                        background:
+                          tone === 'ok' ? 'var(--ct-ok-soft)' :
+                          tone === 'crit' ? 'var(--ct-crit-soft)' :
+                          'var(--ct-accent-soft)',
+                      }}
+                    >
                       {getEventIcon(event.event_type, event.metadata?.direction)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-base font-bold mb-1 text-white">
+                      <p className="text-[13px] font-semibold mb-1 text-ct-ink">
                         {details.title}
                       </p>
-                      <p className="text-sm mb-3 truncate text-slate-400">
+                      <p className="text-[12px] mb-2 truncate text-ct-ink3 font-mono">
                         {details.subtitle}
                       </p>
-                      <div className="flex items-center space-x-4 text-[11px] font-mono text-slate-500">
-                        <span className="bg-black/50 px-2 py-1 rounded text-slate-300">DEV: {details.device.substring(0, 30)}</span>
-                        {details.fileSize && <span className="bg-black/50 px-2 py-1 rounded text-cyan-400">SIZE: {details.fileSize}</span>}
+                      <div className="flex items-center flex-wrap gap-2 text-[11px] font-mono text-ct-ink3">
+                        <StatusPill tone="idle" dot={false}>DEV: {details.device.substring(0, 30)}</StatusPill>
+                        {details.fileSize && <StatusPill tone="accent" dot={false}>SIZE: {details.fileSize}</StatusPill>}
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(parseSafeDate(event.timestamp), { addSuffix: true })}</span>
-                        <span>{formatWATTime(event.timestamp)}</span>
+                        <span className="tabular-nums">{formatWATTime(event.timestamp)}</span>
                       </div>
                       {event.event_type === 'usb_file_transfer' && event.metadata?.file_path && (
                         <button
-                          className="mt-4 flex items-center space-x-2 text-xs font-bold text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20 px-3 py-1.5 rounded-lg border border-cyan-500/20 transition-all uppercase tracking-wider"
+                          className="mt-3 inline-flex items-center gap-2 text-[11px] font-mono uppercase px-3 py-1.5 rounded-sm border border-ct-accent-border text-ct-accent transition-colors hover:brightness-125"
+                          style={{ background: 'var(--ct-accent-soft)', letterSpacing: '0.18em' }}
                           onClick={() => {
                             window.location.href = `/documents?id=${event.id}`
                           }}
                         >
                           <Eye className="w-3 h-3" />
-                          <span>View Document Analysis</span>
+                          View Document
                         </button>
                       )}
                     </div>
                   </div>
                 </div>
-              </div>
-            )
-          })
-        )}
+              )
+            })
+          )}
+        </div>
       </div>
-    </div>
+    </Panel>
   )
 }
-

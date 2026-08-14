@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { AuditLogTable } from '@/components/AuditLogTable'
-import { Shield } from 'lucide-react'
+import { Panel, SectionHead } from '@/components/ct/primitives'
 
 export default function AuditPage() {
     const router = useRouter()
@@ -22,39 +22,35 @@ export default function AuditPage() {
 
     if (isLoading || !user || user.role !== 'super_admin') {
         return (
-            <div className="min-h-screen bg-[#050510] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-sky-500/20 border-t-sky-500 rounded-full animate-spin"></div>
-                    <p className="text-slate-500 text-sm animate-pulse tracking-widest font-semibold">VERIFYING CLEARANCE...</p>
+            <div className="min-h-screen bg-ct-bg flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 rounded-full animate-spin" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: 'var(--ct-line2)', borderTopColor: 'var(--ct-accent)' }} />
+                    <span className="text-[10px] font-mono uppercase text-ct-ink3" style={{ letterSpacing: '0.24em' }}>Verifying clearance</span>
                 </div>
             </div>
         )
     }
 
     return (
-        <div className="flex h-screen bg-[#050510] text-slate-200 font-sans selection:bg-sky-500/30">
+        <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
             <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden ml-64">
                 <Header />
-                <main className="flex-1 overflow-auto p-8 mt-20 space-y-6 ml-64">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold tracking-tight text-slate-200 flex items-center gap-2">
-                                <Shield className="w-6 h-6 text-sky-500" />
-                                Audit Ledger
-                            </h1>
-                            <p className="text-slate-500 text-sm mt-1">
-                                Immutable record of all authority actions across the platform.
-                            </p>
+                <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
+                    <SectionHead
+                        eyebrow="Platform / Compliance"
+                        title="Audit Ledger"
+                    />
+                    <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
+                        Immutable record of all authority actions across the platform.
+                    </p>
+                    <Panel>
+                        <div className="p-6">
+                            <AuditLogTable />
                         </div>
-                    </div>
-
-                    <div className="bg-[#0C0E1C] border border-white/[0.06] rounded-xl p-6 shadow-sm">
-                        <AuditLogTable />
-                    </div>
+                    </Panel>
                 </main>
             </div>
         </div>
     )
 }
-

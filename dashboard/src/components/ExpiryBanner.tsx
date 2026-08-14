@@ -81,16 +81,10 @@ export default function ExpiryBanner() {
   const isCritical = daysRemaining <= 2
   const isUrgent = daysRemaining <= 4
 
-  // Escalating urgency colors
-  const bannerClasses = isExpired
-    ? 'from-red-900/95 to-red-800/95 border-red-500/60'
-    : isCritical
-      ? 'from-red-900/90 to-red-800/90 border-red-500/50'
-      : isUrgent
-        ? 'from-orange-900/80 to-red-900/80 border-orange-500/40'
-        : 'from-amber-900/70 to-orange-900/70 border-amber-500/30'
-
-  const pulseClass = isExpired || isCritical ? 'animate-pulse' : ''
+  const tone: 'crit' | 'warn' = (isExpired || isCritical) ? 'crit' : 'warn'
+  const bgColor = tone === 'crit' ? 'var(--ct-crit-soft)' : 'var(--ct-warn-soft)'
+  const borderColor = tone === 'crit' ? 'var(--ct-crit-border)' : 'var(--ct-warn-border)'
+  const accentColor = tone === 'crit' ? 'var(--ct-crit)' : 'var(--ct-warn)'
 
   const msLeft = expiryAt !== null ? Math.max(0, expiryAt - now) : 0
   const countdown = formatCountdown(msLeft)
@@ -105,69 +99,50 @@ export default function ExpiryBanner() {
     return `Your account expires in ${countdown}. Please contact your administrator to renew.`
   }
 
+  const label = isExpired ? 'EXPIRED' : isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'WARNING'
+
   return (
     <div
       id="expiry-banner"
-      className={`
-        w-full bg-gradient-to-r ${bannerClasses}
-        backdrop-blur-sm border-b
-        px-6 py-3
-        flex items-center justify-between
-        relative z-50
-        transition-all duration-500 ease-out
-      `}
+      className="w-full px-6 py-2.5 flex items-center justify-between relative z-50 border-b"
+      style={{ background: bgColor, borderColor, color: 'var(--ct-ink)' }}
       role="alert"
       aria-live="assertive"
     >
-      {/* Animated background shimmer for critical states */}
-      {(isExpired || isCritical) && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/10 to-transparent animate-shimmer" />
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
-        {/* Icon */}
-        <div className={`flex-shrink-0 ${pulseClass}`}>
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex-shrink-0" style={{ color: accentColor }}>
           {isExpired ? (
-            <AlertTriangle className="w-5 h-5 text-red-300" />
+            <AlertTriangle className="w-4 h-4" />
           ) : (
-            <Clock className="w-5 h-5 text-amber-300" />
+            <Clock className="w-4 h-4" />
           )}
         </div>
 
-        {/* Message */}
         <div className="flex items-center gap-3 min-w-0">
-          <span className={`
-            text-xs font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full
-            ${isExpired
-              ? 'bg-red-500/30 text-red-200'
-              : isCritical
-                ? 'bg-red-500/20 text-red-300'
-                : isUrgent
-                  ? 'bg-orange-500/20 text-orange-300'
-                  : 'bg-amber-500/20 text-amber-300'
-            }
-          `}>
-            {isExpired ? 'EXPIRED' : isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'WARNING'}
+          <span
+            className="font-mono text-[10px] uppercase font-medium px-2 py-0.5 rounded-sm border"
+            style={{
+              color: accentColor,
+              borderColor,
+              background: 'transparent',
+              letterSpacing: '0.18em',
+            }}
+          >
+            {label}
           </span>
-          <p className="text-sm text-white/90 font-medium truncate">
+          <p className="text-[12px] font-medium truncate text-ct-ink">
             {getMessage()}
           </p>
         </div>
       </div>
 
-      {/* Dismiss button */}
       <button
         onClick={() => setDismissed(true)}
-        className="flex-shrink-0 ml-4 p-1.5 rounded-lg
-          hover:bg-white/10 transition-colors
-          text-white/50 hover:text-white/90
-          focus:outline-none focus:ring-2 focus:ring-white/20"
+        className="flex-shrink-0 ml-4 p-1.5 rounded-sm hover:bg-ct-panel-hi transition-colors text-ct-ink3 hover:text-ct-ink focus:outline-none"
         aria-label="Dismiss expiry notification"
         title="Dismiss"
       >
-        <X className="w-4 h-4" />
+        <X className="w-3.5 h-3.5" />
       </button>
     </div>
   )

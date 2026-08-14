@@ -4,95 +4,123 @@ import { useState, useEffect } from 'react'
 import { Search, Sun, Moon } from 'lucide-react'
 import { useTheme } from '@/contexts/ThemeContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { formatWATTime } from '@/lib/time'
 
 export default function Header() {
   const { theme, toggleTheme } = useTheme()
   const { user, isLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
+  const [now, setNow] = useState<Date | null>(null)
 
   useEffect(() => {
     setMounted(true)
+    setNow(new Date())
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
   }, [])
 
-  const getUserDisplayName = () => {
-    return user?.email?.split('@')[0] || 'Administrator'
-  }
-
-  const getRoleBadge = () => {
-    if (user?.role === 'super_admin') return 'Super Admin'
-    if (user?.role === 'org_admin') return 'Org Admin'
-    return 'User'
-  }
+  const displayName = user?.email?.split('@')[0] || 'Operator'
+  const roleLabel =
+    user?.role === 'super_admin' ? 'Super admin' : user?.role === 'org_admin' ? 'Org admin' : 'Analyst'
 
   return (
-    <header className="h-20 flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-10 transition-colors bg-[#050510]/80 backdrop-blur-md border-b border-white/[0.06]">
-      <div className="flex items-center space-x-6">
-        <div>
-          {isLoading ? (
-            <div className="h-6 w-48 bg-white/[0.04] rounded animate-pulse"></div>
-          ) : (
-            <>
-              <h1 className="text-xl font-semibold tracking-tight text-slate-200">Hi, {getUserDisplayName()}</h1>
-              <div className="flex items-center space-x-2">
-                <p className="text-sm text-slate-500">{user?.role === 'super_admin' ? 'Monitoring Platform Health' : 'Monitor your endpoints'}</p>
-              </div>
-            </>
-          )}
-        </div>
+    <header
+      className="h-20 fixed top-0 left-64 right-0 z-20 flex items-center justify-between px-8"
+      style={{
+        background: 'rgba(10, 11, 16, 0.85)',
+        borderBottom: '1px solid var(--ct-line)',
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      {/* Left — page context */}
+      <div className="min-w-0">
+        {isLoading ? (
+          <div className="h-4 w-56 rounded animate-pulse bg-ct-line" />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div
+              className="font-mono text-[10px] uppercase text-ct-ink3"
+              style={{ letterSpacing: '0.22em' }}
+            >
+              Session
+            </div>
+            <div className="w-[1px] h-3 bg-ct-line2" />
+            <div className="font-mono text-[11px] text-ct-ink2 tabular-nums">
+              {now ? formatWATTime(now) : '--:--:--'} WAT
+            </div>
+            <div className="w-[1px] h-3 bg-ct-line2" />
+            <div className="font-mono text-[11px] text-ct-ink2 truncate">
+              {displayName}
+              <span className="text-ct-ink3"> · {roleLabel}</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center space-x-4 flex-1 max-w-md mx-8">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-500" />
+      {/* Center — global search */}
+      <div className="flex-1 max-w-lg mx-8">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ct-ink3" />
           <input
             type="text"
-            placeholder="Search events, agents, etc..."
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-white/[0.06] bg-[#0C0E1C] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/50 transition-all font-medium"
+            placeholder="Search endpoints, events, keywords, IPs…"
+            className="w-full pl-9 pr-4 py-[9px] text-[12px] rounded-[3px] text-ct-ink placeholder-ct-ink3 focus:outline-none transition-colors font-mono"
+            style={{
+              background: 'var(--ct-panel)',
+              border: '1px solid var(--ct-line)',
+              letterSpacing: '0.02em',
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--ct-accent-border)')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--ct-line)')}
           />
         </div>
       </div>
 
-      <div className="flex items-center space-x-4">
-        {/* Theme Toggle */}
+      {/* Right — theme + operator chip */}
+      <div className="flex items-center gap-3">
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg transition-all bg-[#0A0D18] border border-white/[0.06] hover:bg-white/[0.04] hover:border-white/[0.1] text-slate-400 group"
+          className="w-9 h-9 rounded-[3px] flex items-center justify-center transition-colors"
+          style={{ background: 'var(--ct-panel)', border: '1px solid var(--ct-line)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--ct-accent-border)')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--ct-line)')}
           title={`Switch to ${mounted && theme === 'dark' ? 'light' : 'dark'} mode`}
         >
           {mounted ? (
             theme === 'dark' ? (
-              <Sun className="w-4 h-4 group-hover:text-emerald-400 transition-colors" />
+              <Sun className="w-4 h-4 text-ct-ink2" />
             ) : (
-              <Moon className="w-4 h-4 group-hover:text-sky-400 transition-colors" />
+              <Moon className="w-4 h-4 text-ct-ink2" />
             )
           ) : (
             <div className="w-4 h-4" />
           )}
         </button>
-        <div className="flex items-center space-x-3 pl-4 border-l border-white/[0.06]">
-          <div className="text-right">
-            {isLoading ? (
-              <div className="space-y-1">
-                <div className="h-4 w-24 bg-white/[0.04] rounded animate-pulse ml-auto"></div>
-                <div className="h-3 w-16 bg-white/[0.04] rounded animate-pulse ml-auto"></div>
+
+        <div className="flex items-center gap-3 pl-3 border-l border-ct-line">
+          {isLoading ? (
+            <div className="h-9 w-32 rounded animate-pulse bg-ct-line" />
+          ) : (
+            <>
+              <div className="text-right">
+                <div className="text-[12px] font-medium text-ct-ink">{displayName}</div>
+                <div
+                  className="font-mono text-[9px] uppercase text-ct-accent"
+                  style={{ letterSpacing: '0.22em' }}
+                >
+                  {roleLabel}
+                </div>
               </div>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-slate-200">{getUserDisplayName()}</p>
-                <p className="text-xs text-sky-400/80">{getRoleBadge()}</p>
-              </>
-            )}
-          </div>
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold bg-[#0C0E1C] border border-white/[0.08] text-slate-300">
-            {isLoading ? (
-              <div className="w-full h-full rounded-lg bg-white/10 animate-pulse"></div>
-            ) : (
-              getUserDisplayName().charAt(0).toUpperCase()
-            )}
-          </div>
+              <div
+                className="w-9 h-9 rounded-[3px] flex items-center justify-center font-mono text-[13px] font-semibold text-ct-accent"
+                style={{ background: 'var(--ct-accent-soft)', border: '1px solid var(--ct-accent-border)' }}
+              >
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>
   )
 }
-

@@ -1,17 +1,66 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Monitor, Activity, Clock, HardDrive, Search, Tag } from 'lucide-react'
-import { getAgents, getEvents, Agent } from '@/lib/api'
+import { Search } from 'lucide-react'
+import { getAgents, Agent } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATDate } from '@/lib/time'
+import { Panel, PanelHead, SectionHead, StatusPill, Chip, Eyebrow } from '@/components/ct/primitives'
 
+// Drift-proof status derivation — matches deriveDeviceStatus() in lib/api.ts.
+// Kept inline because that helper returns a slightly different shape than
+// the fleet-strip tone map we want here.
+type FleetStatus = 'online' | 'idle' | 'stopped' | 'removed' | 'tampered' | 'killed' | 'offline'
+function fleetStatus(agent: Agent): FleetStatus {
+  const msSince = agent.server_time_ms - agent.last_seen_ms
+  const mins = msSince / 60000
+  if (mins < 5) return 'online'
+  if (mins < 30) return 'idle'
 
+  const ageMs = (ts: string | null | undefined) =>
+    ts ? Math.max(0, agent.server_time_ms - new Date(ts).getTime()) : Number.POSITIVE_INFINITY
+  const watchdogFresh = ageMs(agent.watchdog_last_seen) < 15 * 60 * 1000
+  const lifecycleFresh = ageMs(agent.last_lifecycle_at) < 30 * 60 * 1000
+
+  if (lifecycleFresh && (agent.last_lifecycle_state === 'stopping' || agent.last_lifecycle_state === 'uninstalling')) {
+    return 'stopped'
+  }
+  if (watchdogFresh) {
+    const svc = agent.watchdog_service_state
+    const bin = agent.watchdog_binary_present
+    if (svc === 'NotInstalled' && bin === false) return 'removed'
+    if (svc === 'NotInstalled' && bin === true) return 'tampered'
+    if (svc === 'Stopped' && bin) return 'killed'
+    if (svc === 'Running') return 'online'
+  }
+  return 'offline'
+}
+
+const statusPillTone: Record<FleetStatus, 'ok' | 'warn' | 'crit' | 'accent' | 'idle'> = {
+  online: 'ok',
+  idle: 'accent',
+  stopped: 'warn',
+  killed: 'warn',
+  tampered: 'crit',
+  removed: 'crit',
+  offline: 'idle',
+}
+
+function lastSeenShort(agent: Agent) {
+  const diffMs = agent.server_time_ms - agent.last_seen_ms
+  const mins = Math.floor(diffMs / 60000)
+  const hrs = Math.floor(diffMs / 3600000)
+  const days = Math.floor(diffMs / 86400000)
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
+  if (hrs < 24) return `${hrs}h`
+  return `${days}d`
+}
 
 export default function DevicesPage() {
   const router = useRouter()
@@ -20,21 +69,35 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | FleetStatus>('all')
 
   useEffect(() => {
     if (user) {
       loadAgents()
-      const interval = setInterval(loadAgents, 30000) // Refresh every 30 seconds
+      const interval = setInterval(loadAgents, 30000)
       return () => clearInterval(interval)
     }
   }, [user])
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-ct-bg flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
-          <p className="text-cyan-500 font-medium animate-pulse">Scanning Secure Nodes...</p>
+          <div
+            className="w-8 h-8 rounded-full animate-spin"
+            style={{
+              borderWidth: 2,
+              borderStyle: 'solid',
+              borderColor: 'var(--ct-line2)',
+              borderTopColor: 'var(--ct-accent)',
+            }}
+          />
+          <span
+            className="text-[10px] font-mono uppercase text-ct-ink3"
+            style={{ letterSpacing: '0.28em' }}
+          >
+            Scanning endpoints
+          </span>
         </div>
       </div>
     )
@@ -51,232 +114,250 @@ export default function DevicesPage() {
     }
   }
 
-  const getAgentStatus = (agent: Agent) => {
-    // 🛡️ [Drift-Proof Status] Compare server-provided time, NOT local PC time
-    const msSinceLastSeen = agent.server_time_ms - agent.last_seen_ms;
-    const minutesSinceLastSeen = msSinceLastSeen / 1000 / 60
+  const campaigns = useMemo(
+    () => Array.from(new Set(agents.map((a) => a.campaign).filter((c): c is string => !!c))).sort(),
+    [agents],
+  )
 
-    // Online / idle: heartbeating fine — the watchdog/lifecycle signals are
-    // only interesting once it's gone quiet.
-    if (minutesSinceLastSeen < 5) return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
-    if (minutesSinceLastSeen < 30) return { status: 'idle', color: 'text-[#00D9FF]', bg: 'bg-[#00D9FF]/10', border: 'border-[#00D9FF]/30' }
-
-    // Stale heartbeat: use the watchdog/lifecycle to say WHY rather than just "offline".
-    // Derivation matches deriveDeviceStatus() in lib/api.ts so views agree.
-    const ageMs = (ts: string | null | undefined) =>
-      ts ? Math.max(0, agent.server_time_ms - new Date(ts).getTime()) : Number.POSITIVE_INFINITY
-    const watchdogFresh  = ageMs(agent.watchdog_last_seen) < 15 * 60 * 1000
-    const lifecycleFresh = ageMs(agent.last_lifecycle_at) < 30 * 60 * 1000
-
-    if (lifecycleFresh && (agent.last_lifecycle_state === 'stopping' || agent.last_lifecycle_state === 'uninstalling')) {
-      return { status: 'stopped', color: 'text-[#FFD166]', bg: 'bg-[#FFD166]/10', border: 'border-[#FFD166]/30' }
+  const fleetCounts = useMemo(() => {
+    const c: Record<FleetStatus, number> = {
+      online: 0,
+      idle: 0,
+      stopped: 0,
+      killed: 0,
+      tampered: 0,
+      removed: 0,
+      offline: 0,
     }
-    if (watchdogFresh) {
-      const svc = agent.watchdog_service_state
-      const bin = agent.watchdog_binary_present
-      if (svc === 'NotInstalled' && bin === false)
-        return { status: 'removed', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/15', border: 'border-[#FF6B6B]/50' }
-      if (svc === 'NotInstalled' && bin === true)
-        return { status: 'tampered', color: 'text-[#FF8C42]', bg: 'bg-[#FF8C42]/15', border: 'border-[#FF8C42]/50' }
-      if (svc === 'Stopped' && bin)
-        return { status: 'killed', color: 'text-[#FF8C42]', bg: 'bg-[#FF8C42]/10', border: 'border-[#FF8C42]/30' }
-      if (svc === 'Running')
-        return { status: 'online', color: 'text-[#00FF88]', bg: 'bg-[#00FF88]/10', border: 'border-[#00FF88]/30' }
-    }
-    return { status: 'offline', color: 'text-[#FF6B6B]', bg: 'bg-[#FF6B6B]/10', border: 'border-[#FF6B6B]/30' }
-  }
+    for (const a of agents) c[fleetStatus(a)]++
+    return c
+  }, [agents])
 
-  const formatLastSeen = (agent: Agent) => {
-    // 🛡️ [Drift-Proof Time Ago] Use server time as the reference 'now'
-    const diffMs = agent.server_time_ms - agent.last_seen_ms;
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
+  const flagged = fleetCounts.tampered + fleetCounts.removed + fleetCounts.killed
 
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
-    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
-  }
-
-  // Distinct campaigns (enrollment-token labels) present across this org's devices.
-  const campaigns = Array.from(
-    new Set(agents.map(a => a.campaign).filter((c): c is string => !!c))
-  ).sort()
-
-  const filteredAgents = agents.filter(agent => {
-    // Campaign filter
+  const filteredAgents = agents.filter((agent) => {
     if (campaignFilter === '__none__') {
       if (agent.campaign) return false
     } else if (campaignFilter !== 'all') {
       if (agent.campaign !== campaignFilter) return false
     }
-    // Text search
+    if (statusFilter !== 'all' && fleetStatus(agent) !== statusFilter) return false
     if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
+    const q = searchQuery.toLowerCase()
     return (
-      agent.agent_id.toLowerCase().includes(query) ||
-      agent.hardware_fingerprint.toLowerCase().includes(query) ||
-      (agent.hostname && agent.hostname.toLowerCase().includes(query)) ||
-      (agent.display_name && agent.display_name.toLowerCase().includes(query)) ||
-      (agent.campaign && agent.campaign.toLowerCase().includes(query))
+      agent.agent_id.toLowerCase().includes(q) ||
+      agent.hardware_fingerprint.toLowerCase().includes(q) ||
+      (agent.hostname && agent.hostname.toLowerCase().includes(q)) ||
+      (agent.display_name && agent.display_name.toLowerCase().includes(q)) ||
+      (agent.campaign && agent.campaign.toLowerCase().includes(q))
     )
   })
 
   return (
-    <div className="flex h-screen transition-colors" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="flex h-screen bg-ct-bg text-ct-ink overflow-hidden">
       <Sidebar />
-      <div className="flex-1 ml-64">
+      <div className="flex-1 flex flex-col overflow-hidden ml-64">
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
-        <main className="pt-20 p-8 overflow-y-auto h-full">
-          <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="mb-6">
-              <h1 className="text-3xl font-bold mb-2 transition-colors" style={{ color: 'var(--text-primary)' }}>Devices</h1>
-              <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Manage and monitor all connected devices</p>
-            </div>
 
-            {/* Search + Campaign filter */}
-            <div className="mb-6 flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
+        <main className="flex-1 overflow-auto p-8 space-y-6 mt-20">
+          <SectionHead
+            eyebrow={`Endpoint registry · ${agents.length} agents across ${campaigns.length || 'no'} campaign${campaigns.length === 1 ? '' : 's'}`}
+            title="Devices"
+          />
+
+          {/* Fleet strip */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 rounded-[3px] overflow-hidden bg-ct-panel border border-ct-line">
+            <FleetCell label="Total" value={agents.length} sub="enrolled" tone="ink" />
+            <FleetCell label="Online" value={fleetCounts.online} sub={`${agents.length ? Math.round((fleetCounts.online / agents.length) * 100) : 0}% reporting`} tone="accent" />
+            <FleetCell label="Idle" value={fleetCounts.idle} sub="under 30 m" tone="ok" />
+            <FleetCell label="Offline" value={fleetCounts.offline + fleetCounts.stopped} sub="after hours" tone="idle" />
+            <FleetCell label="Flagged" value={flagged} sub="tampered / killed / removed" tone="crit" />
+            <FleetCell label="Campaigns" value={campaigns.length} sub={campaigns.slice(0, 3).join(' · ') || 'none'} tone="ink" last />
+          </div>
+
+          {/* Filter bar */}
+          <Panel padding={false}>
+            <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-ct-line bg-ct-bg2">
+              <div className="relative flex-1 min-w-[260px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ct-ink3" />
                 <input
                   type="text"
-                  placeholder="Search devices by ID, hostname, fingerprint, or campaign..."
+                  placeholder="Search hostname, user, fingerprint, IP, campaign…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none transition-all"
+                  className="w-full pl-9 pr-3 py-[7px] rounded-sm text-[12px] font-mono text-ct-ink placeholder:text-ct-ink3 focus:outline-none"
                   style={{
-                    backgroundColor: 'var(--bg-secondary)',
-                    borderColor: 'var(--border-color)',
-                    color: 'var(--text-primary)'
+                    background: 'var(--ct-panel)',
+                    border: '1px solid var(--ct-line2)',
+                    letterSpacing: '0.02em',
                   }}
-                  onFocus={(e) => { e.target.style.borderColor = 'var(--accent-cyan)'; }}
-                  onBlur={(e) => { e.target.style.borderColor = 'var(--border-color)'; }}
                 />
               </div>
               <select
                 value={campaignFilter}
                 onChange={(e) => setCampaignFilter(e.target.value)}
-                className="px-4 py-3 border rounded-lg focus:outline-none transition-all sm:w-64"
+                className="px-3 py-[7px] rounded-sm text-[11px] font-mono uppercase text-ct-ink2 focus:outline-none"
                 style={{
-                  backgroundColor: 'var(--bg-secondary)',
-                  borderColor: 'var(--border-color)',
-                  color: 'var(--text-primary)'
+                  background: 'var(--ct-panel)',
+                  border: '1px solid var(--ct-line2)',
+                  letterSpacing: '0.14em',
                 }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent-cyan)'; }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border-color)'; }}
               >
                 <option value="all">All campaigns ({agents.length})</option>
                 {campaigns.map((c) => (
                   <option key={c} value={c}>
-                    {c} ({agents.filter(a => a.campaign === c).length})
+                    {c} ({agents.filter((a) => a.campaign === c).length})
                   </option>
                 ))}
                 <option value="__none__">No campaign</option>
               </select>
+              <div className="flex items-center gap-1">
+                {(['all', 'online', 'idle', 'offline', 'tampered'] as const).map((s) => {
+                  const count = s === 'all' ? agents.length : fleetCounts[s as FleetStatus] || 0
+                  return (
+                    <Chip
+                      key={s}
+                      tone={s === 'tampered' ? 'crit' : s === 'online' ? 'ok' : s === 'idle' ? 'accent' : 'idle'}
+                      active={statusFilter === s}
+                      onClick={() => setStatusFilter(s as any)}
+                    >
+                      {s}
+                      <span className="text-ct-ink3 ml-1 tabular-nums">{count}</span>
+                    </Chip>
+                  )
+                })}
+              </div>
             </div>
 
-            {/* Devices Grid */}
+            {/* Table */}
             {loading ? (
-              <div className="text-center py-12">
-                <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin mx-auto mb-4 transition-colors" style={{ borderColor: 'var(--accent-cyan)' }} />
-                <p className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Loading devices...</p>
-              </div>
+              <div className="text-center py-16 text-[11px] text-ct-ink3 font-mono">Loading devices…</div>
             ) : filteredAgents.length === 0 ? (
-              <div className="text-center py-12">
-                <Monitor className="w-16 h-16 mx-auto mb-4 transition-colors" style={{ color: 'rgba(0, 217, 255, 0.2)' }} />
-                <p className="text-lg font-medium mb-2 transition-colors" style={{ color: 'var(--text-tertiary)' }}>No devices found</p>
-                <p className="text-sm transition-colors" style={{ color: 'rgba(0, 217, 255, 0.4)' }}>
+              <div className="text-center py-16">
+                <p className="text-[13px] text-ct-ink2 mb-1">No devices match this filter</p>
+                <p className="text-[11px] text-ct-ink3 font-mono">
                   {searchQuery ? 'Try a different search query' : 'No devices are currently registered'}
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div>
+                {/* Table headers */}
+                <div
+                  className="grid gap-3 px-6 py-3 border-b border-ct-line bg-ct-bg2 font-mono text-[10px] uppercase text-ct-ink3"
+                  style={{
+                    gridTemplateColumns: '1.8fr 100px 120px 130px 100px 110px 100px 24px',
+                    letterSpacing: '0.20em',
+                  }}
+                >
+                  <div>Host · User</div>
+                  <div>Campaign</div>
+                  <div>Fingerprint</div>
+                  <div>Registered</div>
+                  <div>Agent</div>
+                  <div>Status</div>
+                  <div className="text-right">Last seen</div>
+                  <div />
+                </div>
+                {/* Rows */}
                 {filteredAgents.map((agent) => {
-                  const status = getAgentStatus(agent)
+                  const st = fleetStatus(agent)
                   return (
-                    <div
+                    <button
                       key={agent.id}
                       onClick={() => router.push(`/devices/${agent.agent_id}`)}
-                      className={`border ${status.border} rounded-xl p-6 cursor-pointer hover:border-opacity-50 transition-all hover:transform hover:scale-[1.02]`}
-                      style={{ backgroundColor: 'var(--bg-secondary)' }}
+                      className="w-full grid gap-3 items-center px-6 py-[14px] border-b border-ct-line hover:bg-ct-panel-hi transition-colors text-left"
+                      style={{ gridTemplateColumns: '1.8fr 100px 120px 130px 100px 110px 100px 24px' }}
                     >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <div className={`p-3 ${status.bg} rounded-lg`}>
-                            <Monitor className={`w-6 h-6 ${status.color}`} />
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold transition-colors" style={{ color: 'var(--text-primary)' }}>
-                              {agent.display_name || agent.hostname || (agent.agent_id.length > 20
-                                ? `${agent.agent_id.substring(0, 20)}...`
-                                : agent.agent_id)}
-                            </h3>
-                            <p className="text-xs mt-1 transition-colors" style={{ color: 'var(--text-tertiary)' }}>
-                              {status.status.charAt(0).toUpperCase() + status.status.slice(1)}
-                            </p>
-                          </div>
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-medium text-ct-ink truncate">
+                          {agent.display_name || agent.hostname || agent.agent_id.substring(0, 24)}
                         </div>
-                        <div className={`px-2 py-1 rounded text-xs font-medium ${status.bg} ${status.color}`}>
-                          {status.status.toUpperCase()}
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center space-x-2 text-sm">
-                          <HardDrive className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                          <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Fingerprint:</span>
-                          <span className="font-mono text-xs transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {agent.hardware_fingerprint.substring(0, 16)}...
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm">
-                          <Clock className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                          <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Last seen:</span>
-                          <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>{formatLastSeen(agent)}</span>
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm">
-                          <Activity className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                          <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Registered:</span>
-                          <span className="transition-colors" style={{ color: 'var(--text-primary)' }}>
-                            {formatWATDate(agent.created_at)}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm">
-                          <Tag className="w-4 h-4 transition-colors" style={{ color: 'var(--text-tertiary)' }} />
-                          <span className="transition-colors" style={{ color: 'var(--text-tertiary)' }}>Campaign:</span>
-                          {agent.campaign ? (
-                            <span className="px-2 py-0.5 rounded-md text-xs font-medium" style={{ backgroundColor: 'rgba(0, 217, 255, 0.12)', color: 'var(--accent-cyan)' }}>
-                              {agent.campaign}
-                            </span>
-                          ) : (
-                            <span className="text-xs transition-colors" style={{ color: 'var(--text-tertiary)' }}>Unassigned</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-4 border-t transition-colors" style={{ borderColor: 'var(--border-color)' }}>
-                        <button
-                          className="w-full py-2 rounded-lg transition-all text-sm font-medium"
-                          style={{ backgroundColor: 'rgba(0, 217, 255, 0.2)', color: 'var(--accent-cyan)' }}
-                          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.3)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(0, 217, 255, 0.2)'; }}
+                        <div
+                          className="font-mono text-[10px] text-ct-ink3 truncate mt-1"
+                          style={{ letterSpacing: '0.06em' }}
                         >
-                          View Details →
-                        </button>
+                          {agent.agent_id.substring(0, 28)}
+                          {agent.agent_id.length > 28 ? '…' : ''}
+                        </div>
                       </div>
-                    </div>
+                      <div>
+                        {agent.campaign ? (
+                          <StatusPill tone="accent" dot={false}>
+                            {agent.campaign}
+                          </StatusPill>
+                        ) : (
+                          <span className="text-[10px] text-ct-ink3 font-mono">—</span>
+                        )}
+                      </div>
+                      <div className="font-mono text-[11px] text-ct-ink2 truncate tabular-nums">
+                        {agent.hardware_fingerprint.substring(0, 14)}…
+                      </div>
+                      <div className="font-mono text-[11px] text-ct-ink2 truncate">
+                        {formatWATDate(agent.created_at)}
+                      </div>
+                      <div className="font-mono text-[11px] text-ct-ink3 truncate">
+                        {agent.watchdog_version || '—'}
+                      </div>
+                      <StatusPill tone={statusPillTone[st]}>{st}</StatusPill>
+                      <div className="font-mono text-[11px] text-ct-ink3 text-right tabular-nums">
+                        {lastSeenShort(agent)}
+                      </div>
+                      <div className="text-ct-ink3 text-right">→</div>
+                    </button>
                   )
                 })}
               </div>
             )}
-          </div>
+          </Panel>
         </main>
       </div>
     </div>
   )
 }
 
+function FleetCell({
+  label,
+  value,
+  sub,
+  tone,
+  last,
+}: {
+  label: string
+  value: number
+  sub: string
+  tone: 'ink' | 'accent' | 'ok' | 'warn' | 'crit' | 'idle'
+  last?: boolean
+}) {
+  const color = {
+    ink: 'var(--ct-ink)',
+    accent: 'var(--ct-accent)',
+    ok: 'var(--ct-ok)',
+    warn: 'var(--ct-warn)',
+    crit: 'var(--ct-crit)',
+    idle: 'var(--ct-ink3)',
+  }[tone]
+  return (
+    <div
+      style={{
+        padding: '18px 20px',
+        borderRight: last ? undefined : '1px solid var(--ct-line)',
+      }}
+    >
+      <Eyebrow>{label}</Eyebrow>
+      <div
+        className="font-mono font-medium tabular-nums"
+        style={{ fontSize: 28, color, letterSpacing: '-0.01em', marginTop: 6 }}
+      >
+        {value.toLocaleString()}
+      </div>
+      <div
+        className="font-mono text-[11px] text-ct-ink3 mt-1 truncate"
+        style={{ letterSpacing: '0.06em' }}
+      >
+        {sub}
+      </div>
+    </div>
+  )
+}
