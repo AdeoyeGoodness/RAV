@@ -79,30 +79,6 @@ export default function DevicesPage() {
     }
   }, [user])
 
-  if (isLoading || !user) {
-    return (
-      <div className="min-h-screen bg-ct-bg flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div
-            className="w-8 h-8 rounded-full animate-spin"
-            style={{
-              borderWidth: 2,
-              borderStyle: 'solid',
-              borderColor: 'var(--ct-line2)',
-              borderTopColor: 'var(--ct-accent)',
-            }}
-          />
-          <span
-            className="text-[10px] font-mono uppercase text-ct-ink3"
-            style={{ letterSpacing: '0.28em' }}
-          >
-            Scanning endpoints
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   const loadAgents = async () => {
     try {
       const agentsData = await getAgents()
@@ -132,6 +108,30 @@ export default function DevicesPage() {
     for (const a of agents) c[fleetStatus(a)]++
     return c
   }, [agents])
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen bg-ct-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-8 h-8 rounded-full animate-spin"
+            style={{
+              borderWidth: 2,
+              borderStyle: 'solid',
+              borderColor: 'var(--ct-line2)',
+              borderTopColor: 'var(--ct-accent)',
+            }}
+          />
+          <span
+            className="text-[10px] font-mono uppercase text-ct-ink3"
+            style={{ letterSpacing: '0.28em' }}
+          >
+            Scanning endpoints
+          </span>
+        </div>
+      </div>
+    )
+  }
 
   const flagged = fleetCounts.tampered + fleetCounts.removed + fleetCounts.killed
 
