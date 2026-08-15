@@ -88,44 +88,36 @@ export default function LoginPage() {
 
         {/* Thesis */}
         <div
-          className={`relative z-10 flex flex-col justify-center max-w-[560px] w-full mx-auto px-16 transition-all duration-700 ${
+          className={`relative z-10 flex flex-col justify-center w-full mx-auto px-16 transition-all duration-700 ${
             mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'
           }`}
         >
           <div
-            className="text-white/40 text-[11px] font-mono font-medium uppercase mb-7 flex items-center gap-4"
-            style={{ letterSpacing: '0.32em' }}
+            className="text-white/40 text-[12px] font-mono font-medium uppercase mb-10 flex items-center gap-4"
+            style={{ letterSpacing: '0.36em' }}
           >
-            <span className="inline-block w-7 h-[1px] bg-[#C8A253]" />
+            <span className="inline-block w-8 h-[1px] bg-[#C8A253]" />
             Enterprise digital forensics
           </div>
           <h1
-            className="text-white text-[52px] leading-[1.05] font-medium tracking-tight mb-6"
-            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+            className="text-white font-medium mb-8"
+            style={{
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              fontSize: 'clamp(56px, 6vw, 88px)',
+              lineHeight: 1.02,
+              letterSpacing: '-0.022em',
+            }}
           >
             The forensic <br />
             command centre <br />
             for{' '}
             <span style={{ color: '#C8A253', fontStyle: 'italic' }}>modern enterprises.</span>
           </h1>
-          <p className="text-white/55 text-[15px] leading-relaxed max-w-md mb-12">
+          <p className="text-white/60 text-[18px] leading-[1.55] max-w-[640px]">
             A single console for silent evidence collection, endpoint monitoring, and
             chain-of-custody preservation — commissioned inside your infrastructure, never anyone
             else&apos;s.
           </p>
-
-          <div className="space-y-3 border-t border-white/[0.07] pt-7">
-            {[
-              'AES-256 encryption · in transit and at rest',
-              'Role-based access · Super admin & Org admin scopes',
-              'Chain-of-custody preserved · burn-after-reading vault',
-            ].map((line) => (
-              <div key={line} className="flex items-center gap-3 text-white/50 text-[13px]">
-                <div className="w-1 h-1 rounded-full bg-white/40" />
-                <span>{line}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div
@@ -133,13 +125,6 @@ export default function LoginPage() {
           style={{ letterSpacing: '0.06em' }}
         >
           © 2026 RAV Systems · Enterprise Security Platform
-        </div>
-        <div
-          className="absolute bottom-10 right-12 flex items-center gap-2 text-white/40 text-[11px] font-mono uppercase"
-          style={{ letterSpacing: '0.18em' }}
-        >
-          <div className="w-[6px] h-[6px] rounded-full bg-emerald-400/70" />
-          <span>Operational</span>
         </div>
       </div>
 
