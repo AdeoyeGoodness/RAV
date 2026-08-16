@@ -706,12 +706,18 @@ pub async fn list_agents(
 
     let now = Utc::now();
     let now_ms = now.timestamp_millis();
-    // "Uploader stalled" thresholds. Heartbeat freshness kept identical to
-    // deriveDeviceStatus() in the dashboard so both agree on when a device
-    // is beaconing. Event staleness at 30min catches the jammed-uploader
-    // case where heartbeats keep flowing but no telemetry lands.
+    // "Uploader stalled" thresholds. Heartbeat freshness matches
+    // deriveDeviceStatus() in the dashboard so both agree on when a
+    // device is beaconing. EVENT_STALE_MS is the point at which fresh
+    // heartbeats + silent events reads as a real jam (was 30 min; bumped
+    // to 60 min after we saw WiFi hiccups routinely re-flush queued events
+    // within ~15-30 min, causing false positives). BASELINE_WINDOW_MS is
+    // the recency floor for saying "this endpoint HAS been active recently
+    // and should still be" — without it, dormant/fresh-install/weekend-off
+    // endpoints falsely light up red.
     const HEARTBEAT_FRESH_MS: i64 = 3 * 60 * 1000;
-    const EVENT_STALE_MS: i64 = 30 * 60 * 1000;
+    const EVENT_STALE_MS: i64 = 60 * 60 * 1000;
+    const BASELINE_WINDOW_MS: i64 = 24 * 60 * 60 * 1000;
 
     let result: Vec<serde_json::Value> = agents
         .into_iter()
@@ -722,18 +728,32 @@ pub async fn list_agents(
             let heartbeat_fresh = heartbeat_age_ms <= HEARTBEAT_FRESH_MS;
 
             // uploader_health values:
-            //   "ok"      — heartbeat fresh AND recent events (or agent too new to judge)
-            //   "stale"   — heartbeat fresh, events > 30 min old → uploader jammed
-            //   "dark"    — heartbeat fresh, zero events ever   → uploader never worked
-            //   "unknown" — heartbeat stale, can't say anything about the uploader
+            //   "ok"      — heartbeat fresh AND either recent events, or no
+            //               baseline of recent activity to compare against
+            //               (dormant / fresh install → don't nag)
+            //   "stale"   — heartbeat fresh, endpoint HAS been active in the
+            //               last 24 h, but latest event > 60 min old →
+            //               genuine uploader jam
+            //   "unknown" — heartbeat stale, can't say anything about upload
             let uploader_health = if !heartbeat_fresh {
                 "unknown"
             } else {
                 match latest_event_at {
-                    None => "dark",
+                    // No events ever → treat as ok. Could be a truly fresh
+                    // install that hasn't captured yet; better to surface it
+                    // as ok than red-flag every new endpoint on enrollment.
+                    None => "ok",
                     Some(t) => {
                         let event_age_ms = now_ms - t.timestamp_millis();
-                        if event_age_ms > EVENT_STALE_MS { "stale" } else { "ok" }
+                        if event_age_ms > BASELINE_WINDOW_MS {
+                            // Endpoint has no recent activity baseline; not
+                            // something we can call "stalled" with confidence.
+                            "ok"
+                        } else if event_age_ms > EVENT_STALE_MS {
+                            "stale"
+                        } else {
+                            "ok"
+                        }
                     }
                 }
             };
