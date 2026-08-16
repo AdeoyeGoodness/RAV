@@ -677,7 +677,15 @@ pub async fn list_agents(
                    SELECT received_at FROM agent_lifecycle_events l
                    WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
                    ORDER BY l.received_at DESC LIMIT 1
-               ) AS last_lifecycle_at
+               ) AS last_lifecycle_at,
+               -- Latest event timestamp per agent — powers the "uploader stalled"
+               -- detector. If heartbeat is fresh but this is stale, the agent's
+               -- event pipeline has jammed even though the tiny heartbeat POST
+               -- still slips through.
+               (
+                   SELECT MAX(e.timestamp) FROM events e
+                   WHERE e.agent_id = a.agent_id AND e.organization_id = a.organization_id
+               ) AS latest_event_at
         FROM agents a
         LEFT JOIN enrollment_tokens t ON a.enrollment_token_id = t.token_id
         WHERE a.deleted_at IS NULL
@@ -697,10 +705,39 @@ pub async fn list_agents(
     })?;
 
     let now = Utc::now();
+    let now_ms = now.timestamp_millis();
+    // "Uploader stalled" thresholds. Heartbeat freshness kept identical to
+    // deriveDeviceStatus() in the dashboard so both agree on when a device
+    // is beaconing. Event staleness at 30min catches the jammed-uploader
+    // case where heartbeats keep flowing but no telemetry lands.
+    const HEARTBEAT_FRESH_MS: i64 = 3 * 60 * 1000;
+    const EVENT_STALE_MS: i64 = 30 * 60 * 1000;
+
     let result: Vec<serde_json::Value> = agents
         .into_iter()
         .map(|row| {
             let last_seen = row.get::<chrono::DateTime<Utc>, _>("last_seen");
+            let latest_event_at = row.get::<Option<chrono::DateTime<Utc>>, _>("latest_event_at");
+            let heartbeat_age_ms = now_ms - last_seen.timestamp_millis();
+            let heartbeat_fresh = heartbeat_age_ms <= HEARTBEAT_FRESH_MS;
+
+            // uploader_health values:
+            //   "ok"      — heartbeat fresh AND recent events (or agent too new to judge)
+            //   "stale"   — heartbeat fresh, events > 30 min old → uploader jammed
+            //   "dark"    — heartbeat fresh, zero events ever   → uploader never worked
+            //   "unknown" — heartbeat stale, can't say anything about the uploader
+            let uploader_health = if !heartbeat_fresh {
+                "unknown"
+            } else {
+                match latest_event_at {
+                    None => "dark",
+                    Some(t) => {
+                        let event_age_ms = now_ms - t.timestamp_millis();
+                        if event_age_ms > EVENT_STALE_MS { "stale" } else { "ok" }
+                    }
+                }
+            };
+
             serde_json::json!({
                 "id": row.get::<Uuid, _>("id"),
                 "organization_id": row.get::<Uuid, _>("organization_id"),
@@ -710,7 +747,7 @@ pub async fn list_agents(
                 "display_name": row.get::<Option<String>, _>("display_name"),
                 "last_seen": last_seen,
                 "last_seen_ms": last_seen.timestamp_millis(),
-                "server_time_ms": now.timestamp_millis(), // Add this for clock-sync
+                "server_time_ms": now_ms, // Add this for clock-sync
                 "created_at": row.get::<chrono::DateTime<Utc>, _>("created_at"),
                 "updated_at": row.get::<chrono::DateTime<Utc>, _>("updated_at"),
                 "enrollment_token_id": row.get::<Option<Uuid>, _>("enrollment_token_id"),
@@ -721,6 +758,9 @@ pub async fn list_agents(
                 "watchdog_version": row.get::<Option<String>, _>("watchdog_version"),
                 "last_lifecycle_state": row.get::<Option<String>, _>("last_lifecycle_state"),
                 "last_lifecycle_at": row.get::<Option<chrono::DateTime<Utc>>, _>("last_lifecycle_at"),
+                "latest_event_at": latest_event_at,
+                "latest_event_at_ms": latest_event_at.map(|t| t.timestamp_millis()),
+                "uploader_health": uploader_health,
             })
         })
         .collect();

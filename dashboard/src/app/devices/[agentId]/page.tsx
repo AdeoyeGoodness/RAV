@@ -53,6 +53,9 @@ interface Agent {
   created_at: string
   updated_at: string
   campaign?: string | null
+  uploader_health?: 'ok' | 'stale' | 'dark' | 'unknown'
+  latest_event_at?: string | null
+  latest_event_at_ms?: number | null
 }
 
 interface Event {
@@ -69,6 +72,18 @@ function statusTone(a: Agent): { tone: 'ok' | 'warn' | 'crit'; label: string } {
   if (mins < 5) return { tone: 'ok', label: 'Online · beaconing' }
   if (mins < 30) return { tone: 'warn', label: 'Idle · reachable' }
   return { tone: 'crit', label: 'Offline' }
+}
+
+function latestEventLabel(a: Agent): string {
+  if (!a.latest_event_at_ms) return 'no events'
+  const diffMs = a.server_time_ms - a.latest_event_at_ms
+  const mins = Math.floor(diffMs / 60000)
+  const hrs = Math.floor(diffMs / 3600000)
+  const days = Math.floor(diffMs / 86400000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  if (hrs < 24) return `${hrs} h ago`
+  return `${days} d ago`
 }
 
 export default function DeviceDetailsPage() {
@@ -273,10 +288,22 @@ export default function DeviceDetailsPage() {
           {/* Profile row */}
           <Panel padding={false}>
             <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-ct-line">
-              <ProfileMeta label="Status" value={<StatusPill tone={st.tone}>{st.label}</StatusPill>} />
+              <ProfileMeta
+                label="Status"
+                value={
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                    {(agent.uploader_health === 'stale' || agent.uploader_health === 'dark') && (
+                      <StatusPill tone="crit">
+                        {agent.uploader_health === 'dark' ? 'no events ever' : 'uploader stalled'}
+                      </StatusPill>
+                    )}
+                  </div>
+                }
+              />
               <ProfileMeta label="Campaign" value={agent.campaign ? <StatusPill tone="accent" dot={false}>{agent.campaign}</StatusPill> : <span className="text-ct-ink3 font-mono text-[11px]">Unassigned</span>} />
               <ProfileMeta
-                label="Last synchronised"
+                label="Last heartbeat"
                 value={
                   <span className="font-mono text-[12px] text-ct-ink tabular-nums">
                     {formatWAT(agent.last_seen)}
@@ -284,10 +311,18 @@ export default function DeviceDetailsPage() {
                 }
               />
               <ProfileMeta
-                label="Installed"
+                label="Latest event"
                 value={
-                  <span className="font-mono text-[12px] text-ct-ink2 tabular-nums">
-                    {formatWAT(agent.created_at)}
+                  <span
+                    className="font-mono text-[12px] tabular-nums"
+                    style={{
+                      color:
+                        agent.uploader_health === 'stale' || agent.uploader_health === 'dark'
+                          ? 'var(--ct-crit)'
+                          : 'var(--ct-ink2)',
+                    }}
+                  >
+                    {latestEventLabel(agent)}
                   </span>
                 }
               />

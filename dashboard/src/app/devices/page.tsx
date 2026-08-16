@@ -69,7 +69,7 @@ export default function DevicesPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [campaignFilter, setCampaignFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | FleetStatus>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | FleetStatus | 'stalled'>('all')
 
   useEffect(() => {
     if (user) {
@@ -134,6 +134,7 @@ export default function DevicesPage() {
   }
 
   const flagged = fleetCounts.tampered + fleetCounts.removed + fleetCounts.killed
+  const stalledCount = agents.filter((a) => a.uploader_health === 'stale' || a.uploader_health === 'dark').length
 
   const filteredAgents = agents.filter((agent) => {
     if (campaignFilter === '__none__') {
@@ -141,7 +142,9 @@ export default function DevicesPage() {
     } else if (campaignFilter !== 'all') {
       if (agent.campaign !== campaignFilter) return false
     }
-    if (statusFilter !== 'all' && fleetStatus(agent) !== statusFilter) return false
+    if (statusFilter === 'stalled') {
+      if (agent.uploader_health !== 'stale' && agent.uploader_health !== 'dark') return false
+    } else if (statusFilter !== 'all' && fleetStatus(agent) !== statusFilter) return false
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
     return (
@@ -173,8 +176,8 @@ export default function DevicesPage() {
             <FleetCell label="Online" value={fleetCounts.online} sub={`${agents.length ? Math.round((fleetCounts.online / agents.length) * 100) : 0}% reporting`} tone="accent" />
             <FleetCell label="Idle" value={fleetCounts.idle} sub="under 30 m" tone="ok" />
             <FleetCell label="Offline" value={fleetCounts.offline + fleetCounts.stopped} sub="after hours" tone="idle" />
-            <FleetCell label="Flagged" value={flagged} sub="tampered / killed / removed" tone="crit" />
-            <FleetCell label="Campaigns" value={campaigns.length} sub={campaigns.slice(0, 3).join(' · ') || 'none'} tone="ink" last />
+            <FleetCell label="Uploader stalled" value={stalledCount} sub="beaconing · no events" tone={stalledCount > 0 ? 'crit' : 'idle'} />
+            <FleetCell label="Flagged" value={flagged} sub="tampered / killed / removed" tone={flagged > 0 ? 'crit' : 'idle'} last />
           </div>
 
           {/* Filter bar */}
@@ -213,7 +216,7 @@ export default function DevicesPage() {
                 ))}
                 <option value="__none__">No campaign</option>
               </select>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 flex-wrap">
                 {(['all', 'online', 'idle', 'offline', 'tampered'] as const).map((s) => {
                   const count = s === 'all' ? agents.length : fleetCounts[s as FleetStatus] || 0
                   return (
@@ -228,6 +231,14 @@ export default function DevicesPage() {
                     </Chip>
                   )
                 })}
+                <Chip
+                  tone="crit"
+                  active={statusFilter === 'stalled'}
+                  onClick={() => setStatusFilter('stalled' as any)}
+                >
+                  stalled
+                  <span className="text-ct-ink3 ml-1 tabular-nums">{stalledCount}</span>
+                </Chip>
               </div>
             </div>
 
@@ -247,7 +258,7 @@ export default function DevicesPage() {
                 <div
                   className="grid gap-3 px-6 py-3 border-b border-ct-line bg-ct-bg2 font-mono text-[10px] uppercase text-ct-ink3"
                   style={{
-                    gridTemplateColumns: '1.8fr 100px 120px 130px 100px 110px 100px 24px',
+                    gridTemplateColumns: '1.8fr 100px 120px 130px 100px 180px 100px 24px',
                     letterSpacing: '0.20em',
                   }}
                 >
@@ -268,7 +279,7 @@ export default function DevicesPage() {
                       key={agent.id}
                       onClick={() => router.push(`/devices/${agent.agent_id}`)}
                       className="w-full grid gap-3 items-center px-6 py-[14px] border-b border-ct-line hover:bg-ct-panel-hi transition-colors text-left"
-                      style={{ gridTemplateColumns: '1.8fr 100px 120px 130px 100px 110px 100px 24px' }}
+                      style={{ gridTemplateColumns: '1.8fr 100px 120px 130px 100px 180px 100px 24px' }}
                     >
                       <div className="min-w-0">
                         <div className="text-[13px] font-medium text-ct-ink truncate">
@@ -300,7 +311,14 @@ export default function DevicesPage() {
                       <div className="font-mono text-[11px] text-ct-ink3 truncate">
                         {agent.watchdog_version || '—'}
                       </div>
-                      <StatusPill tone={statusPillTone[st]}>{st}</StatusPill>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <StatusPill tone={statusPillTone[st]}>{st}</StatusPill>
+                        {(agent.uploader_health === 'stale' || agent.uploader_health === 'dark') && (
+                          <StatusPill tone="crit" dot={false}>
+                            {agent.uploader_health === 'dark' ? 'no events' : 'stalled'}
+                          </StatusPill>
+                        )}
+                      </div>
                       <div className="font-mono text-[11px] text-ct-ink3 text-right tabular-nums">
                         {lastSeenShort(agent)}
                       </div>

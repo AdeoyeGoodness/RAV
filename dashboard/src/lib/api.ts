@@ -115,6 +115,16 @@ export interface Agent {
   watchdog_version?: string | null
   last_lifecycle_state?: string | null    // started | stopping | uninstalling
   last_lifecycle_at?: string | null
+  // Server-computed uploader health. Distinguishes "beaconing but not
+  // uploading" from a genuinely online endpoint. See list_agents in
+  // backend/src/api/handlers.rs for the derivation rules.
+  //   ok       — heartbeat fresh AND recent events
+  //   stale    — heartbeat fresh, events > 30 min old (uploader jammed)
+  //   dark     — heartbeat fresh, no events ever seen (fresh install or broken)
+  //   unknown  — heartbeat stale, can't say anything about the uploader
+  uploader_health?: 'ok' | 'stale' | 'dark' | 'unknown'
+  latest_event_at?: string | null
+  latest_event_at_ms?: number | null
 }
 
 /** What the dashboard should show for a device, derived from heartbeat +
