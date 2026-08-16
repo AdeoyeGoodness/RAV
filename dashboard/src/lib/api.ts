@@ -223,6 +223,16 @@ export async function getSystemHealth(): Promise<{
   return response.data;
 }
 
+/**
+ * Fetch the VPS wall-clock time (ms since epoch). Used by the Header to sync
+ * its on-screen clock to server time — bypassing the viewer's browser clock,
+ * which drifts when the viewer's Windows regional TZ is misconfigured.
+ */
+export async function getServerTime(): Promise<number> {
+  const response = await api.get('/api/v1/time')
+  return response.data.server_time_ms
+}
+
 export async function sendHeartbeat(heartbeat: {
   agent_id: string
   hardware_fingerprint: string

@@ -12,7 +12,7 @@ import { KeyEvents } from '@/components/dashboard/KeyEvents'
 import { EnrolledAgents } from '@/components/dashboard/EnrolledAgents'
 import { UserInsights } from '@/components/dashboard/UserInsights'
 import { SectionHead, Eyebrow, ActionButton, Panel } from '@/components/ct/primitives'
-import { getAgents, getEvents, Agent } from '@/lib/api'
+import { getAgents, getEvents, getServerTime, Agent } from '@/lib/api'
 import { formatWATTime } from '@/lib/time'
 import { useAuth } from '@/contexts/AuthContext'
 import { RefreshCw } from 'lucide-react'
@@ -79,7 +79,14 @@ export default function DashboardPage() {
         mediumCount,
         lowCount,
       })
-      setLastRefresh(new Date())
+      // Prefer server wall-clock; falls back to browser only if the /time
+      // endpoint is unreachable. Keeps "Last sync" aligned with the header.
+      try {
+        const serverMs = await getServerTime()
+        setLastRefresh(new Date(serverMs))
+      } catch {
+        setLastRefresh(new Date())
+      }
     } catch (e) {
       console.error('Failed to fetch dashboard data:', e)
     } finally {

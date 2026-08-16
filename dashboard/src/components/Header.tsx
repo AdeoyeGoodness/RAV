@@ -1,18 +1,45 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Search } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATTime } from '@/lib/time'
+import { getServerTime } from '@/lib/api'
 
 export default function Header() {
   const { user, isLoading } = useAuth()
   const [now, setNow] = useState<Date | null>(null)
+  // ms to add to `Date.now()` to get server (VPS) wall-clock. Analysts often
+  // view from laptops whose OS TZ is misconfigured (US Central instead of
+  // WAT); trusting the browser clock produces a 6h off header. Sync from
+  // /api/v1/time on mount + every 60s, then tick locally against the offset.
+  const offsetRef = useRef<number>(0)
 
   useEffect(() => {
-    setNow(new Date())
-    const id = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(id)
+    let mounted = true
+
+    const sync = async () => {
+      try {
+        const serverMs = await getServerTime()
+        if (!mounted) return
+        offsetRef.current = serverMs - Date.now()
+        setNow(new Date(Date.now() + offsetRef.current))
+      } catch {
+        // On failure, fall through to browser time — better a wrong clock
+        // than a blank one.
+        if (mounted && offsetRef.current === 0) setNow(new Date())
+      }
+    }
+
+    sync()
+    const tick = setInterval(() => setNow(new Date(Date.now() + offsetRef.current)), 1000)
+    const resync = setInterval(sync, 60_000)
+
+    return () => {
+      mounted = false
+      clearInterval(tick)
+      clearInterval(resync)
+    }
   }, [])
 
   const displayName = user?.email?.split('@')[0] || 'Operator'

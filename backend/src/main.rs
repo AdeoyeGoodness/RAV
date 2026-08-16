@@ -203,6 +203,7 @@ async fn main() -> Result<()> {
     // Build application
     let app = Router::new()
         .route("/health", get(health_check))
+        .route("/api/v1/time", get(server_time))
         .route("/api/v1/auth/login", post(api::auth::login))
         .route("/api/v1/auth/register", post(api::auth::register))
         .route("/api/v1/auth/me", get(api::auth::me))
@@ -302,6 +303,17 @@ async fn main() -> Result<()> {
 
 async fn health_check() -> StatusCode {
     StatusCode::OK
+}
+
+/// Returns the VPS wall-clock time as ms-since-epoch. Called by the dashboard
+/// header so the on-screen clock reflects the server (Africa/Lagos) rather
+/// than the viewer's browser — critical when analysts view from a laptop
+/// whose OS timezone is misconfigured (US Central instead of WAT, etc.).
+/// Public, unauthenticated — leaking wall-clock time is not sensitive.
+async fn server_time() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "server_time_ms": chrono::Utc::now().timestamp_millis(),
+    }))
 }
 
 async fn secure_headers(
