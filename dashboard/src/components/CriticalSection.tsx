@@ -13,6 +13,8 @@ interface CriticalFile {
   matches: string[]
   created_at: string
   ocr_processed_at: string | null
+  /** Count of near-identical screenshots that collapsed into this one. */
+  duplicate_count?: number
 }
 
 interface Props {
@@ -137,6 +139,20 @@ export default function CriticalSection({ agentId }: Props) {
                     <ShieldAlert className="w-3 h-3" />
                     Critical
                   </div>
+                  {f.duplicate_count && f.duplicate_count > 0 ? (
+                    <div
+                      className="absolute top-2 right-2 text-[10px] font-mono uppercase text-ct-ink px-2 py-1 rounded-sm"
+                      style={{
+                        background: 'rgba(0,0,0,0.65)',
+                        border: '1px solid var(--ct-line2)',
+                        backdropFilter: 'blur(4px)',
+                        letterSpacing: '0.14em',
+                      }}
+                      title="Near-identical captures collapsed into this one"
+                    >
+                      +{f.duplicate_count} similar
+                    </div>
+                  ) : null}
                   <div
                     className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3"
                     style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75), transparent)' }}

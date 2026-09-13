@@ -243,6 +243,22 @@ export async function getServerTime(): Promise<number> {
   return response.data.server_time_ms
 }
 
+export interface ScreenshotDuplicate {
+  file_id: string
+  duplicate_of_file_id: string
+}
+
+/**
+ * Set of screenshot file_ids that the perceptual-hash dedup identified as
+ * near-copies of an older screenshot. The ScreenshotViewer fetches this and
+ * filters those thumbnails out of the grid, showing an "N duplicates
+ * suppressed" chip so the operator knows the collapse happened.
+ */
+export async function getAgentScreenshotDuplicates(agentId: string): Promise<ScreenshotDuplicate[]> {
+  const response = await api.get(`/api/v1/agents/${agentId}/screenshot-duplicates`)
+  return response.data.duplicates ?? []
+}
+
 export interface EventsSummary {
   window_hours: number
   server_time_ms: number

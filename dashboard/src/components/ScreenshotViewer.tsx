@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { formatWATTime, formatWATPattern } from '@/lib/time'
 import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown } from 'lucide-react'
-import { downloadFile, getEvents } from '@/lib/api'
+import { downloadFile, getEvents, getAgentScreenshotDuplicates } from '@/lib/api'
 import { Panel, PanelHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
 interface Event {
@@ -41,6 +41,10 @@ export default function ScreenshotViewer({
   const [allEvents, setAllEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
+  // Set of file_ids the backend perceptual-hash pass tagged as near-copies
+  // of an older screenshot. We hide those thumbnails and surface the count
+  // as an "N duplicates suppressed" chip.
+  const [duplicateIds, setDuplicateIds] = useState<Set<string>>(new Set())
 
   // This section owns its own data, so refreshing it never touches the others.
   const fetchEvents = useCallback(async (background = false) => {
@@ -52,8 +56,14 @@ export default function ScreenshotViewer({
         params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()
         params.end_time = new Date(`${dateFilter}T23:59:59.999`).toISOString()
       }
-      const data = await getEvents(params)
+      // Fetch events + dedup roster in parallel. Dedup call is best-effort;
+      // if it fails we render everything (unfiltered) rather than block.
+      const [data, dups] = await Promise.all([
+        getEvents(params),
+        getAgentScreenshotDuplicates(agentId).catch(() => []),
+      ])
       setAllEvents(data as Event[])
+      setDuplicateIds(new Set(dups.map((d) => d.file_id)))
     } catch (e) {
       console.error('Failed to load screenshot events:', e)
     } finally {
@@ -72,7 +82,14 @@ export default function ScreenshotViewer({
     ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
     : allEvents
 
-  const screenshotEvents = events.filter(e => e.event_type === 'screenshot_captured' || e.event_type === 'screenshot_upload_failed')
+  const allScreenshotEvents = events.filter(e => e.event_type === 'screenshot_captured' || e.event_type === 'screenshot_upload_failed')
+  // Filter out near-duplicate captures the backend flagged. Failed uploads
+  // (screenshot_upload_failed) don't have a file_id, so they always pass.
+  const screenshotEvents = allScreenshotEvents.filter(e => {
+    const fid = e.metadata?.file_id
+    return !fid || !duplicateIds.has(fid)
+  })
+  const suppressedDuplicates = allScreenshotEvents.length - screenshotEvents.length
 
   const parseSafeDate = (ts: string) => {
     let iso = ts.replace(' ', 'T')
@@ -255,7 +272,11 @@ export default function ScreenshotViewer({
             Screenshots
           </span>
         }
-        meta={`${screenshotEvents.length} captures`}
+        meta={
+          suppressedDuplicates > 0
+            ? `${screenshotEvents.length} captures · ${suppressedDuplicates} near-duplicate${suppressedDuplicates === 1 ? '' : 's'} suppressed`
+            : `${screenshotEvents.length} captures`
+        }
         live={autoRefresh}
         right={
           <div className="flex items-center gap-2">

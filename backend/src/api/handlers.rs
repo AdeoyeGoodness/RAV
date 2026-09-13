@@ -1006,7 +1006,72 @@ pub async fn upload_file(
     let extension = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("bin");
     let file_path_storage = state.file_storage_dir.join(format!("{}.{}", file_id, extension));
     std::fs::write(&file_path_storage, &data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
+    // Perceptual-hash dedup for screenshots. Non-image uploads (archives,
+    // browser exports, etc.) skip this entirely — extension check is the
+    // gate. On decode failure we log and move on; the file still stores.
+    let is_image = matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "webp" | "bmp"
+    );
+    if is_image {
+        if let Some(hash) = crate::services::image_hash::dhash_hex(&data) {
+            // Look for a recent same-agent hash within the similarity threshold.
+            // Bounded to 60 min + 40 candidates so this stays O(constant) per upload.
+            let mut dedup_tx = match state.db.begin_rls_tx(org_id).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!("Dedup: failed to open tx for {}: {}", file_id, e);
+                    return Ok(Json(serde_json::json!({
+                        "status": "success", "file_id": file_id, "file_name": file_name, "file_size": data.len()
+                    })));
+                }
+            };
+            let candidates = sqlx::query!(
+                r#"
+                SELECT file_id, image_hash
+                FROM files
+                WHERE agent_id = $1
+                  AND organization_id = $2
+                  AND image_hash IS NOT NULL
+                  AND duplicate_of_file_id IS NULL
+                  AND created_at > NOW() - INTERVAL '60 minutes'
+                  AND file_id <> $3
+                ORDER BY created_at DESC
+                LIMIT 40
+                "#,
+                agent_id, org_id, file_id
+            )
+            .fetch_all(&mut *dedup_tx)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Dedup: candidate query failed: {}", e);
+                Vec::new()
+            });
+
+            let mut duplicate_of: Option<String> = None;
+            for c in &candidates {
+                if let Some(existing) = &c.image_hash {
+                    let d = crate::services::image_hash::hamming_hex(existing, &hash);
+                    if d <= crate::services::image_hash::SIMILAR_THRESHOLD {
+                        duplicate_of = Some(c.file_id.clone());
+                        break;
+                    }
+                }
+            }
+
+            let _ = sqlx::query!(
+                "UPDATE files SET image_hash = $1, duplicate_of_file_id = $2 WHERE file_id = $3",
+                hash, duplicate_of, file_id
+            )
+            .execute(&mut *dedup_tx)
+            .await;
+            let _ = dedup_tx.commit().await;
+        } else {
+            tracing::debug!("Dedup: dHash decode failed for {}", file_id);
+        }
+    }
+
     Ok(Json(serde_json::json!({
         "status": "success",
         "file_id": file_id,
@@ -1349,29 +1414,16 @@ pub struct DownloadQuery {
     pub password: Option<String>,
 }
 
-/// One row on the "Critical" tab of the endpoint detail page: an image that
-/// the OCR pipeline flagged because its extracted text contained one or more
-/// sensitive keywords.
-#[derive(Debug, Serialize)]
-pub struct CriticalFile {
-    pub id: Uuid,
-    pub file_id: String,
-    pub file_name: String,
-    pub file_size: i64,
-    pub matches: Vec<String>,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub ocr_processed_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
 /// List every critical (OCR-flagged) file for one endpoint, newest first. RLS
 /// on `files` (via `begin_rls_tx`) means an org can only ever see its own
-/// endpoints.
+/// endpoints. Returns one row per PERCEPTUAL cluster (near-duplicate frames
+/// collapse into their oldest representative with a `duplicate_count`).
 pub async fn list_agent_critical_files(
     State(state): State<AppState>,
     claims: Claims,
     headers: HeaderMap,
     Path(agent_id): Path<String>,
-) -> Result<Json<Vec<CriticalFile>>, StatusCode> {
+) -> Result<Json<serde_json::Value>, StatusCode> {
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -1383,15 +1435,23 @@ pub async fn list_agent_critical_files(
     };
 
     let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Only representatives (duplicate_of_file_id IS NULL) — plus a
+    // correlated subquery that counts near-identical siblings so the
+    // dashboard can render "+N similar" next to each thumbnail.
     let rows = sqlx::query(
         r#"
-        SELECT id, file_id, file_name, file_size, ocr_matches, created_at, ocr_processed_at
-        FROM files
-        WHERE agent_id = $1
-          AND organization_id = $2
-          AND is_critical = TRUE
-          AND deleted_at IS NULL
-        ORDER BY created_at DESC
+        SELECT f.id, f.file_id, f.file_name, f.file_size, f.ocr_matches,
+               f.created_at, f.ocr_processed_at,
+               (SELECT COUNT(*)::bigint FROM files d
+                  WHERE d.duplicate_of_file_id = f.file_id
+                    AND d.deleted_at IS NULL) AS duplicate_count
+        FROM files f
+        WHERE f.agent_id = $1
+          AND f.organization_id = $2
+          AND f.is_critical = TRUE
+          AND f.deleted_at IS NULL
+          AND f.duplicate_of_file_id IS NULL
+        ORDER BY f.created_at DESC
         LIMIT 500
         "#,
     )
@@ -1405,19 +1465,74 @@ pub async fn list_agent_critical_files(
     })?;
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let out: Vec<CriticalFile> = rows
+    let out: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|r| CriticalFile {
-            id: r.get("id"),
-            file_id: r.get("file_id"),
-            file_name: r.get("file_name"),
-            file_size: r.get("file_size"),
-            matches: r.get::<Vec<String>, _>("ocr_matches"),
-            created_at: r.get("created_at"),
-            ocr_processed_at: r.try_get("ocr_processed_at").ok(),
-        })
+        .map(|r| serde_json::json!({
+            "id": r.get::<Uuid, _>("id"),
+            "file_id": r.get::<String, _>("file_id"),
+            "file_name": r.get::<String, _>("file_name"),
+            "file_size": r.get::<i64, _>("file_size"),
+            "matches": r.get::<Vec<String>, _>("ocr_matches"),
+            "created_at": r.get::<chrono::DateTime<Utc>, _>("created_at"),
+            "ocr_processed_at": r.try_get::<chrono::DateTime<Utc>, _>("ocr_processed_at").ok(),
+            "duplicate_count": r.get::<i64, _>("duplicate_count"),
+        }))
         .collect();
-    Ok(Json(out))
+    Ok(Json(serde_json::Value::Array(out)))
+}
+
+/// Returns the set of file_ids for the given agent's screenshots that are
+/// marked as duplicates of another (older) screenshot. The dashboard's
+/// ScreenshotViewer fetches this alongside its event feed and filters those
+/// files out of the grid, then shows the count as "N duplicates suppressed."
+/// Structure: `{ duplicates: [{ file_id, duplicate_of_file_id }] }`.
+pub async fn list_agent_screenshot_duplicates(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows = sqlx::query!(
+        r#"
+        SELECT file_id, duplicate_of_file_id
+        FROM files
+        WHERE agent_id = $1
+          AND organization_id = $2
+          AND duplicate_of_file_id IS NOT NULL
+          AND deleted_at IS NULL
+          AND created_at > NOW() - INTERVAL '7 days'
+        LIMIT 5000
+        "#,
+        agent_id, target_org_id
+    )
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("list_agent_screenshot_duplicates failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let duplicates: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| serde_json::json!({
+            "file_id": r.file_id,
+            "duplicate_of_file_id": r.duplicate_of_file_id,
+        }))
+        .collect();
+
+    Ok(Json(serde_json::json!({ "duplicates": duplicates })))
 }
 
 pub async fn list_agent_archives(
