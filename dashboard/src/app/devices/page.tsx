@@ -11,6 +11,7 @@ import ArchiveBanner from '@/components/ArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATDate } from '@/lib/time'
 import { Panel, PanelHead, SectionHead, StatusPill, Chip, Eyebrow } from '@/components/ct/primitives'
+import { Counter } from '@/components/ct/Counter'
 
 // Drift-proof status derivation — matches deriveDeviceStatus() in lib/api.ts.
 // Kept inline because that helper returns a slightly different shape than
@@ -368,7 +369,7 @@ function FleetCell({
         className="font-mono font-medium tabular-nums"
         style={{ fontSize: 28, color, letterSpacing: '-0.01em', marginTop: 6 }}
       >
-        {value.toLocaleString()}
+        <Counter value={value} />
       </div>
       <div
         className="font-mono text-[11px] text-ct-ink3 mt-1 truncate"

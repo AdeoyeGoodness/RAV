@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Globe, Cpu, Chrome, HardDrive, Camera, Shield, User, Terminal, Circle, ArrowUpRight } from 'lucide-react'
 import { Panel, PanelHead, Eyebrow } from '../ct/primitives'
+import { Counter } from '../ct/Counter'
 
 interface ActivitySummaryProps {
   /**
@@ -83,7 +84,7 @@ export function ActivitySummary({ breakdown, total }: ActivitySummaryProps) {
                   </div>
                   <div className="flex items-baseline gap-1.5">
                     <span className="font-mono tabular-nums text-[15px] text-ct-ink">
-                      {count.toLocaleString()}
+                      <Counter value={count} />
                     </span>
                     <span className="text-[10px] text-ct-ink3">
                       {total > 0 ? `${Math.round((count / total) * 100)}%` : '0%'}
@@ -104,7 +105,7 @@ export function ActivitySummary({ breakdown, total }: ActivitySummaryProps) {
       <div className="flex items-center justify-between px-5 py-3 border-t border-ct-line bg-ct-bg2">
         <Eyebrow>Total ingested</Eyebrow>
         <span className="font-mono tabular-nums text-[14px] font-medium text-ct-ink">
-          {total.toLocaleString()}
+          <Counter value={total} />
         </span>
       </div>
     </Panel>

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { ArrowUpRight, Monitor } from 'lucide-react'
 import { Panel, PanelHead, Eyebrow } from '../ct/primitives'
+import { Counter } from '../ct/Counter'
 
 interface Contributor {
   agent_id: string
@@ -79,7 +80,7 @@ export function TopContributors({
                       </div>
                       <div className="flex items-baseline gap-2 shrink-0">
                         <span className="font-mono tabular-nums text-[13px] text-ct-ink">
-                          {c.count.toLocaleString()}
+                          <Counter value={c.count} />
                         </span>
                         <span className="font-mono text-[10px] text-ct-ink3 tabular-nums w-8 text-right">
                           {share}%
@@ -102,7 +103,7 @@ export function TopContributors({
       <div className="border-t border-ct-line px-5 py-3 flex items-center justify-between">
         <Eyebrow>Coverage</Eyebrow>
         <span className="font-mono text-[11px] text-ct-ink2 tabular-nums">
-          {covered.toLocaleString()} / {total.toLocaleString()} events shown
+          <Counter value={covered} /> / <Counter value={total} /> events shown
         </span>
       </div>
     </Panel>

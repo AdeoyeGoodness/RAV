@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Eyebrow } from '../ct/primitives'
+import { Counter } from '../ct/Counter'
 
 interface StatsRowProps {
   stats: {
@@ -60,7 +61,7 @@ export function StatsRow({ stats }: StatsRowProps) {
             className="font-mono font-medium tabular-nums"
             style={{ fontSize: 28, color: valueColor(c.tone), letterSpacing: '-0.01em', marginTop: 6 }}
           >
-            {c.value.toLocaleString()}
+            <Counter value={c.value} />
           </div>
           <div
             className="font-mono text-[11px] text-ct-ink3 mt-1"
