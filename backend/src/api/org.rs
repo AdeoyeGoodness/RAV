@@ -445,6 +445,20 @@ pub async fn delete_keyword(
 ) -> Result<StatusCode, StatusCode> {
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Read the keyword text BEFORE deleting — we need it to find every file
+    // that was flagged because of this term so we can reschedule those for a
+    // fresh OCR pass. Without this the file keeps its stale `ocr_matches`
+    // and its `is_critical=true` even after the rule that flagged it is gone.
+    let keyword_text = sqlx::query_scalar::<_, String>(
+        "SELECT keyword FROM sensitive_keywords WHERE id = $1 AND organization_id = $2",
+    )
+    .bind(id)
+    .bind(org_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let res = sqlx::query(
         "DELETE FROM sensitive_keywords WHERE id = $1 AND organization_id = $2",
     )
@@ -456,9 +470,41 @@ pub async fn delete_keyword(
         tracing::error!("delete_keyword failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     if res.rows_affected() == 0 {
+        tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         return Err(StatusCode::NOT_FOUND);
     }
+
+    // Reset every file that carried this keyword in its match list, so the
+    // OCR worker picks them up on the next sweep and re-derives is_critical
+    // from the CURRENT keyword catalog. Files flagged by other keywords too
+    // will keep their critical status; files flagged ONLY by this one drop.
+    if let Some(kw) = keyword_text {
+        let rescheduled = sqlx::query(
+            "UPDATE files
+             SET ocr_status = 'pending',
+                 ocr_matches = '{}',
+                 is_critical = FALSE,
+                 ocr_processed_at = NULL,
+                 ocr_error = NULL
+             WHERE organization_id = $1
+               AND $2 = ANY(ocr_matches)",
+        )
+        .bind(org_id)
+        .bind(&kw)
+        .execute(&mut *tx)
+        .await
+        .map(|r| r.rows_affected())
+        .unwrap_or(0);
+        if rescheduled > 0 {
+            tracing::info!(
+                "Keyword '{}' deleted — rescheduled {} files for re-scan",
+                kw, rescheduled
+            );
+        }
+    }
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

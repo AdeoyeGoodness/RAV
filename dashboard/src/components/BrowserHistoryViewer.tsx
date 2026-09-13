@@ -124,6 +124,42 @@ export default function BrowserHistoryViewer({
     })
     : typeFilteredEvents
 
+  // Dedupe consecutive same-URL events fired within a short window. Chrome
+  // and Edge extensions frequently double-fire on the same navigation
+  // (activation + tab_updated + history_visit for one page load) which was
+  // the source of the "duplicate data on pages" pain. We collapse by
+  // (event_type, browser, url, minute-bucket) and count how many collapsed
+  // into each survivor.
+  interface DisplayEvent extends Event {
+    _dupCount?: number
+  }
+  const dedupeWindowMs = 60_000
+  const dedupedEvents: DisplayEvent[] = (() => {
+    // Sort by timestamp ascending so we always keep the earliest and count later dupes into it.
+    const chrono = [...searchFilteredEvents].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
+    const survivors: DisplayEvent[] = []
+    const keyFor = (e: Event) =>
+      `${e.event_type}|${e.metadata?.browser || e.metadata?.browser_type || ''}|${e.metadata?.url || e.metadata?.query || ''}`
+    const lastByKey = new Map<string, DisplayEvent>()
+    for (const ev of chrono) {
+      const k = keyFor(ev)
+      const prev = lastByKey.get(k)
+      if (prev) {
+        const dt = new Date(ev.timestamp).getTime() - new Date(prev.timestamp).getTime()
+        if (Math.abs(dt) <= dedupeWindowMs) {
+          prev._dupCount = (prev._dupCount || 1) + 1
+          continue
+        }
+      }
+      const cloned: DisplayEvent = { ...ev }
+      survivors.push(cloned)
+      lastByKey.set(k, cloned)
+    }
+    return survivors
+  })()
+
   const getSafeUrl = (url?: string) => {
     if (!url) return '#'
     try {
@@ -139,11 +175,12 @@ export default function BrowserHistoryViewer({
     return '#'
   }
 
-  const sortedEvents = [...searchFilteredEvents].sort((a, b) => {
+  const sortedEvents = [...dedupedEvents].sort((a, b) => {
     const timeA = new Date(a.timestamp).getTime()
     const timeB = new Date(b.timestamp).getTime()
     return sortOrder === 'newest' ? timeB - timeA : timeA - timeB
   })
+  const suppressedCount = searchFilteredEvents.length - dedupedEvents.length
 
   const historyEvents = browserEvents.filter(e => e.event_type === 'browser_history_visited' || e.event_type === 'browser_history_visit')
   const activeTabEvents = browserEvents.filter(e => e.event_type === 'browser_active_tab' || e.event_type === 'browser_tab_updated')
@@ -300,13 +337,37 @@ export default function BrowserHistoryViewer({
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-ct-ink3" />
               <p className="text-[12px] text-ct-ink3 font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading forensics</p>
             </div>
+          ) : sortedEvents.length === 0 && browserEvents.length === 0 ? (
+            // Zero browser events at all — the extension probably isn't on
+            // this endpoint. Direct the operator to the deployment doc
+            // instead of showing a generic empty state.
+            <div className="text-center py-14 rounded-sm border border-dashed border-ct-line bg-ct-bg2">
+              <Globe className="w-10 h-10 mx-auto mb-3 text-ct-ink4" />
+              <p className="text-[13px] font-medium text-ct-ink2">Browser extension not detected</p>
+              <p className="text-[11px] text-ct-ink3 mt-2 max-w-md mx-auto font-mono" style={{ letterSpacing: '0.04em' }}>
+                No browser events have arrived from this endpoint. Install the
+                RAV browser extension (force-installed via Edge / Chrome store
+                policy) to capture history, active tabs, downloads, and
+                searches.
+              </p>
+            </div>
           ) : sortedEvents.length === 0 ? (
             <div className="text-center py-16 rounded-sm border border-dashed border-ct-line bg-ct-bg2">
               <Globe className="w-10 h-10 mx-auto mb-3 text-ct-ink4" />
               <p className="text-[13px] font-medium text-ct-ink2">No events match your filters</p>
             </div>
           ) : (
-            sortedEvents.map((event) => (
+            <>
+              {suppressedCount > 0 && (
+                <div
+                  className="rounded-sm px-4 py-2 text-[11px] font-mono text-ct-ink3"
+                  style={{ background: 'var(--ct-bg2)', border: '1px solid var(--ct-line)', letterSpacing: '0.06em' }}
+                >
+                  {suppressedCount.toLocaleString()} duplicate{suppressedCount === 1 ? '' : 's'} suppressed
+                  (same URL fired within 60 s window) — expand any entry to see original count.
+                </div>
+              )}
+            {sortedEvents.map((event) => (
               <div
                 key={event.id}
                 className="rounded-sm p-4 transition-colors border border-ct-line bg-ct-bg2 hover:bg-ct-panel-hi"
@@ -316,6 +377,11 @@ export default function BrowserHistoryViewer({
                     {getEventIcon(event.event_type)}
                   </div>
                   <div className="flex-1 min-w-0">
+                    {(event as any)._dupCount && (event as any)._dupCount > 1 && (
+                      <StatusPill tone="idle" dot={false}>
+                        &times;{(event as any)._dupCount}
+                      </StatusPill>
+                    )}
                     {/* Active Tab Events */}
                     {(event.event_type === 'browser_active_tab' || event.event_type === 'browser_tab_updated') && (
                       <>
@@ -421,7 +487,8 @@ export default function BrowserHistoryViewer({
                   </div>
                 </div>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </div>
