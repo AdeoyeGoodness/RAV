@@ -40,6 +40,7 @@ import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWAT, formatWATDate } from '@/lib/time'
 import { Panel, PanelHead, Eyebrow, StatusPill, ActionButton } from '@/components/ct/primitives'
+import { Counter } from '@/components/ct/Counter'
 
 interface Agent {
   id: string
@@ -441,12 +442,14 @@ export default function DeviceDetailsPage() {
                     {nameError && <p className="text-[10px] text-ct-crit mt-1 font-mono">{nameError}</p>}
                   </div>
 
-                  {/* Telemetry volume */}
+                  {/* Telemetry volume — animates from the previous value to
+                      the new one on the 10s polling cycle, so the counter is
+                      a visible pulse when fresh events arrive. */}
                   <div>
                     <Eyebrow className="mb-2">Telemetry volume</Eyebrow>
                     <div className="flex items-baseline gap-3">
                       <span className="font-mono text-[24px] font-medium text-ct-ink tabular-nums">
-                        {events.length.toLocaleString()}
+                        <Counter value={events.length} />
                       </span>
                       <span className="font-mono text-[10px] text-ct-ink3 uppercase" style={{ letterSpacing: '0.14em' }}>
                         events
