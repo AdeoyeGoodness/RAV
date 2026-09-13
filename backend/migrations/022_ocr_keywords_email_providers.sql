@@ -7,13 +7,19 @@
 -- so the stored casing here is cosmetic. NULL organization_id = platform-wide
 -- default seen by every org.
 --
--- SET LOCAL row_security = off — sensitive_keywords has FORCE ROW LEVEL SECURITY
--- from migration 021. Without this bypass the migration runner (which never
--- sets app.current_org_id) is rejected by the RLS policy on INSERT, and the
--- backend crashes at startup in a PM2 restart loop. Same fix pattern we
--- applied to seed data in migration 021 (commit bd35bc4).
+-- BYPASS via app.current_org_id — sensitive_keywords has FORCE ROW LEVEL
+-- SECURITY from migration 021, whose write policy explicitly allows the
+-- literal 'BYPASS' as an escape hatch:
+--     current_setting('app.current_org_id', true) = 'BYPASS' OR …
+-- We use the same escape hatch the OCR worker uses in services/ocr.rs;
+-- SET LOCAL keeps it scoped to this migration's transaction.
+--
+-- (An earlier attempt used `SET LOCAL row_security = off` — that requires
+-- the DB role to have BYPASSRLS on a FORCE-RLS table, which our app role
+-- does not. Postgres then errored with "query would be affected by
+-- row-level security policy" instead.)
 
-SET LOCAL row_security = off;
+SET LOCAL app.current_org_id = 'BYPASS';
 
 INSERT INTO sensitive_keywords (organization_id, keyword) VALUES
     (NULL, 'yahoo'),
