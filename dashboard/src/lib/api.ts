@@ -243,6 +243,38 @@ export async function getServerTime(): Promise<number> {
   return response.data.server_time_ms
 }
 
+export interface EventsSummary {
+  window_hours: number
+  server_time_ms: number
+  total_events: number
+  unique_ips: number
+  screenshots: number
+  critical_count: number
+  high_count: number
+  medium_count: number
+  low_count: number
+  by_category: Array<{ category: string; count: number }>
+  top_contributors: Array<{
+    agent_id: string
+    hostname: string | null
+    display_name: string | null
+    count: number
+  }>
+}
+
+/**
+ * Server-side aggregate of KPIs for the Command Centre — replaces the old
+ * pattern of pulling 1000 rows to the browser and computing counts in JS
+ * (which silently under-counted every KPI once an org exceeded 1000 events
+ * in the window). Always internally consistent: sum(by_category) === total_events.
+ */
+export async function getEventsSummary(windowHours: number = 24): Promise<EventsSummary> {
+  const response = await api.get('/api/v1/events/summary', {
+    params: { window_hours: windowHours },
+  })
+  return response.data
+}
+
 export async function sendHeartbeat(heartbeat: {
   agent_id: string
   hardware_fingerprint: string

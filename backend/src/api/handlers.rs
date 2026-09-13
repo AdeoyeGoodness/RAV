@@ -296,6 +296,154 @@ pub async fn query_events(
     Ok(Json(events))
 }
 
+#[derive(serde::Deserialize)]
+pub struct EventSummaryQuery {
+    /// Time window in hours. Defaults to 24 h; capped at 168 h (7 d) so
+    /// pathological queries can't spend forever aggregating.
+    pub window_hours: Option<i64>,
+}
+
+/// Aggregate KPIs for the Command Centre — computed server-side over the
+/// FULL time window, no row cap. Fixes the old pattern of pulling 1000
+/// rows to the browser and computing counts in JS: if the org has more
+/// than 1000 events in the window, the browser numbers silently
+/// under-counted every KPI (unique IPs, screenshots, warnings, breakdown).
+pub async fn events_summary(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Query(params): Query<EventSummaryQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // Same org-scoping pattern as query_events / list_agents.
+    let mut tx = if claims.role == "super_admin" {
+        if let Some(org_id) = headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
+            state.db.begin_rls_tx(org_id).await
+        } else {
+            state.db.begin_bypass_tx().await
+        }
+    } else {
+        let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+        state.db.begin_rls_tx(org_id).await
+    }
+    .map_err(|e| {
+        tracing::error!("Failed to begin RLS transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let window_hours = params.window_hours.unwrap_or(24).clamp(1, 168);
+    let start = chrono::Utc::now() - chrono::Duration::hours(window_hours);
+
+    // Single roll-up: totals + slice sub-counts in one query so the
+    // numbers are always internally consistent (Activity Breakdown must
+    // equal total_events, no matter the categories in the data).
+    let totals_row = sqlx::query(
+        r#"
+        SELECT
+            COUNT(*)::bigint                                                        AS total,
+            COUNT(DISTINCT (metadata->>'remote_ip'))
+                FILTER (WHERE metadata->>'remote_ip' IS NOT NULL)::bigint           AS unique_ips,
+            COUNT(*) FILTER (WHERE event_type = 'screenshot_captured')::bigint      AS screenshots,
+            COUNT(*) FILTER (WHERE severity = 'critical')::bigint                   AS critical_count,
+            COUNT(*) FILTER (WHERE severity = 'high')::bigint                       AS high_count,
+            COUNT(*) FILTER (WHERE severity = 'medium')::bigint                     AS medium_count,
+            COUNT(*) FILTER (WHERE severity = 'low')::bigint                        AS low_count
+        FROM events
+        WHERE timestamp >= $1 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(start)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("events_summary totals failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Every non-empty category in the window. Client renders one bar per
+    // row, so the bars are dynamic — nothing is hardcoded, nothing is missed.
+    let category_rows = sqlx::query(
+        r#"
+        SELECT COALESCE(category, 'other') AS category, COUNT(*)::bigint AS n
+        FROM events
+        WHERE timestamp >= $1 AND deleted_at IS NULL
+        GROUP BY COALESCE(category, 'other')
+        ORDER BY n DESC
+        "#,
+    )
+    .bind(start)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("events_summary categories failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Top 8 contributing endpoints — makes it obvious that a small slice
+    // of the fleet produces most of the volume; suppresses the "how can
+    // 26 online devices produce 1000 events?" confusion the user reported.
+    let contributor_rows = sqlx::query(
+        r#"
+        SELECT e.agent_id, COUNT(*)::bigint AS n,
+               a.hostname, a.display_name
+        FROM events e
+        LEFT JOIN agents a ON a.agent_id = e.agent_id
+                          AND a.organization_id = e.organization_id
+        WHERE e.timestamp >= $1 AND e.deleted_at IS NULL
+        GROUP BY e.agent_id, a.hostname, a.display_name
+        ORDER BY n DESC
+        LIMIT 8
+        "#,
+    )
+    .bind(start)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("events_summary contributors failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("events_summary commit failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let by_category: Vec<serde_json::Value> = category_rows
+        .into_iter()
+        .map(|r| serde_json::json!({
+            "category": r.get::<String, _>("category"),
+            "count": r.get::<i64, _>("n"),
+        }))
+        .collect();
+
+    let top_contributors: Vec<serde_json::Value> = contributor_rows
+        .into_iter()
+        .map(|r| serde_json::json!({
+            "agent_id": r.get::<String, _>("agent_id"),
+            "hostname": r.get::<Option<String>, _>("hostname"),
+            "display_name": r.get::<Option<String>, _>("display_name"),
+            "count": r.get::<i64, _>("n"),
+        }))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "window_hours": window_hours,
+        "server_time_ms": chrono::Utc::now().timestamp_millis(),
+        "total_events": totals_row.get::<i64, _>("total"),
+        "unique_ips": totals_row.get::<i64, _>("unique_ips"),
+        "screenshots": totals_row.get::<i64, _>("screenshots"),
+        "critical_count": totals_row.get::<i64, _>("critical_count"),
+        "high_count":     totals_row.get::<i64, _>("high_count"),
+        "medium_count":   totals_row.get::<i64, _>("medium_count"),
+        "low_count":      totals_row.get::<i64, _>("low_count"),
+        "by_category": by_category,
+        "top_contributors": top_contributors,
+    })))
+}
+
 pub async fn enroll_agent(
     State(state): State<AppState>,
     Json(payload): Json<CreateAgent>,

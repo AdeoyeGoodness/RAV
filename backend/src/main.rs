@@ -231,6 +231,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/keywords/:id", delete(api::org::delete_keyword))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
+        .route("/api/v1/events/summary", get(handlers::events_summary))
         .route("/api/v1/agents/enroll", post(handlers::enroll_agent))
         .route("/api/v1/agents/register", post(handlers::register_agent)) // legacy
         .route("/api/v1/agents/heartbeat", post(handlers::heartbeat))

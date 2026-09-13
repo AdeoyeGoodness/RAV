@@ -11,8 +11,16 @@ import { ActivitySummary } from '@/components/dashboard/ActivitySummary'
 import { KeyEvents } from '@/components/dashboard/KeyEvents'
 import { EnrolledAgents } from '@/components/dashboard/EnrolledAgents'
 import { UserInsights } from '@/components/dashboard/UserInsights'
+import { TopContributors } from '@/components/dashboard/TopContributors'
 import { SectionHead, Eyebrow, ActionButton, Panel } from '@/components/ct/primitives'
-import { getAgents, getEvents, getServerTime, Agent } from '@/lib/api'
+import {
+  getAgents,
+  getEvents,
+  getServerTime,
+  getEventsSummary,
+  Agent,
+  EventsSummary,
+} from '@/lib/api'
 import { formatWATTime } from '@/lib/time'
 import { useAuth } from '@/contexts/AuthContext'
 import { RefreshCw } from 'lucide-react'
@@ -21,66 +29,48 @@ export default function DashboardPage() {
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const [agents, setAgents] = useState<Agent[]>([])
-  const [allEvents, setAllEvents] = useState<any[]>([])
+  const [alertEvents, setAlertEvents] = useState<any[]>([])
+  const [summary, setSummary] = useState<EventsSummary | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [eventStats, setEventStats] = useState({
-    total: 0,
-    uniqueIps: 0,
-    warnings: 0,
-    screenshots: 0,
-    networkCount: 0,
-    processCount: 0,
-    fileCount: 0,
-    browserCount: 0,
-    criticalCount: 0,
-    highCount: 0,
-    mediumCount: 0,
-    lowCount: 0,
-  })
 
   const fetchData = useCallback(async () => {
     if (!user) return
     setRefreshing(true)
     try {
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const [agentsData, eventsData] = await Promise.all([
+      // getEventsSummary — server-side aggregate, no row cap, always internally
+      // consistent (sum(by_category) === total_events).
+      // getEvents with a severity filter — small result set for the Forensic
+      // Alerts panel (renders the actual events, not just their count).
+      const [agentsData, summaryData, alertsData] = await Promise.all([
         getAgents(),
-        getEvents({ start_time: twentyFourHoursAgo, limit: 1000 }),
+        getEventsSummary(24),
+        getEvents({
+          start_time: twentyFourHoursAgo,
+          severity: 'critical',
+          limit: 6,
+        }).catch(() => [] as any[]),
       ])
 
       setAgents(agentsData)
-      setAllEvents(eventsData)
+      setSummary(summaryData)
+      // If no critical alerts, fall back to high severity so the panel isn't empty.
+      if (alertsData.length > 0) {
+        setAlertEvents(alertsData)
+      } else {
+        try {
+          const highAlerts = await getEvents({
+            start_time: twentyFourHoursAgo,
+            severity: 'high',
+            limit: 6,
+          })
+          setAlertEvents(highAlerts)
+        } catch {
+          setAlertEvents([])
+        }
+      }
 
-      const criticalCount = eventsData.filter((e: any) => e.severity === 'critical').length
-      const highCount = eventsData.filter((e: any) => e.severity === 'high').length
-      const mediumCount = eventsData.filter((e: any) => e.severity === 'medium').length
-      const lowCount = eventsData.filter((e: any) => e.severity === 'low').length
-
-      const networkCount = eventsData.filter((e: any) => e.category === 'network').length
-      const processCount = eventsData.filter((e: any) => e.category === 'process').length
-      const fileCount = eventsData.filter((e: any) => e.category === 'file').length
-      const browserCount = eventsData.filter((e: any) => e.category === 'browser').length
-
-      const uniqueIps = new Set(eventsData.map((e: any) => e.metadata?.remote_ip).filter(Boolean)).size
-      const screenshots = eventsData.filter((e: any) => e.event_type === 'screenshot_captured').length
-
-      setEventStats({
-        total: eventsData.length,
-        uniqueIps,
-        warnings: mediumCount + highCount,
-        screenshots,
-        networkCount,
-        processCount,
-        fileCount,
-        browserCount,
-        criticalCount,
-        highCount,
-        mediumCount,
-        lowCount,
-      })
-      // Prefer server wall-clock; falls back to browser only if the /time
-      // endpoint is unreachable. Keeps "Last sync" aligned with the header.
       try {
         const serverMs = await getServerTime()
         setLastRefresh(new Date(serverMs))
@@ -128,7 +118,8 @@ export default function DashboardPage() {
     )
   }
 
-  const isEmptyState = agents.length === 0 && eventStats.total === 0
+  const totalEvents = summary?.total_events ?? 0
+  const isEmptyState = agents.length === 0 && totalEvents === 0
 
   return (
     <div className="flex h-screen bg-ct-bg text-ct-ink font-sans overflow-hidden">
@@ -139,7 +130,6 @@ export default function DashboardPage() {
         <ArchiveBanner />
 
         <main className="flex-1 overflow-auto p-8 space-y-6 mt-20">
-          {/* Top bar */}
           <SectionHead
             eyebrow="Command Terminal · Live"
             title="Command Centre"
@@ -159,22 +149,20 @@ export default function DashboardPage() {
             }
           />
 
-          {/* KPI strip */}
           <StatsRow
             stats={{
               agents: agents.length,
-              events24h: eventStats.total,
-              warnings: eventStats.warnings,
-              uniqueIps: eventStats.uniqueIps,
-              screenshots: eventStats.screenshots,
-              criticalCount: eventStats.criticalCount,
-              highCount: eventStats.highCount,
-              mediumCount: eventStats.mediumCount,
-              lowCount: eventStats.lowCount,
+              events24h: summary?.total_events ?? 0,
+              warnings: (summary?.medium_count ?? 0) + (summary?.high_count ?? 0),
+              uniqueIps: summary?.unique_ips ?? 0,
+              screenshots: summary?.screenshots ?? 0,
+              criticalCount: summary?.critical_count ?? 0,
+              highCount: summary?.high_count ?? 0,
+              mediumCount: summary?.medium_count ?? 0,
+              lowCount: summary?.low_count ?? 0,
             }}
           />
 
-          {/* Getting Started */}
           {isEmptyState && (
             <Panel>
               <div className="p-6">
@@ -214,20 +202,20 @@ export default function DashboardPage() {
           {/* Activity + alerts */}
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
             <ActivitySummary
-              stats={{
-                networkCount: eventStats.networkCount,
-                processCount: eventStats.processCount,
-                fileCount: eventStats.fileCount,
-                browserCount: eventStats.browserCount,
-              }}
+              breakdown={summary?.by_category ?? []}
+              total={summary?.total_events ?? 0}
             />
-            <KeyEvents events={allEvents.filter((e) => e.severity === 'critical' || e.severity === 'high').slice(0, 6)} />
+            <KeyEvents events={alertEvents} />
           </div>
 
-          {/* Agents + session */}
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6 pb-8">
-            <EnrolledAgents agents={agents} />
+          {/* Top contributors + Enrolled agents */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-6">
+            <TopContributors contributors={summary?.top_contributors ?? []} total={totalEvents} />
             <UserInsights />
+          </div>
+
+          <div className="pb-8">
+            <EnrolledAgents agents={agents} />
           </div>
         </main>
       </div>
