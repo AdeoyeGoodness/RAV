@@ -85,13 +85,17 @@ export default function DashboardPage() {
   }, [user])
 
   useEffect(() => {
-    if (user && !isLoading) {
-      if (user.role === 'super_admin') {
-        router.replace('/admin')
-      } else {
-        fetchData()
-      }
+    if (!user || isLoading) return
+    if (user.role === 'super_admin') {
+      router.replace('/admin')
+      return
     }
+    // Initial pull + 30s polling so new events land without a manual
+    // refresh. Matches the Devices page's polling cadence and lets the
+    // KPI Counter glide to new values as data arrives.
+    fetchData()
+    const id = setInterval(fetchData, 30_000)
+    return () => clearInterval(id)
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading || !user || user.role === 'super_admin') {

@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from 'react'
 interface CounterProps {
   /** Target value. Component animates from whatever it currently shows to this. */
   value: number
-  /** Animation duration in ms. Defaults to 900ms — feels alive without feeling slow. */
+  /**
+   * Animation duration in ms. Defaults to 1600ms — deliberate ticker feel,
+   * slow enough that the eye follows the count instead of missing it.
+   */
   duration?: number
   /**
    * Custom formatter. Defaults to `Math.round(n).toLocaleString()` — always
@@ -31,7 +34,7 @@ interface CounterProps {
  */
 export function Counter({
   value,
-  duration = 900,
+  duration = 1600,
   format = (n) => Math.round(n).toLocaleString(),
 }: CounterProps) {
   const [display, setDisplay] = useState<number>(0)
