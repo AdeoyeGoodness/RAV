@@ -1027,7 +1027,11 @@ pub async fn upload_file(
                     })));
                 }
             };
-            let candidates = sqlx::query!(
+            // Non-macro sqlx::query — the `query!` macro validates against a
+            // live DB at compile time, which deadlocks the deploy (the new
+            // columns don't exist until migration 024 runs, and the migration
+            // set only ships inside the NEW binary we're trying to build).
+            let candidates: Vec<(String, Option<String>)> = sqlx::query_as(
                 r#"
                 SELECT file_id, image_hash
                 FROM files
@@ -1040,8 +1044,10 @@ pub async fn upload_file(
                 ORDER BY created_at DESC
                 LIMIT 40
                 "#,
-                agent_id, org_id, file_id
             )
+            .bind(&agent_id)
+            .bind(org_id)
+            .bind(&file_id)
             .fetch_all(&mut *dedup_tx)
             .await
             .unwrap_or_else(|e| {
@@ -1050,20 +1056,22 @@ pub async fn upload_file(
             });
 
             let mut duplicate_of: Option<String> = None;
-            for c in &candidates {
-                if let Some(existing) = &c.image_hash {
+            for (existing_file_id, existing_hash) in &candidates {
+                if let Some(existing) = existing_hash {
                     let d = crate::services::image_hash::hamming_hex(existing, &hash);
                     if d <= crate::services::image_hash::SIMILAR_THRESHOLD {
-                        duplicate_of = Some(c.file_id.clone());
+                        duplicate_of = Some(existing_file_id.clone());
                         break;
                     }
                 }
             }
 
-            let _ = sqlx::query!(
+            let _ = sqlx::query(
                 "UPDATE files SET image_hash = $1, duplicate_of_file_id = $2 WHERE file_id = $3",
-                hash, duplicate_of, file_id
             )
+            .bind(&hash)
+            .bind(&duplicate_of)
+            .bind(&file_id)
             .execute(&mut *dedup_tx)
             .await;
             let _ = dedup_tx.commit().await;
@@ -1503,7 +1511,11 @@ pub async fn list_agent_screenshot_duplicates(
     };
 
     let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let rows = sqlx::query!(
+    // Non-macro sqlx::query for the same reason as upload_file's dedup —
+    // the columns come from migration 024 which runs at binary startup,
+    // so we can't have the compiler check them against a live DB that
+    // hasn't been migrated yet.
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         r#"
         SELECT file_id, duplicate_of_file_id
         FROM files
@@ -1514,8 +1526,9 @@ pub async fn list_agent_screenshot_duplicates(
           AND created_at > NOW() - INTERVAL '7 days'
         LIMIT 5000
         "#,
-        agent_id, target_org_id
     )
+    .bind(&agent_id)
+    .bind(target_org_id)
     .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
@@ -1526,9 +1539,9 @@ pub async fn list_agent_screenshot_duplicates(
 
     let duplicates: Vec<serde_json::Value> = rows
         .into_iter()
-        .map(|r| serde_json::json!({
-            "file_id": r.file_id,
-            "duplicate_of_file_id": r.duplicate_of_file_id,
+        .map(|(file_id, dup_of)| serde_json::json!({
+            "file_id": file_id,
+            "duplicate_of_file_id": dup_of,
         }))
         .collect();
 

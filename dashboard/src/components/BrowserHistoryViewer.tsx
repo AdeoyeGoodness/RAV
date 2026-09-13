@@ -65,17 +65,28 @@ export default function BrowserHistoryViewer({
     ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
     : allEvents
 
+  // Accept ANY event_type prefixed `browser_` — different extension
+  // versions and different browsers emit slightly different suffixes
+  // (`browser_tab_activated` vs `browser_active_tab`, `browser_visited`
+  // vs `browser_history_visited`, `browser_downloaded` vs
+  // `browser_download_completed`). Filtering on an exhaustive whitelist
+  // silently dropped anything whose name we hadn't seen yet — the pain
+  // the operator hit where history landed but tabs / downloads /
+  // searches were blank.
   const browserEvents = events.filter(e =>
-    e.event_type === 'browser_history_visited' ||
-    e.event_type === 'browser_history_visit' ||
-    e.event_type === 'browser_active_tab' ||
-    e.event_type === 'browser_tab_updated' ||
-    e.event_type === 'browser_download' ||
-    e.event_type === 'browser_download_started' ||
-    e.event_type === 'browser_download_completed' ||
-    e.event_type === 'browser_download_failed' ||
-    e.event_type === 'browser_search_query'
+    (e.event_type || '').toLowerCase().startsWith('browser_')
   )
+
+  // Bucket by keyword in the event_type string rather than exact match,
+  // so any new naming variant still routes to the right section.
+  const classify = (t: string): 'history' | 'active_tab' | 'download' | 'search' | 'other' => {
+    const et = (t || '').toLowerCase()
+    if (et.includes('download')) return 'download'
+    if (et.includes('search') || et.includes('query')) return 'search'
+    if (et.includes('tab')) return 'active_tab'
+    if (et.includes('history') || et.includes('visit')) return 'history'
+    return 'other'
+  }
 
   const browsers = Array.from(new Set(
     browserEvents
@@ -97,20 +108,7 @@ export default function BrowserHistoryViewer({
 
   const typeFilteredEvents = filter === 'all'
     ? browserFilteredEvents
-    : browserFilteredEvents.filter(e => {
-      switch (filter) {
-        case 'history':
-          return e.event_type === 'browser_history_visited' || e.event_type === 'browser_history_visit'
-        case 'active_tab':
-          return e.event_type === 'browser_active_tab' || e.event_type === 'browser_tab_updated'
-        case 'download':
-          return e.event_type.includes('download')
-        case 'search':
-          return e.event_type === 'browser_search_query'
-        default:
-          return true
-      }
-    })
+    : browserFilteredEvents.filter(e => classify(e.event_type) === filter)
 
   const searchFilteredEvents = searchQuery
     ? typeFilteredEvents.filter(e => {
@@ -182,28 +180,18 @@ export default function BrowserHistoryViewer({
   })
   const suppressedCount = searchFilteredEvents.length - dedupedEvents.length
 
-  const historyEvents = browserEvents.filter(e => e.event_type === 'browser_history_visited' || e.event_type === 'browser_history_visit')
-  const activeTabEvents = browserEvents.filter(e => e.event_type === 'browser_active_tab' || e.event_type === 'browser_tab_updated')
-  const downloadEvents = browserEvents.filter(e => e.event_type.includes('download'))
-  const searchEvents = browserEvents.filter(e => e.event_type === 'browser_search_query')
+  const historyEvents = browserEvents.filter(e => classify(e.event_type) === 'history')
+  const activeTabEvents = browserEvents.filter(e => classify(e.event_type) === 'active_tab')
+  const downloadEvents = browserEvents.filter(e => classify(e.event_type) === 'download')
+  const searchEvents = browserEvents.filter(e => classify(e.event_type) === 'search')
 
   const getEventIcon = (eventType: string) => {
-    switch (eventType) {
-      case 'browser_history_visited':
-      case 'browser_history_visit':
-        return <Globe className="w-4 h-4 text-ct-accent" />
-      case 'browser_active_tab':
-      case 'browser_tab_updated':
-        return <Eye className="w-4 h-4 text-ct-warn" />
-      case 'browser_download':
-      case 'browser_download_started':
-      case 'browser_download_completed':
-      case 'browser_download_failed':
-        return <Download className="w-4 h-4 text-ct-ok" />
-      case 'browser_search_query':
-        return <Search className="w-4 h-4 text-ct-accent" />
-      default:
-        return <Globe className="w-4 h-4 text-ct-accent" />
+    switch (classify(eventType)) {
+      case 'history':    return <Globe   className="w-4 h-4 text-ct-accent" />
+      case 'active_tab': return <Eye     className="w-4 h-4 text-ct-warn"   />
+      case 'download':   return <Download className="w-4 h-4 text-ct-ok"    />
+      case 'search':     return <Search  className="w-4 h-4 text-ct-accent" />
+      default:           return <Globe   className="w-4 h-4 text-ct-accent" />
     }
   }
 
@@ -383,7 +371,7 @@ export default function BrowserHistoryViewer({
                       </StatusPill>
                     )}
                     {/* Active Tab Events */}
-                    {(event.event_type === 'browser_active_tab' || event.event_type === 'browser_tab_updated') && (
+                    {classify(event.event_type) === 'active_tab' && (
                       <>
                         <div className="flex items-center gap-2 mb-1 overflow-hidden">
                           <a
@@ -413,7 +401,7 @@ export default function BrowserHistoryViewer({
                     )}
 
                     {/* History Visit Events */}
-                    {(event.event_type === 'browser_history_visited' || event.event_type === 'browser_history_visit') && (
+                    {classify(event.event_type) === 'history' && (
                       <>
                         <div className="flex items-center gap-2 mb-1 overflow-hidden">
                           <a
@@ -438,15 +426,15 @@ export default function BrowserHistoryViewer({
                     )}
 
                     {/* Download Events */}
-                    {event.event_type.includes('download') && (
+                    {classify(event.event_type) === 'download' && (
                       <>
                         <div className="flex items-center gap-2 mb-1 overflow-hidden">
                           <span className="text-[13px] font-semibold text-ct-ink truncate">
                             {event.metadata?.file_name || event.metadata?.filename || 'Unknown File'}
                           </span>
-                          {event.event_type === 'browser_download_completed' && <StatusPill tone="ok" dot={false}>Completed</StatusPill>}
-                          {event.event_type === 'browser_download_failed' && <StatusPill tone="crit" dot={false}>Failed</StatusPill>}
-                          {event.event_type === 'browser_download_started' && <StatusPill tone="accent" dot={false}>Started</StatusPill>}
+                          {event.event_type.toLowerCase().includes('complet') && <StatusPill tone="ok" dot={false}>Completed</StatusPill>}
+                          {event.event_type.toLowerCase().includes('fail') && <StatusPill tone="crit" dot={false}>Failed</StatusPill>}
+                          {event.event_type.toLowerCase().includes('start') && <StatusPill tone="accent" dot={false}>Started</StatusPill>}
                         </div>
                         <p className="text-[12px] text-ct-ink3 truncate font-mono break-all">
                           {event.metadata?.source_url || event.metadata?.target_path || event.metadata?.current_path || 'Unknown path'}
@@ -467,7 +455,7 @@ export default function BrowserHistoryViewer({
                       </>
                     )}
 
-                    {event.event_type === 'browser_search_query' && (
+                    {classify(event.event_type) === 'search' && (
                       <>
                         <div className="flex items-center gap-2 mb-1 overflow-hidden">
                           <span className="text-[14px] font-semibold text-ct-ink truncate">
