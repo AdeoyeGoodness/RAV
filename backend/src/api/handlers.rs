@@ -815,7 +815,7 @@ pub async fn list_agents(
                a.display_name, a.last_seen, a.created_at, a.updated_at,
                a.enrollment_token_id, t.label AS token_label,
                a.watchdog_last_seen, a.watchdog_service_state, a.watchdog_binary_present,
-               a.watchdog_version,
+               a.watchdog_version, a.last_archived_at,
                (
                    SELECT state FROM agent_lifecycle_events l
                    WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
@@ -872,6 +872,7 @@ pub async fn list_agents(
         .map(|row| {
             let last_seen = row.get::<chrono::DateTime<Utc>, _>("last_seen");
             let latest_event_at = row.get::<Option<chrono::DateTime<Utc>>, _>("latest_event_at");
+            let last_archived_at = row.get::<Option<chrono::DateTime<Utc>>, _>("last_archived_at");
             let heartbeat_age_ms = now_ms - last_seen.timestamp_millis();
             let heartbeat_fresh = heartbeat_age_ms <= HEARTBEAT_FRESH_MS;
 
@@ -929,6 +930,8 @@ pub async fn list_agents(
                 "latest_event_at": latest_event_at,
                 "latest_event_at_ms": latest_event_at.map(|t| t.timestamp_millis()),
                 "uploader_health": uploader_health,
+                "last_archived_at": last_archived_at,
+                "last_archived_at_ms": last_archived_at.map(|t| t.timestamp_millis()),
             })
         })
         .collect();

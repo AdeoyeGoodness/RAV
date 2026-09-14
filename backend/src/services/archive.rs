@@ -175,6 +175,21 @@ impl ArchiveService {
         .execute(&mut *tx)
         .await?;
 
+        // Stamp the agent row with the archive time so the dashboard can render
+        // "Last archive: 3d" without having to join to archives from the hot
+        // agents-list path. `agents.last_archived_at` was declared on the model
+        // back in migration 011 but was never written; wiring it here is the
+        // one and only writer.
+        sqlx::query(
+            "UPDATE agents SET last_archived_at = $1 \
+             WHERE agent_id = $2 AND organization_id = $3",
+        )
+        .bind(now)
+        .bind(agent_id)
+        .bind(org_id)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
 
         info!("Successfully archived {} events for agent {} into {}", event_count, agent_id, filename);

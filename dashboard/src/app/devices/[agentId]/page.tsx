@@ -57,6 +57,8 @@ interface Agent {
   uploader_health?: 'ok' | 'stale' | 'dark' | 'unknown'
   latest_event_at?: string | null
   latest_event_at_ms?: number | null
+  last_archived_at?: string | null
+  last_archived_at_ms?: number | null
 }
 
 interface Event {
@@ -85,6 +87,18 @@ function latestEventLabel(a: Agent): string {
   if (mins < 60) return `${mins} min ago`
   if (hrs < 24) return `${hrs} h ago`
   return `${days} d ago`
+}
+
+function lastArchivedLabel(a: Agent): string {
+  if (!a.last_archived_at_ms) return 'never'
+  const diffMs = a.server_time_ms - a.last_archived_at_ms
+  const hrs = Math.floor(diffMs / 3600000)
+  const days = Math.floor(diffMs / 86400000)
+  if (hrs < 1) return 'just now'
+  if (hrs < 24) return `${hrs} h ago`
+  if (days < 7) return `${days} d ago`
+  const weeks = Math.floor(days / 7)
+  return `${weeks} w ago`
 }
 
 export default function DeviceDetailsPage() {
@@ -288,7 +302,7 @@ export default function DeviceDetailsPage() {
 
           {/* Profile row */}
           <Panel padding={false}>
-            <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-ct-line">
+            <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-ct-line">
               <ProfileMeta
                 label="Status"
                 value={
@@ -324,6 +338,28 @@ export default function DeviceDetailsPage() {
                     }}
                   >
                     {latestEventLabel(agent)}
+                  </span>
+                }
+              />
+              <ProfileMeta
+                label="Last archive"
+                value={
+                  <span
+                    className="font-mono text-[12px] tabular-nums"
+                    style={{
+                      color: !agent.last_archived_at_ms
+                        ? 'var(--ct-ink3)'
+                        : (agent.server_time_ms - (agent.last_archived_at_ms || 0)) > 7 * 24 * 3600 * 1000
+                          ? 'var(--ct-warn)'
+                          : 'var(--ct-ink2)',
+                    }}
+                    title={
+                      agent.last_archived_at
+                        ? `Latest forensic bundle: ${formatWAT(agent.last_archived_at)}`
+                        : 'No forensic archives on record — bundle written on the next weekly sweep or manual trigger.'
+                    }
+                  >
+                    {lastArchivedLabel(agent)}
                   </span>
                 }
               />

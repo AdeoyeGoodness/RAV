@@ -63,6 +63,18 @@ function lastSeenShort(agent: Agent) {
   return `${days}d`
 }
 
+function lastArchivedShort(agent: Agent) {
+  if (!agent.last_archived_at_ms) return '—'
+  const diffMs = agent.server_time_ms - agent.last_archived_at_ms
+  const hrs = Math.floor(diffMs / 3600000)
+  const days = Math.floor(diffMs / 86400000)
+  if (hrs < 1) return 'now'
+  if (hrs < 24) return `${hrs}h`
+  if (days < 7) return `${days}d`
+  const weeks = Math.floor(days / 7)
+  return `${weeks}w`
+}
+
 export default function DevicesPage() {
   const router = useRouter()
   const { user, isLoading } = useAuth()
@@ -259,7 +271,7 @@ export default function DevicesPage() {
                 <div
                   className="grid gap-3 px-6 py-3 border-b border-ct-line bg-ct-bg2 font-mono text-[10px] uppercase text-ct-ink3"
                   style={{
-                    gridTemplateColumns: '1.8fr 100px 120px 130px 100px 180px 100px 24px',
+                    gridTemplateColumns: '1.8fr 100px 120px 120px 90px 180px 90px 80px 24px',
                     letterSpacing: '0.20em',
                   }}
                 >
@@ -270,6 +282,7 @@ export default function DevicesPage() {
                   <div>Agent</div>
                   <div>Status</div>
                   <div className="text-right">Last seen</div>
+                  <div className="text-right">Archive</div>
                   <div />
                 </div>
                 {/* Rows */}
@@ -280,7 +293,7 @@ export default function DevicesPage() {
                       key={agent.id}
                       onClick={() => router.push(`/devices/${agent.agent_id}`)}
                       className="w-full grid gap-3 items-center px-6 py-[14px] border-b border-ct-line hover:bg-ct-panel-hi transition-colors text-left"
-                      style={{ gridTemplateColumns: '1.8fr 100px 120px 130px 100px 180px 100px 24px' }}
+                      style={{ gridTemplateColumns: '1.8fr 100px 120px 120px 90px 180px 90px 80px 24px' }}
                     >
                       <div className="min-w-0">
                         <div className="text-[13px] font-medium text-ct-ink truncate">
@@ -322,6 +335,19 @@ export default function DevicesPage() {
                       </div>
                       <div className="font-mono text-[11px] text-ct-ink3 text-right tabular-nums">
                         {lastSeenShort(agent)}
+                      </div>
+                      <div
+                        className="font-mono text-[11px] text-right tabular-nums"
+                        style={{
+                          color: !agent.last_archived_at_ms
+                            ? 'var(--ct-ink4)'
+                            : (agent.server_time_ms - (agent.last_archived_at_ms || 0)) > 7 * 24 * 3600 * 1000
+                              ? 'var(--ct-warn)'
+                              : 'var(--ct-ink3)',
+                        }}
+                        title={agent.last_archived_at ? `Last archive ${agent.last_archived_at}` : 'Never archived'}
+                      >
+                        {lastArchivedShort(agent)}
                       </div>
                       <div className="text-ct-ink3 text-right">→</div>
                     </button>

@@ -125,6 +125,10 @@ export interface Agent {
   uploader_health?: 'ok' | 'stale' | 'dark' | 'unknown'
   latest_event_at?: string | null
   latest_event_at_ms?: number | null
+  // Stamped by services/archive.rs on every successful archive (weekly sweep
+  // or manual trigger). Powers the "Last archive" freshness cell in the UI.
+  last_archived_at?: string | null
+  last_archived_at_ms?: number | null
 }
 
 /** What the dashboard should show for a device, derived from heartbeat +
