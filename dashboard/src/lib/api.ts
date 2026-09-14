@@ -429,6 +429,27 @@ export async function updateOrganization(orgId: string, org: { name?: string, ma
   return response.data
 }
 
+export interface OrgAdminSummary {
+  id: string
+  email: string
+  full_name: string | null
+  status: string
+  must_change_password: boolean
+}
+
+export async function getOrgAdmins(orgId: string): Promise<OrgAdminSummary[]> {
+  const response = await api.get(`/api/v1/admin/organizations/${orgId}/admins`)
+  return response.data
+}
+
+export async function resetOrgAdminPassword(orgId: string, userId: string, newPassword: string): Promise<{ ok: boolean; email: string }> {
+  const response = await api.post(
+    `/api/v1/admin/organizations/${orgId}/admins/${userId}/reset-password`,
+    { new_password: newPassword },
+  )
+  return response.data
+}
+
 export async function deleteOrganization(orgId: string): Promise<void> {
   await api.delete(`/api/v1/admin/organizations/${orgId}`)
 }

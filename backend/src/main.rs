@@ -266,6 +266,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/admin/health", get(api::admin::get_system_health))
         .route("/api/v1/admin/organizations/:id", delete(api::admin::delete_organization))
         .route("/api/v1/admin/organizations/:id/restore", post(api::admin::restore_organization_data))
+        .route("/api/v1/admin/organizations/:id/admins", get(api::admin::list_org_admins))
+        .route("/api/v1/admin/organizations/:org_id/admins/:user_id/reset-password", post(api::admin::reset_org_admin_password))
         .route("/api/v1/admin/audits", get(api::admin::list_audit_logs))
         .route("/api/v1/org/me", get(api::org::get_current_org))
         .route("/api/v1/org/stats", get(api::org::get_org_stats))

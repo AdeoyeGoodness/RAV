@@ -593,6 +593,162 @@ pub struct AuditLogQuery {
     pub offset: Option<i64>,
 }
 
+// ── Reset an org_admin's password ───────────────────────────────────────
+//
+// Lets a super_admin set an exact new password for any org_admin under
+// any org. Used when an org_admin forgets their creds and the operator
+// wants to hand them a specific new one (as opposed to auto-generating
+// a temp password, which the org-creation flow already does).
+//
+// Body: { new_password: String }  (min 8 chars, matches change_password rule)
+// Path: /api/v1/admin/organizations/:org_id/admins/:user_id/reset-password
+//
+// Also clears must_change_password so the admin lands on the dashboard,
+// not the reset-password screen — because this IS the password the
+// super_admin gave them intentionally.
+
+#[derive(Debug, Serialize)]
+pub struct OrgAdminSummary {
+    pub id: Uuid,
+    pub email: String,
+    pub full_name: Option<String>,
+    pub status: String,
+    pub must_change_password: bool,
+}
+
+pub async fn list_org_admins(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(org_id): Path<Uuid>,
+) -> Result<Json<Vec<OrgAdminSummary>>, StatusCode> {
+    if claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id, email, full_name, status, must_change_password
+        FROM users
+        WHERE organization_id = $1 AND role = 'org_admin'
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(org_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to list org_admins for {}: {}", org_id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let admins: Vec<OrgAdminSummary> = rows
+        .into_iter()
+        .map(|row| {
+            use sqlx::Row;
+            OrgAdminSummary {
+                id: row.get("id"),
+                email: row.get("email"),
+                full_name: row.get("full_name"),
+                status: row.get("status"),
+                must_change_password: row.get("must_change_password"),
+            }
+        })
+        .collect();
+
+    Ok(Json(admins))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResetAdminPassword {
+    pub new_password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResetAdminPasswordResponse {
+    pub ok: bool,
+    pub email: String,
+}
+
+pub async fn reset_org_admin_password(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path((org_id, user_id)): Path<(Uuid, Uuid)>,
+    Json(payload): Json<ResetAdminPassword>,
+) -> Result<Json<ResetAdminPasswordResponse>, StatusCode> {
+    if claims.role != "super_admin" {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if payload.new_password.len() < 8 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let new_hash = bcrypt::hash(&payload.new_password, 10)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|e| {
+        tracing::error!("Failed to start bypass transaction: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Guarded UPDATE — must match BOTH org_id (from URL) AND role='org_admin'
+    // so a bad user_id can't accidentally rewrite some other tenant's user.
+    let row = sqlx::query(
+        r#"
+        UPDATE users
+        SET password_hash = $1,
+            must_change_password = FALSE,
+            updated_at = NOW()
+        WHERE id = $2
+          AND organization_id = $3
+          AND role = 'org_admin'
+        RETURNING email
+        "#,
+    )
+    .bind(&new_hash)
+    .bind(user_id)
+    .bind(org_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to reset org_admin password: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    use sqlx::Row;
+    let email: String = row.get("email");
+
+    log_audit(
+        &mut tx,
+        ActorType::SuperAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "USER_PASSWORD_RESET",
+        "USER",
+        Some(user_id.to_string()),
+        serde_json::json!({ "target_email": email, "reset_by": "super_admin" }),
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to audit-log password reset: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!("Failed to commit password reset: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(ResetAdminPasswordResponse { ok: true, email }))
+}
+
 pub async fn list_audit_logs(
     claims: Claims,
     State(state): State<AppState>,

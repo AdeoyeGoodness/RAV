@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Plus, ShieldCheck, Activity, Mail, Copy, Check, Trash2, Undo2, Pencil, Server, UserPlus, Search, Loader2 } from 'lucide-react'
-import { getOrganizations, createOrganization, updateOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization } from '@/lib/api'
+import { Building2, Plus, ShieldCheck, Activity, Mail, Copy, Check, Trash2, Undo2, Pencil, Server, UserPlus, Search, Loader2, KeyRound, X, Eye, EyeOff } from 'lucide-react'
+import { getOrganizations, createOrganization, updateOrganization, updateOrganizationStatus, deleteOrganization, restoreOrganizationData, register, Organization, getOrgAdmins, resetOrgAdminPassword, OrgAdminSummary } from '@/lib/api'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import { useAuth } from '@/contexts/AuthContext'
@@ -113,6 +113,92 @@ export default function AdminPage() {
         value: number;
         submitting: boolean;
     }>({ isOpen: false, org: null, value: 0, submitting: false })
+
+    // Reset Org-Admin Password Modal State
+    const [resetPwModal, setResetPwModal] = useState<{
+        isOpen: boolean;
+        org: Organization | null;
+        admins: OrgAdminSummary[];
+        loadingAdmins: boolean;
+        selectedUserId: string | null;
+        newPassword: string;
+        confirmPassword: string;
+        showPassword: boolean;
+        submitting: boolean;
+        justResetEmail: string | null;
+    }>({
+        isOpen: false, org: null, admins: [], loadingAdmins: false,
+        selectedUserId: null, newPassword: '', confirmPassword: '',
+        showPassword: false, submitting: false, justResetEmail: null,
+    })
+
+    const openResetPassword = async (org: Organization) => {
+        setResetPwModal({
+            isOpen: true, org, admins: [], loadingAdmins: true,
+            selectedUserId: null, newPassword: '', confirmPassword: '',
+            showPassword: false, submitting: false, justResetEmail: null,
+        })
+        try {
+            const admins = await getOrgAdmins(org.id)
+            setResetPwModal(s => ({
+                ...s,
+                admins,
+                loadingAdmins: false,
+                // Pre-select the sole admin when there's exactly one.
+                selectedUserId: admins.length === 1 ? admins[0].id : null,
+            }))
+        } catch (err) {
+            console.error(err)
+            setResetPwModal(s => ({ ...s, loadingAdmins: false }))
+            alert('Failed to load org admins for this organization.')
+        }
+    }
+
+    const closeResetPassword = () => {
+        setResetPwModal({
+            isOpen: false, org: null, admins: [], loadingAdmins: false,
+            selectedUserId: null, newPassword: '', confirmPassword: '',
+            showPassword: false, submitting: false, justResetEmail: null,
+        })
+    }
+
+    const submitResetPassword = async (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!resetPwModal.org || !resetPwModal.selectedUserId) return
+        if (resetPwModal.newPassword.length < 8) {
+            alert('Password must be at least 8 characters.')
+            return
+        }
+        if (resetPwModal.newPassword !== resetPwModal.confirmPassword) {
+            alert('Passwords do not match.')
+            return
+        }
+        setResetPwModal(s => ({ ...s, submitting: true }))
+        try {
+            const res = await resetOrgAdminPassword(
+                resetPwModal.org.id,
+                resetPwModal.selectedUserId,
+                resetPwModal.newPassword,
+            )
+            setResetPwModal(s => ({
+                ...s,
+                submitting: false,
+                justResetEmail: res.email,
+                newPassword: '',
+                confirmPassword: '',
+                showPassword: false,
+            }))
+        } catch (err: any) {
+            console.error(err)
+            const msg = err?.response?.status === 400
+                ? 'Password rejected (must be at least 8 chars).'
+                : err?.response?.status === 404
+                    ? 'That admin was not found under this organization.'
+                    : 'Failed to reset password.'
+            alert(msg)
+            setResetPwModal(s => ({ ...s, submitting: false }))
+        }
+    }
 
     const openEditMaxAgents = (org: Organization) => {
         setEditAgentsModal({ isOpen: true, org, value: org.max_agents, submitting: false })
@@ -317,6 +403,13 @@ export default function AdminPage() {
                                                         title="Edit Max Agents Limit"
                                                     >
                                                         <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => openResetPassword(org)}
+                                                        className="p-1.5 rounded-sm border border-ct-line hover:border-ct-accent-border text-ct-ink3 hover:text-ct-accent transition-colors"
+                                                        title="Reset Org Admin Password"
+                                                    >
+                                                        <KeyRound className="w-3.5 h-3.5" />
                                                     </button>
                                                     <button
                                                         onClick={() => toggleStatus(org.id, org.status)}
@@ -570,6 +663,143 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         </form>
+                    </Panel>
+                </div>
+            )}
+
+            {/* Reset Org-Admin Password Modal */}
+            {resetPwModal.isOpen && resetPwModal.org && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/90 backdrop-blur-sm">
+                    <Panel className="w-full max-w-md">
+                        <PanelHead
+                            title={
+                                <span className="flex items-center gap-2">
+                                    <KeyRound className="w-4 h-4 text-ct-accent" />
+                                    Reset Org Admin Password
+                                </span>
+                            }
+                            meta={`For ${resetPwModal.org.name}`}
+                        />
+                        {resetPwModal.justResetEmail ? (
+                            // Success state
+                            <div className="p-6 space-y-4">
+                                <div className="rounded-sm border border-ct-ok-border bg-ct-ok-soft p-4">
+                                    <div className="flex items-start gap-3">
+                                        <Check className="w-4 h-4 text-ct-ok mt-0.5 flex-shrink-0" />
+                                        <div className="min-w-0">
+                                            <div className="text-[13px] text-ct-ink font-medium">Password reset</div>
+                                            <div className="text-[11px] text-ct-ink2 mt-1 break-all">
+                                                <span className="font-mono">{resetPwModal.justResetEmail}</span> can now sign in with the new password.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-ct-ink3">
+                                    Existing sessions (JWT tokens) stay valid until they expire — if you need instant cutover, ask them to click Sign out.
+                                </p>
+                                <div className="flex gap-3 pt-2">
+                                    <ActionButton onClick={closeResetPassword} variant="primary" className="flex-1 py-3">Done</ActionButton>
+                                </div>
+                            </div>
+                        ) : resetPwModal.loadingAdmins ? (
+                            <div className="p-8 flex items-center justify-center">
+                                <Loader2 className="w-5 h-5 animate-spin text-ct-ink3" />
+                            </div>
+                        ) : resetPwModal.admins.length === 0 ? (
+                            <div className="p-6 space-y-4">
+                                <p className="text-[13px] text-ct-ink2">This organization has no org_admin accounts. Use the Onboard Admin action to create one first.</p>
+                                <ActionButton onClick={closeResetPassword} variant="ghost" className="w-full py-3">Close</ActionButton>
+                            </div>
+                        ) : (
+                            <form onSubmit={submitResetPassword} className="p-6 space-y-4">
+                                <div>
+                                    <Eyebrow className="mb-2">Which admin</Eyebrow>
+                                    <div className="space-y-1.5">
+                                        {resetPwModal.admins.map(a => (
+                                            <label
+                                                key={a.id}
+                                                className={`flex items-center gap-3 px-3 py-2.5 rounded-sm border cursor-pointer transition-colors ${
+                                                    resetPwModal.selectedUserId === a.id
+                                                        ? 'border-ct-accent-border bg-ct-accent-soft'
+                                                        : 'border-ct-line bg-ct-bg2 hover:border-ct-line2'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="reset-admin-target"
+                                                    checked={resetPwModal.selectedUserId === a.id}
+                                                    onChange={() => setResetPwModal(s => ({ ...s, selectedUserId: a.id }))}
+                                                    className="accent-ct-accent"
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-[13px] font-mono text-ct-ink truncate">{a.email}</div>
+                                                    {a.full_name && (
+                                                        <div className="text-[11px] text-ct-ink3 truncate">{a.full_name}</div>
+                                                    )}
+                                                </div>
+                                                {a.status !== 'active' && (
+                                                    <StatusPill tone="idle">{a.status}</StatusPill>
+                                                )}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <Eyebrow className="mb-2">New password (min 8)</Eyebrow>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type={resetPwModal.showPassword ? 'text' : 'password'}
+                                            required
+                                            minLength={8}
+                                            value={resetPwModal.newPassword}
+                                            onChange={(e) => setResetPwModal(s => ({ ...s, newPassword: e.target.value }))}
+                                            className={inputBase + ' pr-10'}
+                                            autoComplete="new-password"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setResetPwModal(s => ({ ...s, showPassword: !s.showPassword }))}
+                                            className="absolute right-3 text-ct-ink3 hover:text-ct-ink"
+                                            title={resetPwModal.showPassword ? 'Hide' : 'Show'}
+                                        >
+                                            {resetPwModal.showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <Eyebrow className="mb-2">Confirm password</Eyebrow>
+                                    <input
+                                        type={resetPwModal.showPassword ? 'text' : 'password'}
+                                        required
+                                        minLength={8}
+                                        value={resetPwModal.confirmPassword}
+                                        onChange={(e) => setResetPwModal(s => ({ ...s, confirmPassword: e.target.value }))}
+                                        className={inputBase}
+                                        autoComplete="new-password"
+                                    />
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <ActionButton onClick={closeResetPassword} variant="ghost" className="flex-1 py-3">Cancel</ActionButton>
+                                    <ActionButton
+                                        type="submit"
+                                        variant="primary"
+                                        className="flex-1 py-3"
+                                        disabled={
+                                            resetPwModal.submitting ||
+                                            !resetPwModal.selectedUserId ||
+                                            resetPwModal.newPassword.length < 8 ||
+                                            resetPwModal.newPassword !== resetPwModal.confirmPassword
+                                        }
+                                    >
+                                        {resetPwModal.submitting ? (
+                                            <span className="inline-flex items-center gap-2">
+                                                <Loader2 className="w-3 h-3 animate-spin" /> Resetting…
+                                            </span>
+                                        ) : 'Reset password'}
+                                    </ActionButton>
+                                </div>
+                            </form>
+                        )}
                     </Panel>
                 </div>
             )}
