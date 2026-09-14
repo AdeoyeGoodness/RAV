@@ -1,6 +1,6 @@
 [package]
 name = "rav-agent"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 # Disable Cargo's auto-discovered binary (which would be named after the package) so the
 # explicit [[bin]] below is the only build target — the exe filename is the process name

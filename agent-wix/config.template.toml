@@ -30,7 +30,13 @@ track_connections = true
 
 [monitoring.screenshots]
 enabled = true
-capture_interval_seconds = 120
+# Bumped from 120 -> 30 to match the new archive cadence (5-day rotation
+# + 30 s server sweep). Perceptual dedup on the backend collapses
+# near-identical consecutive frames on static screens, so the extra
+# capture volume mostly compresses back out before it hits long-term
+# storage. Storage impact: ~4x the frame rate → ~34 GB/day fleet-wide
+# before dedup, expected to net ~5-10 GB/day after dedup.
+capture_interval_seconds = 30
 compression_quality = 60
 max_width = 1280
 format = "jpeg"
