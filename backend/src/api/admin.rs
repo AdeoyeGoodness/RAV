@@ -606,10 +606,17 @@ pub async fn list_audit_logs(
     let limit = params.limit.unwrap_or(100);
     let offset = params.offset.unwrap_or(0);
 
+    // Coerce empty-string filters to None so `?action_type=` from clients
+    // that spread all form state doesn't SQL-match the empty string and
+    // silently empty the ledger. Same defensive coercion applied to
+    // list_org_audit_logs.
+    let action_type = params.action_type.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
+    let target_type = params.target_type.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
+
     let logs = sqlx::query_as!(
         EnrichedAuditLog,
         r#"
-        SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id, 
+        SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id,
                l.action_type, l.target_type, l.target_id, l.metadata, l.ip_address, l.user_agent,
                u.email as "actor_email?", u.full_name as "actor_name?"
         FROM audit_logs l
@@ -623,8 +630,8 @@ pub async fn list_audit_logs(
         LIMIT $6 OFFSET $7
         "#,
         params.organization_id,
-        params.action_type,
-        params.target_type,
+        action_type,
+        target_type,
         params.start_time,
         params.end_time,
         limit,

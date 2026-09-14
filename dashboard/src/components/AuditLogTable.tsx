@@ -35,9 +35,15 @@ export function AuditLogTable() {
     const fetchLogs = async () => {
         setLoading(true)
         try {
-            const params: any = {
-                limit: 50,
-                ...filters
+            // Strip empty-string filters before sending — axios preserves
+            // them as `?action_type=&target_type=` and the backend then
+            // filters `l.action_type = ''` which matches zero rows,
+            // silently emptying the table for every user with the default
+            // "All Actions" selection. Only send filters that actually
+            // carry a value.
+            const params: any = { limit: 50 }
+            for (const [k, v] of Object.entries(filters)) {
+                if (v !== '' && v != null) params[k] = v
             }
             if (user?.role === 'super_admin') {
                 const data = await getAuditLogs(params)
@@ -171,17 +177,46 @@ export function AuditLogTable() {
                         />
                     ) : (
                         <select
-                            className={inputBase + ' min-w-[200px]'}
+                            className={inputBase + ' min-w-[220px]'}
                             value={filters.action_type}
                             onChange={(e) => setFilters({ ...filters, action_type: e.target.value })}
                         >
                             <option value="">All Actions</option>
-                            <option value="AGENT_EVENTS_WIPED">Agent Events Wiped</option>
-                            <option value="AGENT_DELETED">Agent Deleted</option>
-                            <option value="AGENT_EVENTS_RESTORED">Agent Events Restored</option>
-                            <option value="ARCHIVE_TRIGGERED">Archive Triggered</option>
-                            <option value="ORG_ARCHIVE_TRIGGERED">Org Archive Triggered</option>
-                            <option value="AGENT_ENROLLED">Agent Enrolled</option>
+                            <optgroup label="Auth / session">
+                                <option value="USER_LOGIN">User Login</option>
+                                <option value="USER_LOGIN_FAILED">User Login Failed</option>
+                                <option value="USER_PASSWORD_CHANGED">Password Changed</option>
+                            </optgroup>
+                            <optgroup label="User management">
+                                <option value="USER_CREATED">User Created</option>
+                                <option value="USER_SUSPENDED">User Suspended</option>
+                                <option value="USER_ACTIVATED">User Activated</option>
+                                <option value="USER_PASSWORD_RESET">User Password Reset</option>
+                                <option value="USER_DELETED">User Deleted</option>
+                            </optgroup>
+                            <optgroup label="Endpoints">
+                                <option value="AGENT_ENROLLED">Agent Enrolled</option>
+                                <option value="AGENT_RENAMED">Agent Renamed</option>
+                                <option value="AGENT_EVENTS_WIPED">Agent Events Wiped</option>
+                                <option value="AGENT_EVENTS_RESTORED">Agent Events Restored</option>
+                                <option value="AGENT_DELETED">Agent Deleted</option>
+                            </optgroup>
+                            <optgroup label="Enrollment tokens">
+                                <option value="TOKEN_CREATED">Token Created</option>
+                                <option value="TOKEN_REVOKED">Token Revoked</option>
+                            </optgroup>
+                            <optgroup label="Forensic vault">
+                                <option value="ARCHIVE_TRIGGERED">Archive Triggered</option>
+                                <option value="ORG_ARCHIVE_TRIGGERED">Org Archive Triggered</option>
+                                <option value="BUNDLE_DOWNLOADED">Bundle Downloaded</option>
+                            </optgroup>
+                            <optgroup label="OCR keywords">
+                                <option value="KEYWORD_ADDED">Keyword Added</option>
+                                <option value="KEYWORD_DELETED">Keyword Deleted</option>
+                            </optgroup>
+                            <optgroup label="Organisation">
+                                <option value="ORG_SETTINGS_UPDATED">Org Settings Updated</option>
+                            </optgroup>
                         </select>
                     )}
                 </div>

@@ -82,6 +82,12 @@ pub async fn list_org_audit_logs(
     let limit = params.limit.unwrap_or(100);
     let offset = params.offset.unwrap_or(0);
 
+    // Coerce empty-string filters to None so `?action_type=` from a client
+    // that forwards blanks (axios spreads {} verbatim) doesn't match the
+    // literal empty string in SQL and silently empty the whole table.
+    let action_type = params.action_type.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
+    let target_type = params.target_type.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
+
     // BYPASS tx — the users table has FORCE RLS so the LEFT JOIN would drop
     // actor_email under a per-org tx (the current session sees org-scoped
     // users but the JOIN condition doesn't force the row into policy scope).
@@ -104,8 +110,8 @@ pub async fn list_org_audit_logs(
         LIMIT $6 OFFSET $7
         "#,
         org_id,
-        params.action_type,
-        params.target_type,
+        action_type,
+        target_type,
         params.start_time,
         params.end_time,
         limit,
