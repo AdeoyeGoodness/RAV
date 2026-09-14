@@ -7,6 +7,7 @@ use axum::{
 use crate::AppState;
 use crate::api::auth::Claims;
 use crate::db::models::{Organization, ActorType, EnrichedAuditLog};
+use crate::services::audit::log_audit;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -78,14 +79,18 @@ pub async fn list_org_audit_logs(
     Query(params): Query<AuditLogQuery>,
 ) -> Result<Json<Vec<EnrichedAuditLog>>, StatusCode> {
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
-    let pool = state.db.pool();
     let limit = params.limit.unwrap_or(100);
     let offset = params.offset.unwrap_or(0);
 
+    // BYPASS tx — the users table has FORCE RLS so the LEFT JOIN would drop
+    // actor_email under a per-org tx (the current session sees org-scoped
+    // users but the JOIN condition doesn't force the row into policy scope).
+    // Explicit WHERE organization_id = $1 keeps this org-scoped in effect.
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let logs = sqlx::query_as!(
         EnrichedAuditLog,
         r#"
-        SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id, 
+        SELECT l.id, l.timestamp, l.actor_type as "actor_type: ActorType", l.actor_id, l.organization_id,
                l.action_type, l.target_type, l.target_id, l.metadata, l.ip_address, l.user_agent,
                u.email as "actor_email?", u.full_name as "actor_name?"
         FROM audit_logs l
@@ -106,12 +111,13 @@ pub async fn list_org_audit_logs(
         limit,
         offset
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!("Failed to list org audit logs: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(logs))
 }
@@ -130,6 +136,10 @@ pub async fn create_enrollment_token(
     };
     let internal = || err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
 
+    // Role gate — analysts (role='user') can browse tokens but can't mint them.
+    if let Err(status) = require_org_admin(&claims) {
+        return Err(err(status, "Forbidden."));
+    }
     let org_id = claims.org_id.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Unauthorized."))?;
 
     // Generate a secure random raw token
@@ -272,6 +282,7 @@ pub async fn revoke_enrollment_token(
     State(state): State<AppState>,
     Path(token_id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
+    require_org_admin(&claims)?;
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -376,6 +387,7 @@ pub async fn create_keyword(
     State(state): State<AppState>,
     Json(payload): Json<CreateKeyword>,
 ) -> Result<Json<KeywordRow>, StatusCode> {
+    require_org_admin(&claims)?;
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let keyword = payload.keyword.trim().to_string();
     if keyword.is_empty() || keyword.len() > 200 {
@@ -423,6 +435,22 @@ pub async fn create_keyword(
     if rescheduled > 0 {
         tracing::info!("Keyword '{}' added — rescheduled {} files for re-scan", keyword, rescheduled);
     }
+    // Truncate the keyword text in the audit metadata — an oversized keyword
+    // shouldn't blow up the audit row size.
+    let audit_kw: String = keyword.chars().take(80).collect();
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "KEYWORD_ADDED",
+        "keyword",
+        Some(row.0.to_string()),
+        serde_json::json!({ "keyword": audit_kw, "is_regex": payload.is_regex, "files_rescheduled": rescheduled }),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit KEYWORD_ADDED failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(KeywordRow {
@@ -443,6 +471,7 @@ pub async fn delete_keyword(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
+    require_org_admin(&claims)?;
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -480,6 +509,7 @@ pub async fn delete_keyword(
     // OCR worker picks them up on the next sweep and re-derives is_critical
     // from the CURRENT keyword catalog. Files flagged by other keywords too
     // will keep their critical status; files flagged ONLY by this one drop.
+    let mut audit_kw: Option<String> = None;
     if let Some(kw) = keyword_text {
         let rescheduled = sqlx::query(
             "UPDATE files
@@ -503,8 +533,343 @@ pub async fn delete_keyword(
                 kw, rescheduled
             );
         }
+        audit_kw = Some(kw.chars().take(80).collect());
     }
 
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "KEYWORD_DELETED",
+        "keyword",
+        Some(id.to_string()),
+        serde_json::json!({ "keyword": audit_kw }),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit KEYWORD_DELETED failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ---------------------------------------------------------------------------
+// Org user management (org_admin creates / manages read-only 'user' accounts
+// inside their org). Single choke-point for role enforcement below.
+// ---------------------------------------------------------------------------
+
+/// Reject the request unless the caller is the tenant admin of the caller's
+/// own org (org_admin) or the platform super_admin. The `user` role is
+/// read-only across all endpoints — every mutating handler in this file
+/// (and every mutating agent handler) must call this at the top.
+pub fn require_org_admin(claims: &Claims) -> Result<(), StatusCode> {
+    match claims.role.as_str() {
+        "super_admin" | "org_admin" => Ok(()),
+        _ => Err(StatusCode::FORBIDDEN),
+    }
+}
+
+/// Generate a 16-character alphanumeric temporary password. Mirrors the
+/// bootstrap flow used by admin::create_organization so an org_admin
+/// onboarding a new analyst hands them a credential of the same shape.
+fn generate_temp_password() -> String {
+    use rand::{Rng, thread_rng};
+    use rand::distributions::Alphanumeric;
+    thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(16)
+        .map(char::from)
+        .collect()
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrgUserRow {
+    pub id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub status: String,
+    pub must_change_password: bool,
+    pub full_name: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub password_changed_at: Option<DateTime<Utc>>,
+}
+
+/// List users under the caller's org. Read-only — accessible to any
+/// authenticated org member (including the 'user' role). Passwords are
+/// never returned; `password_hash` stays server-side.
+pub async fn list_org_users(
+    claims: Claims,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<OrgUserRow>>, StatusCode> {
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows = sqlx::query_as::<_, (Uuid, String, String, String, bool, Option<String>, DateTime<Utc>, Option<DateTime<Utc>>)>(
+        "SELECT id, email, role, status, must_change_password, full_name, created_at, password_changed_at
+         FROM users
+         WHERE organization_id = $1
+         ORDER BY created_at DESC",
+    )
+    .bind(org_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("list_org_users failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, email, role, status, must_change_password, full_name, created_at, password_changed_at)| OrgUserRow {
+                id, email, role, status, must_change_password, full_name, created_at, password_changed_at,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateOrgUser {
+    pub email: String,
+    pub full_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateOrgUserResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub temporary_password: String,
+}
+
+/// Create a read-only 'user' account under the caller's org. Only org_admin
+/// (and super_admin as a fall-through) can call this. Emits a temp password
+/// that the UI reveals ONCE in a hand-off modal; the caller passes it to
+/// the new user out-of-band. The user is stamped `must_change_password=true`
+/// so the existing auth flow forces them into /reset-password on first
+/// login before they can access anything else.
+pub async fn create_org_user(
+    claims: Claims,
+    State(state): State<AppState>,
+    Json(payload): Json<CreateOrgUser>,
+) -> Result<Json<CreateOrgUserResponse>, StatusCode> {
+    require_org_admin(&claims)?;
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let email = payload.email.trim().to_lowercase();
+    if email.is_empty() || !email.contains('@') || email.len() > 255 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let temp_password = generate_temp_password();
+    let password_hash = bcrypt::hash(&temp_password, 10).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let user_id = Uuid::new_v4();
+    let now = Utc::now();
+
+    // users has FORCE RLS; BYPASS + explicit WHERE organization_id guard
+    // (guard is on this INSERT via the direct org_id column value).
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    sqlx::query(
+        "INSERT INTO users (id, organization_id, email, password_hash, role, status, full_name, \
+                            must_change_password, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, 'user', 'active', $5, true, $6, $6)",
+    )
+    .bind(user_id)
+    .bind(org_id)
+    .bind(&email)
+    .bind(&password_hash)
+    .bind(&payload.full_name)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        // Postgres unique-violation on the email index = 23505; surface as 409.
+        if let sqlx::Error::Database(db) = &e {
+            if db.code().as_deref() == Some("23505") {
+                return StatusCode::CONFLICT;
+            }
+        }
+        tracing::error!("create_org_user insert failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "USER_CREATED",
+        "user",
+        Some(user_id.to_string()),
+        serde_json::json!({ "email": &email, "role": "user", "full_name": &payload.full_name }),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit USER_CREATED failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    info!("Org {} created user {} ({}) role=user", org_id, email, user_id);
+
+    Ok(Json(CreateOrgUserResponse {
+        id: user_id,
+        email,
+        role: "user".to_string(),
+        temporary_password: temp_password,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetOrgUserStatus {
+    pub status: String, // "active" | "suspended"
+}
+
+/// Activate or suspend an org user. Can't touch org_admin or super_admin
+/// rows (server-side guard + explicit WHERE role = 'user'). Prevents an
+/// org_admin from locking themselves out or elevating anyone via this
+/// endpoint.
+pub async fn set_org_user_status(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+    Json(payload): Json<SetOrgUserStatus>,
+) -> Result<StatusCode, StatusCode> {
+    require_org_admin(&claims)?;
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    if payload.status != "active" && payload.status != "suspended" {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let res = sqlx::query(
+        "UPDATE users SET status = $1, updated_at = NOW() \
+         WHERE id = $2 AND organization_id = $3 AND role = 'user'",
+    )
+    .bind(&payload.status)
+    .bind(user_id)
+    .bind(org_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("set_org_user_status failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if res.rows_affected() == 0 {
+        // Roll back nothing meaningful — nothing changed — and 404 out.
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let action = if payload.status == "suspended" { "USER_SUSPENDED" } else { "USER_ACTIVATED" };
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        action,
+        "user",
+        Some(user_id.to_string()),
+        serde_json::json!({}),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit {} failed: {}", action, e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResetPasswordResponse {
+    pub temporary_password: String,
+}
+
+/// Admin-triggered password reset: regenerate a temp password and force the
+/// user into /reset-password on their next login. Restricted to role='user'
+/// rows in the caller's org.
+pub async fn reset_org_user_password(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<ResetPasswordResponse>, StatusCode> {
+    require_org_admin(&claims)?;
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let temp_password = generate_temp_password();
+    let password_hash = bcrypt::hash(&temp_password, 10).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let res = sqlx::query(
+        "UPDATE users SET password_hash = $1, must_change_password = true, updated_at = NOW() \
+         WHERE id = $2 AND organization_id = $3 AND role = 'user'",
+    )
+    .bind(&password_hash)
+    .bind(user_id)
+    .bind(org_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("reset_org_user_password failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if res.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "USER_PASSWORD_RESET",
+        "user",
+        Some(user_id.to_string()),
+        serde_json::json!({}),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit USER_PASSWORD_RESET failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(ResetPasswordResponse { temporary_password: temp_password }))
+}
+
+/// Delete an org user. Hard delete — users is not soft-deleted in this
+/// codebase (only agents are). Restricted to role='user' rows in the
+/// caller's org, so org_admin rows can't be removed via this endpoint.
+pub async fn delete_org_user(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    require_org_admin(&claims)?;
+    let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.db.begin_bypass_tx().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Grab the email BEFORE delete so the audit row is legible after the
+    // FK cascade wipes it. Only proceed if the user is in the caller's org
+    // and is role='user' (org_admin rows never returned).
+    let target_email: Option<String> = sqlx::query_scalar::<_, String>(
+        "SELECT email FROM users WHERE id = $1 AND organization_id = $2 AND role = 'user'",
+    )
+    .bind(user_id)
+    .bind(org_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let email = match target_email {
+        Some(e) => e,
+        None => return Err(StatusCode::NOT_FOUND),
+    };
+
+    let res = sqlx::query(
+        "DELETE FROM users WHERE id = $1 AND organization_id = $2 AND role = 'user'",
+    )
+    .bind(user_id)
+    .bind(org_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| { tracing::error!("delete_org_user failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
+    if res.rows_affected() == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "USER_DELETED",
+        "user",
+        Some(user_id.to_string()),
+        serde_json::json!({ "email": email }),
+        None, None,
+    )
+    .await
+    .map_err(|e| { tracing::error!("audit USER_DELETED failed: {}", e); StatusCode::INTERNAL_SERVER_ERROR })?;
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -222,6 +222,7 @@ export function AuditLogTable() {
                             <th className="px-4 py-3 w-8"></th>
                             <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Timestamp (UTC)</th>
                             <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Actor</th>
+                            <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Email</th>
                             <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Action</th>
                             <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>Target</th>
                             <th className="px-4 py-3 font-mono text-[10px] uppercase text-ct-ink3 font-medium" style={{ letterSpacing: '0.18em' }}>IP Address</th>
@@ -229,9 +230,9 @@ export function AuditLogTable() {
                     </thead>
                     <tbody className="divide-y divide-ct-line bg-ct-panel">
                         {loading ? (
-                            <tr><td colSpan={6} className="text-center py-8 text-ct-ink3 text-[12px] font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading ledger…</td></tr>
+                            <tr><td colSpan={7} className="text-center py-8 text-ct-ink3 text-[12px] font-mono uppercase" style={{ letterSpacing: '0.18em' }}>Loading ledger…</td></tr>
                         ) : logs.length === 0 ? (
-                            <tr><td colSpan={6} className="text-center py-8 text-ct-ink3 text-[13px]">No audit records found matching criteria.</td></tr>
+                            <tr><td colSpan={7} className="text-center py-8 text-ct-ink3 text-[13px]">No audit records found matching criteria.</td></tr>
                         ) : (
                             logs.map((log) => (
                                 <>
@@ -252,6 +253,9 @@ export function AuditLogTable() {
                                                 <span className="capitalize text-ct-ink">{log.actor_type.replace('_', ' ')}</span>
                                             </div>
                                         </td>
+                                        <td className="px-4 py-3 font-mono text-[11px] text-ct-ink2 truncate max-w-[220px]">
+                                            {log.actor_email || <span className="text-ct-ink4">—</span>}
+                                        </td>
                                         <td className="px-4 py-3">
                                             <StatusPill tone={getActionTone(log.action_type)} dot={false}>
                                                 {log.action_type}
@@ -267,7 +271,7 @@ export function AuditLogTable() {
 
                                     {expandedRow === log.id && (
                                         <tr className="bg-ct-bg2">
-                                            <td colSpan={6} className="px-4 py-4 border-t border-ct-line">
+                                            <td colSpan={7} className="px-4 py-4 border-t border-ct-line">
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
                                                         <Eyebrow className="mb-2">Metadata</Eyebrow>

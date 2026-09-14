@@ -1175,6 +1175,7 @@ pub async fn delete_agent_events(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -1324,6 +1325,7 @@ pub async fn delete_agent(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     let target_org_id = if claims.role == "super_admin" {
         headers
             .get("X-Organization-Id")
@@ -1581,6 +1583,7 @@ pub async fn download_archive(
     // browser history or proxy/access logs.
     Json(params): Json<DownloadQuery>,
 ) -> Result<Response<Body>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     // 1. Password Verification (Security layer). users has FORCE RLS, so look up the
     // caller's own row in a BYPASS tx (self-auth of an already-JWT-authenticated user).
     let password = params.password.ok_or(StatusCode::UNAUTHORIZED)?;
@@ -1648,6 +1651,7 @@ pub async fn trigger_agent_archive(
     headers: HeaderMap,
     Path(agent_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     let target_org_id = if claims.role == "super_admin" {
         headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
     } else {
@@ -1712,6 +1716,7 @@ pub async fn trigger_org_archive(
     claims: Claims,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     let target_org_id = if claims.role == "super_admin" {
         headers.get("X-Organization-Id").and_then(|h| h.to_str().ok()).and_then(|s| Uuid::parse_str(s).ok()).ok_or(StatusCode::BAD_REQUEST)?
     } else {
@@ -1817,6 +1822,7 @@ pub async fn update_org_settings(
     claims: Claims,
     Json(payload): Json<crate::db::models::UpdateOrganizationSettings>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     let org_id = claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?;
 
     // 1. Mandatory Password Verification (Security layer)
@@ -1865,6 +1871,31 @@ pub async fn update_org_settings(
         tracing::error!("Failed to update org settings: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Audit — record WHICH keys were touched (never the values, definitely
+    // never the SMTP password). Best-effort: don't fail the write on an
+    // audit hiccup.
+    let mut keys_touched: Vec<&'static str> = Vec::new();
+    if payload.smtp_host.is_some()      { keys_touched.push("smtp_host") }
+    if payload.smtp_port.is_some()      { keys_touched.push("smtp_port") }
+    if payload.smtp_username.is_some()  { keys_touched.push("smtp_username") }
+    if enc_smtp_pass.is_some()          { keys_touched.push("smtp_password") }
+    if payload.smtp_from_email.is_some(){ keys_touched.push("smtp_from_email") }
+    if payload.smtp_enabled.is_some()   { keys_touched.push("smtp_enabled") }
+    if let Ok(mut atx) = state.db.pool().begin().await {
+        let _ = crate::services::audit::log_audit(
+            &mut atx,
+            crate::db::models::ActorType::OrgAdmin,
+            Some(claims.sub),
+            Some(org_id),
+            "ORG_SETTINGS_UPDATED",
+            "settings",
+            Some(org_id.to_string()),
+            serde_json::json!({ "keys": keys_touched }),
+            None, None,
+        ).await;
+        let _ = atx.commit().await;
+    }
 
     Ok(Json(serde_json::json!({"status": "success"})))
 }
@@ -1952,6 +1983,7 @@ pub async fn download_org_bundle(
     headers: HeaderMap,
     Json(params): Json<DownloadQuery>,
 ) -> Result<Response<Body>, StatusCode> {
+    crate::api::org::require_org_admin(&claims)?;
     // 1. Password re-verification (users has FORCE RLS — bypass tx for self-auth).
     let password = params.password.ok_or(StatusCode::UNAUTHORIZED)?;
     let user_row = {

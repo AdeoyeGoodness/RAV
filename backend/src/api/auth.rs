@@ -122,6 +122,23 @@ pub async fn login(
     };
 
     if !verify(payload.password, &user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        // Audit password-mismatch attempts. Fire-and-forget on a fresh tx —
+        // the login MUST 401 the caller regardless of whether the audit
+        // insert succeeds, so we don't propagate that error.
+        if let Ok(mut audit_tx) = pool.begin().await {
+            let _ = log_audit(
+                &mut audit_tx,
+                ActorType::System,
+                Some(user.id),
+                user.organization_id,
+                "USER_LOGIN_FAILED",
+                "user",
+                Some(user.id.to_string()),
+                serde_json::json!({ "email": user.email, "reason": "bad_password" }),
+                None, None,
+            ).await;
+            let _ = audit_tx.commit().await;
+        }
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -181,28 +198,29 @@ pub async fn login(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Audit Log for Admins
-    if user.role == "super_admin" || user.role == "org_admin" {
-        // We need a transaction for audit log
-        if let Ok(mut tx) = pool.begin().await {
-            let actor_type = if user.role == "super_admin" { ActorType::SuperAdmin } else { ActorType::OrgAdmin };
-            
-            // Fire and forget audit (log error but don't fail login)
-            let _ = log_audit(
-                &mut tx,
-                actor_type,
-                Some(user.id),
-                user.organization_id,
-                "USER_LOGIN",
-                "USER",
-                Some(user.id.to_string()),
-                serde_json::json!({ "email": user.email }),
-                None, // IP TODO: Extract from headers if possible
-                None
-            ).await;
-            
-            let _ = tx.commit().await;
-        }
+    // Audit every successful login (super_admin, org_admin, user). Analysts
+    // are stamped as OrgAdmin in the enum bucket + { actor_role: "user" }
+    // in metadata since actor_type has only three values today — see the
+    // plan doc for the enum-value deferral rationale.
+    if let Ok(mut audit_tx) = pool.begin().await {
+        let actor_type = if user.role == "super_admin" {
+            ActorType::SuperAdmin
+        } else {
+            ActorType::OrgAdmin
+        };
+        let _ = log_audit(
+            &mut audit_tx,
+            actor_type,
+            Some(user.id),
+            user.organization_id,
+            "USER_LOGIN",
+            "user",
+            Some(user.id.to_string()),
+            serde_json::json!({ "email": user.email, "actor_role": user.role }),
+            None,
+            None,
+        ).await;
+        let _ = audit_tx.commit().await;
     }
 
     // Set HttpOnly Cookie (Session only, no Max-Age)
@@ -433,6 +451,25 @@ pub async fn change_password(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     }
+
+    // Audit the self-service password change. Same tx so the audit is
+    // atomic with the update — either both land or neither does.
+    let actor_type = if claims.role == "super_admin" {
+        ActorType::SuperAdmin
+    } else {
+        ActorType::OrgAdmin
+    };
+    let _ = log_audit(
+        &mut tx,
+        actor_type,
+        Some(claims.sub),
+        claims.org_id,
+        "USER_PASSWORD_CHANGED",
+        "user",
+        Some(claims.sub.to_string()),
+        serde_json::json!({ "actor_role": claims.role }),
+        None, None,
+    ).await;
 
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

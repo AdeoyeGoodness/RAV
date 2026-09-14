@@ -8,6 +8,7 @@ import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import { formatWATDate } from '@/lib/time'
 import { Panel, PanelHead, Eyebrow, SectionHead, StatusPill, ActionButton } from '@/components/ct/primitives'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Keyword {
   id: string
@@ -19,6 +20,8 @@ interface Keyword {
 }
 
 export default function KeywordsSettings() {
+  const { user } = useAuth()
+  const canMutate = user?.role === 'org_admin' || user?.role === 'super_admin'
   const [rows, setRows] = useState<Keyword[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -118,7 +121,11 @@ export default function KeywordsSettings() {
             }
           />
 
-          {/* Add form */}
+          {/* Add form — only visible to org_admins. Analysts (role='user')
+              can browse the roster but cannot mutate it; server-side gate
+              in api::org::create_keyword enforces this even if the form
+              were somehow reached. */}
+          {canMutate && (
           <Panel>
             <PanelHead title="Add rule" meta="Applies to future captures + triggers retroactive rescan of all existing files" />
             <div className="p-5">
@@ -186,6 +193,7 @@ export default function KeywordsSettings() {
               )}
             </div>
           </Panel>
+          )}
 
           {/* Two-column: platform + org */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -246,13 +254,15 @@ export default function KeywordsSettings() {
                         <span className="text-[10px] text-ct-ink3 font-mono tabular-nums">
                           {formatWATDate(k.created_at)}
                         </span>
-                        <button
-                          onClick={() => remove(k.id)}
-                          className="p-2 rounded-sm text-ct-ink3 hover:text-ct-crit transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canMutate && (
+                          <button
+                            onClick={() => remove(k.id)}
+                            className="p-2 rounded-sm text-ct-ink3 hover:text-ct-crit transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

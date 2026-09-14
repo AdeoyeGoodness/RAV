@@ -8,8 +8,11 @@ import ArchiveBanner from '@/components/ArchiveBanner'
 import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails } from '@/lib/api'
 import { formatWATPattern } from '@/lib/time'
 import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function EnrollmentTokensPage() {
+  const { user } = useAuth()
+  const canMutate = user?.role === 'org_admin' || user?.role === 'super_admin'
   const [tokens, setTokens] = useState<EnrollmentToken[]>([])
   const [orgMaxAgents, setOrgMaxAgents] = useState<number>(100)
   const [isLoading, setIsLoading] = useState(true)
@@ -118,15 +121,17 @@ export default function EnrollmentTokensPage() {
             eyebrow="Fleet / Enrollment"
             title="Deployment Tokens"
             right={
-              <ActionButton
-                onClick={() => { setNewToken(prev => ({ ...prev, max_agents: Math.max(1, remainingAgents) })); setIsModalOpen(true); setGeneratedToken(null); }}
-                variant="primary"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Plus className="w-3 h-3" />
-                  Generate Token
-                </span>
-              </ActionButton>
+              canMutate && (
+                <ActionButton
+                  onClick={() => { setNewToken(prev => ({ ...prev, max_agents: Math.max(1, remainingAgents) })); setIsModalOpen(true); setGeneratedToken(null); }}
+                  variant="primary"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Plus className="w-3 h-3" />
+                    Generate Token
+                  </span>
+                </ActionButton>
+              )
             }
           />
           <p className="text-ct-ink3 text-[13px] -mt-2 max-w-3xl">
@@ -195,7 +200,7 @@ export default function EnrollmentTokensPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end space-x-2">
-                            {!isInactive && (
+                            {!isInactive && canMutate && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                                 <ActionButton onClick={() => handleRevoke(token.token_id)} variant="danger">
                                   Revoke

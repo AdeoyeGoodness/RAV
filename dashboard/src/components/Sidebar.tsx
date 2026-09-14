@@ -15,6 +15,7 @@ import {
   Settings,
   ShieldCheck,
   CheckSquare,
+  Users,
   LogOut,
   ChevronRight,
   ChevronDown,
@@ -49,6 +50,7 @@ const NAV_GROUPS: Array<{
     label: 'Governance',
     items: [
       { href: '/audit', label: 'Audit Trail', icon: Shield, roles: ['org_admin'] },
+      { href: '/settings/users', label: 'Users', icon: Users, roles: ['org_admin'] },
       { href: '/settings/notifications', label: 'Forensic Alerts', icon: Bell, roles: ['org_admin', 'user'] },
       { href: '/settings/enrollment', label: 'Deployment Tokens', icon: Key, roles: ['org_admin', 'user'] },
       { href: '/settings/keywords', label: 'Sensitive Keywords', icon: ShieldAlert, roles: ['org_admin', 'user'] },

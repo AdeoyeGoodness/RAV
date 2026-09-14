@@ -263,6 +263,51 @@ export async function getAgentScreenshotDuplicates(agentId: string): Promise<Scr
   return response.data.duplicates ?? []
 }
 
+// -------- Org user management ---------------------------------------------
+// Read-only 'user' accounts under an org, created by the org_admin so an
+// analyst can browse telemetry without being able to mutate anything.
+
+export interface OrgUser {
+  id: string
+  email: string
+  role: 'org_admin' | 'user'
+  status: 'active' | 'suspended'
+  must_change_password: boolean
+  full_name: string | null
+  created_at: string
+  password_changed_at: string | null
+}
+
+export interface CreateOrgUserResponse {
+  id: string
+  email: string
+  role: 'user'
+  temporary_password: string
+}
+
+export async function getOrgUsers(): Promise<OrgUser[]> {
+  const response = await api.get('/api/v1/org/users')
+  return response.data
+}
+
+export async function createOrgUser(payload: { email: string; full_name?: string }): Promise<CreateOrgUserResponse> {
+  const response = await api.post('/api/v1/org/users', payload)
+  return response.data
+}
+
+export async function setOrgUserStatus(userId: string, status: 'active' | 'suspended'): Promise<void> {
+  await api.patch(`/api/v1/org/users/${userId}/status`, { status })
+}
+
+export async function resetOrgUserPassword(userId: string): Promise<{ temporary_password: string }> {
+  const response = await api.post(`/api/v1/org/users/${userId}/reset-password`)
+  return response.data
+}
+
+export async function deleteOrgUser(userId: string): Promise<void> {
+  await api.delete(`/api/v1/org/users/${userId}`)
+}
+
 export interface EventsSummary {
   window_hours: number
   server_time_ms: number

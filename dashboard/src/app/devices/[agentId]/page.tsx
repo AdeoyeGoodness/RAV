@@ -293,9 +293,11 @@ export default function DeviceDetailsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <ActionButton variant="danger" onClick={handleDeleteAllData}>
-                  <Trash2 className="w-3 h-3 inline mr-2" /> Wipe endpoint data
-                </ActionButton>
+                {(user?.role === 'org_admin' || user?.role === 'super_admin') && (
+                  <ActionButton variant="danger" onClick={handleDeleteAllData}>
+                    <Trash2 className="w-3 h-3 inline mr-2" /> Wipe endpoint data
+                  </ActionButton>
+                )}
               </div>
             </div>
           </div>
@@ -620,24 +622,26 @@ export default function DeviceDetailsPage() {
               title="Forensic vault"
               meta="Snapshot archives · auto-purge every 7 days"
               right={
-                <ActionButton
-                  onClick={async () => {
-                    if (confirm('Trigger immediate forensic archival for this device? This will bundle ALL current telemetry into a secure ZIP for retrieval.')) {
-                      try {
-                        const res = await triggerManualArchive(agentId)
-                        if (res.status === 'success') {
-                          window.location.reload()
-                        } else {
-                          alert(res.message || 'Archive requested, check vault shortly.')
+                (user?.role === 'org_admin' || user?.role === 'super_admin') && (
+                  <ActionButton
+                    onClick={async () => {
+                      if (confirm('Trigger immediate forensic archival for this device? This will bundle ALL current telemetry into a secure ZIP for retrieval.')) {
+                        try {
+                          const res = await triggerManualArchive(agentId)
+                          if (res.status === 'success') {
+                            window.location.reload()
+                          } else {
+                            alert(res.message || 'Archive requested, check vault shortly.')
+                          }
+                        } catch {
+                          alert('Failed to reach archival orchestrator.')
                         }
-                      } catch {
-                        alert('Failed to reach archival orchestrator.')
                       }
-                    }
-                  }}
-                >
-                  <Archive className="w-3 h-3 inline mr-2" /> Request archive
-                </ActionButton>
+                    }}
+                  >
+                    <Archive className="w-3 h-3 inline mr-2" /> Request archive
+                  </ActionButton>
+                )
               }
             />
             <div className="p-5">

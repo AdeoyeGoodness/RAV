@@ -229,6 +229,12 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/enrollment-tokens/:token_id", delete(api::org::revoke_enrollment_token))
         .route("/api/v1/org/keywords", get(api::org::list_keywords).post(api::org::create_keyword))
         .route("/api/v1/org/keywords/:id", delete(api::org::delete_keyword))
+        // Org-scoped user management. All mutating handlers gate on
+        // require_org_admin so the read-only 'user' role can only GET the list.
+        .route("/api/v1/org/users", get(api::org::list_org_users).post(api::org::create_org_user))
+        .route("/api/v1/org/users/:user_id/status", patch(api::org::set_org_user_status))
+        .route("/api/v1/org/users/:user_id/reset-password", post(api::org::reset_org_user_password))
+        .route("/api/v1/org/users/:user_id", delete(api::org::delete_org_user))
         .route("/api/v1/events", post(handlers::ingest_events))
         .route("/api/v1/events", get(handlers::query_events))
         .route("/api/v1/events/summary", get(handlers::events_summary))
