@@ -24,20 +24,20 @@ interface HelpTopic {
 }
 
 const TOPICS: HelpTopic[] = [
-  { slug: 'command-centre',    category: 'Getting started', duration: 30, title: 'Read the Command Centre',                  description: 'Every KPI on the home page and how the numbers relate to each other.' },
-  { slug: 'kpi-gap',           category: 'Getting started', duration: 30, title: 'KPIs · why 1,000 vs 941',                  description: 'Why the top-line event count is larger than the Activity Breakdown sum.' },
-  { slug: 'header-search',     category: 'Getting started', duration: 30, title: 'Search across the fleet',                  description: 'Use the header search to jump to any endpoint, event, keyword or IP.' },
+  { slug: 'command-centre',    category: 'Getting started', duration: 30, title: 'Read the Command Centre',                  description: 'Every KPI on the home page and how the numbers relate to each other.', video: '/help/videos/command-centre.mp4' },
+  { slug: 'kpi-gap',           category: 'Getting started', duration: 30, title: 'KPIs · why 1,000 vs 941',                  description: 'Why the top-line event count is larger than the Activity Breakdown sum.', video: '/help/videos/kpi-gap.mp4' },
+  { slug: 'header-search',     category: 'Getting started', duration: 30, title: 'Search across the fleet',                  description: 'Use the header search to jump to any endpoint, event, keyword or IP.', video: '/help/videos/header-search.mp4' },
   { slug: 'create-user',       category: 'Users',           duration: 30, title: 'Create a user + hand off password',        description: 'Invite an analyst, show them their one-time temporary password, force reset on first login.', video: '/help/videos/create-user.mp4' },
-  { slug: 'manage-user',       category: 'Users',           duration: 30, title: 'Suspend or delete a user',                 description: 'Revoke access without losing the audit trail; hard-delete when they leave.' },
-  { slug: 'reset-password',    category: 'Users',           duration: 30, title: 'Reset your password',                      description: 'Change your own credential from the reset-password screen after must-change.' },
-  { slug: 'audit-trail',       category: 'Users',           duration: 30, title: 'Read the audit trail',                     description: 'Filter by action, actor, or time window. Read who did what by email.' },
+  { slug: 'manage-user',       category: 'Users',           duration: 30, title: 'Suspend or delete a user',                 description: 'Revoke access without losing the audit trail; hard-delete when they leave.', video: '/help/videos/manage-user.mp4' },
+  { slug: 'reset-password',    category: 'Users',           duration: 30, title: 'Reset your password',                      description: 'Change your own credential from the reset-password screen after must-change.', video: '/help/videos/reset-password.mp4' },
+  { slug: 'audit-trail',       category: 'Users',           duration: 30, title: 'Read the audit trail',                     description: 'Filter by action, actor, or time window. Read who did what by email.', video: '/help/videos/audit-trail.mp4' },
   { slug: 'deployment-token',  category: 'Devices',         duration: 30, title: 'Generate a token + enrol a device',        description: 'Mint a short-lived deployment token and paste it into the MSI on the endpoint.' },
-  { slug: 'uploader-stalled',  category: 'Devices',         duration: 30, title: 'What "Uploader stalled" means',            description: 'How to spot devices that heartbeat but stop sending events, and what to try next.' },
-  { slug: 'vault-freshness',   category: 'Forensic vault',  duration: 30, title: 'Check an endpoint’s bundle status',   description: 'Use the Forensic Vault freshness panel to see which devices are overdue for an archive.', video: '/help/videos/vault-freshness.mp4' },
-  { slug: 'request-archive',   category: 'Forensic vault',  duration: 30, title: 'Request + download an archive',            description: 'Trigger a fresh bundle on demand and use the burn-after-reading download flow.' },
-  { slug: 'keywords',          category: 'Content',         duration: 30, title: 'Add or remove a sensitive keyword',        description: 'Extend the OCR watch list; retroactive rescan re-evaluates every existing screenshot.' },
-  { slug: 'critical-items',    category: 'Content',         duration: 30, title: 'Read the Critical items feed',             description: 'Understand why an image was flagged, which keywords matched, and what to do next.' },
-  { slug: 'dedup',             category: 'Observability',   duration: 30, title: 'Near-duplicate screenshot suppression',    description: 'Why the same screen for hours only shows a handful of thumbnails, and how to see the count of suppressed frames.' },
+  { slug: 'uploader-stalled',  category: 'Devices',         duration: 30, title: 'What "Uploader stalled" means',            description: 'How to spot devices that heartbeat but stop sending events, and what to try next.', video: '/help/videos/uploader-stalled.mp4' },
+  { slug: 'vault-freshness',   category: 'Forensic vault',  duration: 30, title: 'Check an endpoint’s bundle status',   description: 'Use the Forensic Vault freshness panel to see which devices are overdue for an archive.' },
+  { slug: 'request-archive',   category: 'Forensic vault',  duration: 30, title: 'Request + download an archive',            description: 'Trigger a fresh bundle on demand and use the burn-after-reading download flow.', video: '/help/videos/request-archive.mp4' },
+  { slug: 'keywords',          category: 'Content',         duration: 30, title: 'Add or remove a sensitive keyword',        description: 'Extend the OCR watch list; retroactive rescan re-evaluates every existing screenshot.', video: '/help/videos/keywords.mp4' },
+  { slug: 'critical-items',    category: 'Content',         duration: 30, title: 'Read the Critical items feed',             description: 'Understand why an image was flagged, which keywords matched, and what to do next.', video: '/help/videos/critical-items.mp4' },
+  { slug: 'dedup',             category: 'Observability',   duration: 30, title: 'Near-duplicate screenshot suppression',    description: 'Why the same screen for hours only shows a handful of thumbnails, and how to see the count of suppressed frames.', video: '/help/videos/dedup.mp4' },
 ]
 
 const CATEGORIES = ['Getting started', 'Users', 'Devices', 'Forensic vault', 'Content', 'Observability'] as const
