@@ -44,27 +44,55 @@ const CATEGORIES = ['Getting started', 'Users', 'Devices', 'Forensic vault', 'Co
 
 function Tile({ topic, onOpen }: { topic: HelpTopic; onOpen: (t: HelpTopic) => void }) {
   const ready = !!topic.video
+  // Poster JPG is written next to the MP4 by postprocess.mjs.
+  const poster = topic.video ? topic.video.replace(/\.mp4$/, '.jpg') : undefined
   return (
     <button
       onClick={() => ready && onOpen(topic)}
       disabled={!ready}
       className="text-left rounded-[3px] overflow-hidden border border-ct-line bg-ct-panel transition-colors hover:border-ct-accent-border hover:bg-ct-panel-hi disabled:cursor-not-allowed disabled:opacity-70"
     >
-      {/* Video thumbnail placeholder / poster */}
+      {/* Video thumbnail — the poster JPG from the actual demo frame if
+          ready; a soft placeholder gradient if not yet recorded. */}
       <div
-        className="relative aspect-video"
+        className="relative aspect-video overflow-hidden"
         style={{
-          background: `linear-gradient(135deg, var(--ct-bg2) 0%, var(--ct-panel-hi) 100%)`,
+          background: ready
+            ? 'var(--ct-bg)'
+            : `linear-gradient(135deg, var(--ct-bg2) 0%, var(--ct-panel-hi) 100%)`,
           borderBottom: '1px solid var(--ct-line)',
         }}
       >
+        {ready && poster && (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={poster}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            {/* Bottom-edge scrim so the play button + duration chip stay
+                legible on any poster frame. */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,0.55) 100%)' }}
+            />
+          </>
+        )}
         <div className="absolute inset-0 flex items-center justify-center">
           {ready ? (
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ background: 'var(--ct-accent-soft)', border: '1px solid var(--ct-accent-border)' }}
+              className="w-14 h-14 rounded-full flex items-center justify-center transition-transform"
+              style={{
+                background: 'rgba(15,17,22,0.72)',
+                border: '1px solid var(--ct-accent-border)',
+                backdropFilter: 'blur(4px)',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
+              }}
             >
-              <PlayCircle className="w-6 h-6 text-ct-accent" />
+              <PlayCircle className="w-7 h-7 text-ct-accent" />
             </div>
           ) : (
             <div
@@ -77,7 +105,7 @@ function Tile({ topic, onOpen }: { topic: HelpTopic; onOpen: (t: HelpTopic) => v
         </div>
         <div
           className="absolute top-2 left-2 font-mono text-[10px] uppercase text-ct-ink3 px-2 py-0.5 rounded"
-          style={{ background: 'rgba(0,0,0,0.5)', letterSpacing: '0.14em', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'rgba(0,0,0,0.55)', letterSpacing: '0.14em', backdropFilter: 'blur(4px)' }}
         >
           {topic.duration}s
         </div>
@@ -125,6 +153,7 @@ function VideoModal({ topic, onClose }: { topic: HelpTopic; onClose: () => void 
         <video
           key={topic.slug}
           src={topic.video}
+          poster={topic.video ? topic.video.replace(/\.mp4$/, '.jpg') : undefined}
           controls
           autoPlay
           className="w-full"
