@@ -147,27 +147,64 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Spawn Background Archiver Job
+    // Spawn Background Archiver Job.
+    //
+    // Cadence: sweep every 30 s (was 12 h), per-agent gate at 5 days. The
+    // 30 s tick is cheap — the eligibility query is one row-set-returning
+    // SELECT and typically returns 0 rows. Each agent still archives at
+    // MOST once per 5 days because agents.last_archived_at gates each
+    // pass. Net effect: an agent that just crossed the 5-day boundary
+    // gets archived within ~30 s instead of waiting up to a full 12 h,
+    // AND no agent ever gets a second archive inside the same 5-day
+    // window from the auto path (manual triggers bypass the gate — see
+    // handlers::trigger_agent_archive).
+    //
+    // Cutoff: events older than 5 days go into the archive (was 7).
+    //
+    // Vault retention (2 days) + file retention (bumped to match archive
+    // cadence, see cleanup_old_files call below) also run on the same
+    // 30 s tick but each has its own idempotent skip.
+    const SWEEP_INTERVAL_SECS: u64 = 30;
+    const ARCHIVE_CUTOFF_DAYS: i64 = 5;
+    const PER_AGENT_ARCHIVE_MIN_INTERVAL_DAYS: i64 = 5;
+    // File retention MUST exceed the archive cutoff, otherwise the file
+    // cleanup sweep can delete a screenshot BEFORE the archive service
+    // has bundled it into the ZIP — the "no screenshots in the archive"
+    // bug operators reported. Keep files 2 days past the archive cutoff
+    // so an agent has a wide safety window even if its archive is
+    // slightly delayed.
+    const FILE_RETENTION_DAYS: i64 = ARCHIVE_CUTOFF_DAYS + 2;
     let archive_bg = archive_service.clone();
     let notify_bg = notification_service.clone();
     let encryption_bg = encryption_service.clone();
     let db_bg = db.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(12 * 3600)).await; // Run every 12 hours
-            info!("Running automated archive rotation check...");
-            
-            // Cross-org scan for agents with events older than 7 days. events has
-            // FORCE RLS, so this must run in a BYPASS transaction or it sees nothing.
+            tokio::time::sleep(tokio::time::Duration::from_secs(SWEEP_INTERVAL_SECS)).await;
+
+            // Cross-org scan: which agents have events older than the cutoff
+            // AND haven't been archived in the last PER_AGENT_ARCHIVE_MIN_INTERVAL_DAYS.
+            // events + agents both have FORCE RLS, so this MUST run in a
+            // BYPASS transaction or it silently returns 0 rows.
             let result = async {
                 let mut tx = db_bg.begin_bypass_tx().await?;
-                let rows = sqlx::query!(
+                let rows = sqlx::query(
                     r#"
-                    SELECT DISTINCT agent_id, organization_id
-                    FROM events
-                    WHERE created_at < NOW() - INTERVAL '7 days'
-                    "#
+                    SELECT DISTINCT e.agent_id, e.organization_id
+                    FROM events e
+                    JOIN agents a
+                      ON a.agent_id = e.agent_id
+                     AND a.organization_id = e.organization_id
+                     AND a.deleted_at IS NULL
+                    WHERE e.created_at < NOW() - ($1 || ' days')::interval
+                      AND (
+                          a.last_archived_at IS NULL
+                          OR a.last_archived_at < NOW() - ($2 || ' days')::interval
+                      )
+                    "#,
                 )
+                .bind(ARCHIVE_CUTOFF_DAYS.to_string())
+                .bind(PER_AGENT_ARCHIVE_MIN_INTERVAL_DAYS.to_string())
                 .fetch_all(&mut *tx)
                 .await?;
                 tx.commit().await?;
@@ -176,25 +213,37 @@ async fn main() -> Result<()> {
             .await;
 
             if let Ok(targets) = result {
-                for target in targets {
-                    if let Ok(Some(_arch)) = archive_bg.archive_agent_telemetry(&target.agent_id, target.organization_id, false).await {
-                        // Notify admins (DB-backed + Encrypted SMTP)
-                        let _ = notify_bg.notify_archive_ready(target.organization_id, &target.agent_id, &encryption_bg).await;
+                if !targets.is_empty() {
+                    info!("Archive sweep: {} agent(s) eligible for archiving.", targets.len());
+                }
+                for row in targets {
+                    use sqlx::Row;
+                    let agent_id: String = row.get("agent_id");
+                    let org_id: uuid::Uuid = row.get("organization_id");
+                    match archive_bg.archive_agent_telemetry(&agent_id, org_id, false).await {
+                        Ok(Some(_arch)) => {
+                            let _ = notify_bg
+                                .notify_archive_ready(org_id, &agent_id, &encryption_bg)
+                                .await;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::error!("Archive sweep: agent {} org {} failed: {}", agent_id, org_id, e);
+                        }
                     }
                 }
             }
 
-            // 2-day vault retention sweep. Admins have 2 days to download an archive
-            // after it lands in the vault; after that we reclaim the disk.
+            // 2-day vault retention sweep — download window for admins.
             if let Err(e) = archive_bg.cleanup_old_archives(2).await {
                 tracing::error!("Archive cleanup failed: {}", e);
             }
 
-            // 7-day file/screenshot sweep. Event rows older than 7 days are archived and
-            // purged above; without this the underlying blobs in storage/files/ and the
-            // files table would grow forever, which is what makes the endpoint detail page
-            // and screenshot loads slow down over time.
-            if let Err(e) = archive_bg.cleanup_old_files(7).await {
+            // File / screenshot retention. Bounded ABOVE the archive cutoff
+            // (see FILE_RETENTION_DAYS comment) so the cleanup sweep never
+            // races the archive sweep and deletes evidence that hasn't been
+            // bundled yet.
+            if let Err(e) = archive_bg.cleanup_old_files(FILE_RETENTION_DAYS as i64).await {
                 tracing::error!("File cleanup failed: {}", e);
             }
         }

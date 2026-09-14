@@ -31,15 +31,18 @@ impl ArchiveService {
         &self.storage_dir
     }
 
-    /// Primary task: Archive events for an agent. 
-    /// By default (weekly pulse), it only takes events older than 7 days.
+    /// Primary task: Archive events for an agent.
+    /// By default (auto sweep), it only takes events older than 5 days.
     /// If 'include_recent' is true (manual request), it takes everything.
+    /// Cutoff bumped from 7 → 5 days to match the new sweep cadence
+    /// (main.rs::ARCHIVE_CUTOFF_DAYS = 5) so an auto-eligible agent
+    /// actually has events to write when the 5-day gate opens.
     pub async fn archive_agent_telemetry(&self, agent_id: &str, org_id: Uuid, include_recent: bool) -> Result<Option<Archive>> {
         let now = Utc::now();
         let cutoff = if include_recent {
             now
         } else {
-            now - Duration::days(7)
+            now - Duration::days(5)
         };
 
         // All events/archives queries run inside ONE org-scoped transaction. The
@@ -79,6 +82,54 @@ impl ArchiveService {
         // 'Telemetry Range' the dashboard shows actually reflect when these events happened.
         let start_date = events.iter().map(|e| e.timestamp).min().unwrap();
         let end_date = events.iter().map(|e| e.timestamp).max().unwrap();
+
+        // Diagnostic: how many screenshot events are we about to try to
+        // embed, and how many of those actually have a file on disk right
+        // now? Any gap between the two = the file-cleanup sweep purged
+        // the blob before the archive could bundle it (the "no
+        // screenshots in the archive" bug operators reported). Log both
+        // counts up-front so the mystery becomes visible per archive.
+        let (ss_total, ss_on_disk) = {
+            use std::collections::HashSet;
+            let ss_events: Vec<&crate::db::models::Event> = events
+                .iter()
+                .filter(|e| e.event_type.eq_ignore_ascii_case("screenshot_captured"))
+                .collect();
+            let want: HashSet<String> = ss_events
+                .iter()
+                .filter_map(|e| {
+                    e.metadata
+                        .as_object()
+                        .and_then(|m| m.get("file_id"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
+                .collect();
+            let mut on_disk = 0usize;
+            if let Ok(entries) = fs::read_dir(&self.file_storage_dir) {
+                for e in entries.flatten() {
+                    if let Some(stem) = e.path().file_stem().and_then(|s| s.to_str()) {
+                        if want.contains(stem) {
+                            on_disk += 1;
+                        }
+                    }
+                }
+            }
+            (ss_events.len(), on_disk)
+        };
+        if ss_total > 0 {
+            info!(
+                "Archive {}: {} screenshot event(s), {} file(s) present on disk, cutoff={} limit={}",
+                agent_id, ss_total, ss_on_disk, cutoff, self.max_screenshots,
+            );
+            if ss_on_disk < ss_total {
+                warn!(
+                    "Archive {}: {} screenshot file(s) MISSING from disk (purged before archive?); \
+                     the HTML report will render 'not found on disk' placeholders for them",
+                    agent_id, ss_total - ss_on_disk
+                );
+            }
+        }
 
         // 2. Prepare JSON Payload (kept for machine analysis)
         let json_data = serde_json::to_string_pretty(&events)?;
