@@ -184,6 +184,7 @@ export function AuditLogTable() {
                             <option value="">All Actions</option>
                             <optgroup label="Auth / session">
                                 <option value="USER_LOGIN">User Login</option>
+                                <option value="USER_LOGOUT">User Logout</option>
                                 <option value="USER_LOGIN_FAILED">User Login Failed</option>
                                 <option value="USER_PASSWORD_CHANGED">Password Changed</option>
                             </optgroup>

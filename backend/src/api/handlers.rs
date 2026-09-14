@@ -1882,7 +1882,9 @@ pub async fn update_org_settings(
     if enc_smtp_pass.is_some()          { keys_touched.push("smtp_password") }
     if payload.smtp_from_email.is_some(){ keys_touched.push("smtp_from_email") }
     if payload.smtp_enabled.is_some()   { keys_touched.push("smtp_enabled") }
-    if let Ok(mut atx) = state.db.pool().begin().await {
+    // begin_bypass_tx — audit_logs has FORCE RLS and a raw pool tx has
+    // its INSERT silently rejected by policy. Same fix pattern as auth.rs.
+    if let Ok(mut atx) = state.db.begin_bypass_tx().await {
         let _ = crate::services::audit::log_audit(
             &mut atx,
             crate::db::models::ActorType::OrgAdmin,

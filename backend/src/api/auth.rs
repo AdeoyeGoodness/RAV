@@ -122,10 +122,12 @@ pub async fn login(
     };
 
     if !verify(payload.password, &user.password_hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
-        // Audit password-mismatch attempts. Fire-and-forget on a fresh tx —
-        // the login MUST 401 the caller regardless of whether the audit
-        // insert succeeds, so we don't propagate that error.
-        if let Ok(mut audit_tx) = pool.begin().await {
+        // Audit password-mismatch attempts. MUST use begin_bypass_tx (not
+        // raw pool.begin()) because audit_logs has FORCE RLS and without
+        // app.current_org_id set the INSERT is silently rejected by the
+        // policy. The login still 401s regardless of whether the audit
+        // succeeds, but this way it actually lands.
+        if let Ok(mut audit_tx) = state.db.begin_bypass_tx().await {
             let _ = log_audit(
                 &mut audit_tx,
                 ActorType::System,
@@ -198,11 +200,14 @@ pub async fn login(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Audit every successful login (super_admin, org_admin, user). Analysts
-    // are stamped as OrgAdmin in the enum bucket + { actor_role: "user" }
-    // in metadata since actor_type has only three values today — see the
-    // plan doc for the enum-value deferral rationale.
-    if let Ok(mut audit_tx) = pool.begin().await {
+    // Audit every successful login (super_admin, org_admin, user). MUST
+    // use begin_bypass_tx — audit_logs has FORCE RLS and a bare pool tx
+    // without app.current_org_id set has its INSERT rejected by policy,
+    // silently, because the outer `let _ =` swallows the error.
+    // Analysts are stamped as OrgAdmin in the enum bucket +
+    // { actor_role: "user" } in metadata since actor_type has only three
+    // values today — see the plan doc for the enum-value deferral rationale.
+    if let Ok(mut audit_tx) = state.db.begin_bypass_tx().await {
         let actor_type = if user.role == "super_admin" {
             ActorType::SuperAdmin
         } else {
@@ -392,7 +397,37 @@ pub async fn me(
     }))
 }
 
-pub async fn logout() -> impl IntoResponse {
+pub async fn logout(
+    // Claims is required, so a session with an already-expired JWT would
+    // 401 here instead of clearing the cookie — that's actually fine, the
+    // client-side layer nukes the cookie itself and the JWT extractor
+    // catches expired tokens earlier anyway. This shape gets us proper
+    // audit attribution for the common case.
+    claims: Claims,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    // Audit before clearing — MUST use begin_bypass_tx (audit_logs has
+    // FORCE RLS; a bare pool tx would have its INSERT rejected silently).
+    if let Ok(mut audit_tx) = state.db.begin_bypass_tx().await {
+        let actor_type = if claims.role == "super_admin" {
+            ActorType::SuperAdmin
+        } else {
+            ActorType::OrgAdmin
+        };
+        let _ = log_audit(
+            &mut audit_tx,
+            actor_type,
+            Some(claims.sub),
+            claims.org_id,
+            "USER_LOGOUT",
+            "user",
+            Some(claims.sub.to_string()),
+            serde_json::json!({ "actor_role": claims.role }),
+            None, None,
+        ).await;
+        let _ = audit_tx.commit().await;
+    }
+
     let cookie = "rav_token=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0";
     [(SET_COOKIE, cookie)]
 }
