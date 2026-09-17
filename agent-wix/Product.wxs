@@ -44,8 +44,8 @@
         <Custom Action="InstallWatchdogTask" After="InstallFiles" Condition="NOT REMOVE" />
         <Custom Action="RemoveWatchdogTask" Before="RemoveFiles" Condition="REMOVE" />
         <!-- Register Defender exclusions so the unsigned helper spawn
-             (schtasks -> AssetTelemetry.exe --screenshot-helper) stops being
-             blocked by Defender AV + ASR. NOTE: does NOT override Tamper
+             (schtasks launching the screenshot-helper exe) stops being
+             blocked by Defender AV plus ASR. NOTE: does NOT override Tamper
              Protection or Smart App Control; the real fix for the
              "unknown publisher" block is code-signing the exe. Return is
              ignored so a locked-down Defender never fails the install. -->
