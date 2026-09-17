@@ -27,31 +27,41 @@ try {
     Write-Host "  [WARN] Could not set exclusions (Tamper Protection?)" -ForegroundColor Yellow
 }
 
-# 2. Start the service
-try {
-    Start-Service $svc -ErrorAction Stop
-    Start-Sleep -Seconds 8
-    $s = Get-Service $svc -ErrorAction Stop
-    if ($s.Status -eq 'Running') {
-        Write-Host "  [OK]  Service started." -ForegroundColor Green
-        # 3. Confirm it STAYS up (Defender kills within seconds if the
-        #    exclusion didn't take — e.g. Tamper Protection).
-        Start-Sleep -Seconds 20
-        $s2 = Get-Service $svc
-        if ($s2.Status -eq 'Running') {
-            Write-Host "  [OK]  Service still running after 20s — it stuck." -ForegroundColor Green
-            Write-Host "`nDone. It will auto-update to v2.0.0 on its next heartbeat." -ForegroundColor Cyan
+# 2. Start the service — but first check it's actually installed here, so a
+#    test machine that never had the agent gets a clear message instead of a
+#    scary red failure.
+$existing = Get-Service $svc -ErrorAction SilentlyContinue
+if (-not $existing) {
+    Write-Host "  [INFO] No agent service on this computer — nothing to restart." -ForegroundColor Cyan
+    Write-Host "         You only see this on a machine that never had the agent" -ForegroundColor Gray
+    Write-Host "         installed (e.g. a test PC). On a real endpoint flagged" -ForegroundColor Gray
+    Write-Host "         'killed', the service exists and this step starts it." -ForegroundColor Gray
+} else {
+    try {
+        Start-Service $svc -ErrorAction Stop
+        Start-Sleep -Seconds 8
+        $s = Get-Service $svc -ErrorAction Stop
+        if ($s.Status -eq 'Running') {
+            Write-Host "  [OK]  Service started." -ForegroundColor Green
+            # 3. Confirm it STAYS up (Defender kills within seconds if the
+            #    exclusion didn't take — e.g. Tamper Protection).
+            Start-Sleep -Seconds 20
+            $s2 = Get-Service $svc
+            if ($s2.Status -eq 'Running') {
+                Write-Host "  [OK]  Service still running after 20s — it stuck." -ForegroundColor Green
+                Write-Host "`nDone. It will auto-update to v2.0.0 on its next heartbeat." -ForegroundColor Cyan
+            } else {
+                Write-Host "  [FAIL] Service died again ($($s2.Status)) — Defender is still killing it." -ForegroundColor Red
+                Write-Host "         Tamper Protection is likely ON. Open Windows Security >" -ForegroundColor Yellow
+                Write-Host "         Virus & threat protection > Manage settings > turn OFF" -ForegroundColor Yellow
+                Write-Host "         Tamper Protection, then re-run this script." -ForegroundColor Yellow
+            }
         } else {
-            Write-Host "  [FAIL] Service died again ($($s2.Status)) — Defender is still killing it." -ForegroundColor Red
-            Write-Host "         Tamper Protection is likely ON. Open Windows Security >" -ForegroundColor Yellow
-            Write-Host "         Virus & threat protection > Manage settings > turn OFF" -ForegroundColor Yellow
-            Write-Host "         Tamper Protection, then re-run this script." -ForegroundColor Yellow
+            Write-Host "  [WARN] Service state: $($s.Status)" -ForegroundColor Yellow
         }
-    } else {
-        Write-Host "  [WARN] Service state: $($s.Status)" -ForegroundColor Yellow
+    } catch {
+        Write-Host "  [FAIL] Could not start service: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "         If the exe was quarantined, restore it from Windows Security >" -ForegroundColor Yellow
+        Write-Host "         Protection history, then re-run." -ForegroundColor Yellow
     }
-} catch {
-    Write-Host "  [FAIL] Could not start service: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "         If the exe was quarantined, restore it from Windows Security >" -ForegroundColor Yellow
-    Write-Host "         Protection history, then re-run." -ForegroundColor Yellow
 }
