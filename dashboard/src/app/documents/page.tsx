@@ -8,6 +8,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWATPattern } from '@/lib/time'
 import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
@@ -237,6 +238,7 @@ ${backupFileId ? `Backup File ID: ${backupFileId}\nFile was backed up and can be
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
+        <NextArchiveBanner />
         <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
           <SectionHead
             eyebrow="Fleet / Documents"

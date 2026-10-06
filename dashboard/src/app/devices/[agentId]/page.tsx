@@ -32,6 +32,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
 import CriticalSection from '@/components/CriticalSection'
@@ -261,6 +262,7 @@ export default function DeviceDetailsPage() {
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
+        <NextArchiveBanner />
 
         <main ref={mainRef} className="flex-1 overflow-y-auto p-8 mt-20 space-y-6">
           {/* Breadcrumb + Header */}

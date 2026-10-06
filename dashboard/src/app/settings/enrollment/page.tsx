@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails } from '@/lib/api'
 import { formatWATPattern } from '@/lib/time'
 import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
@@ -116,6 +117,7 @@ export default function EnrollmentTokensPage() {
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
+        <NextArchiveBanner />
         <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
           <SectionHead
             eyebrow="Fleet / Enrollment"

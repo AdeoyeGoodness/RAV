@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import { SectionHead, Panel, PanelHead, Eyebrow, StatusPill } from '@/components/ct/primitives'
 import { PlayCircle, Search, X, Clock } from 'lucide-react'
 
@@ -191,6 +192,7 @@ export default function HelpPage() {
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
+        <NextArchiveBanner />
 
         <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
           <SectionHead

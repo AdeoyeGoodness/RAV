@@ -7,6 +7,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import { AuditLogTable } from '@/components/AuditLogTable'
 import { Panel, SectionHead } from '@/components/ct/primitives'
 
@@ -43,6 +44,7 @@ export default function OrgAuditPage() {
                 <Header />
                 <ExpiryBanner />
                 <ArchiveBanner />
+                <NextArchiveBanner />
                 <main className="flex-1 overflow-auto p-8 mt-20 space-y-6">
                     <SectionHead
                         eyebrow="Compliance / Ledger"

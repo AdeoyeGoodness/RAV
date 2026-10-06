@@ -6,6 +6,7 @@ import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
+import NextArchiveBanner from '@/components/NextArchiveBanner'
 import { formatWATDate } from '@/lib/time'
 import { Panel, PanelHead, Eyebrow, SectionHead, StatusPill, ActionButton } from '@/components/ct/primitives'
 import { useAuth } from '@/contexts/AuthContext'
@@ -108,6 +109,7 @@ export default function KeywordsSettings() {
         <Header />
         <ExpiryBanner />
         <ArchiveBanner />
+        <NextArchiveBanner />
 
         <main className="flex-1 overflow-y-auto p-8 mt-20 space-y-6">
           <SectionHead
