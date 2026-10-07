@@ -11,6 +11,11 @@ use sqlx::Row;
 use uuid::Uuid;
 use sha2::Digest;
 use std::io::Write as _;
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::db::models::{CreateAgent, CreateEvent, Event, ActorType};
 use crate::services::audit::log_audit;
@@ -98,6 +103,62 @@ pub async fn verify_identity(
     }
 }
 
+// ── Browser-history firehose throttle ────────────────────────────────────────
+// Three extension collectors (active_tab / tab_updated / history_visit) fire on
+// every tab switch, URL change, and history entry — overwhelmingly the SAME URL
+// repeated. Unthrottled this was ~115K rows/hour of near-duplicates and is what
+// bloated the events table to 411 GB. We collapse repeats at ingest: the first
+// time an (agent, event_type, url) key is seen it's inserted; any repeat of the
+// same key within DEDUP_WINDOW is dropped. Non-browser events, and the lower-
+// volume search/download events, are never throttled. In-memory + process-local
+// (one backend process), so it resets on restart — fine, the window is seconds.
+const DEDUP_WINDOW: Duration = Duration::from_secs(60);
+const DEDUP_MAX_ENTRIES: usize = 250_000;
+
+fn dedup_cache() -> &'static Mutex<HashMap<u64, Instant>> {
+    static CACHE: OnceLock<Mutex<HashMap<u64, Instant>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// True if this event is a repeat of a high-volume browser event already seen
+/// for the same (agent, type, url) within DEDUP_WINDOW — i.e. firehose noise
+/// to drop. Only the three high-volume URL-keyed collectors are throttled;
+/// everything else (incl. search_query / downloads) always returns false.
+fn is_throttled_duplicate(agent_id: &str, event_type: &str, metadata: &serde_json::Value) -> bool {
+    if !matches!(
+        event_type,
+        "browser_active_tab" | "browser_tab_updated" | "browser_history_visit"
+    ) {
+        return false;
+    }
+    // The agent's native host flattens the extension event's `data` into
+    // `metadata`, so the URL is at metadata.url. No URL → nothing to key on.
+    let url = match metadata.get("url").and_then(|v| v.as_str()) {
+        Some(u) if !u.is_empty() => u,
+        _ => return false,
+    };
+
+    let mut hasher = DefaultHasher::new();
+    agent_id.hash(&mut hasher);
+    event_type.hash(&mut hasher);
+    url.hash(&mut hasher);
+    let key = hasher.finish();
+
+    let now = Instant::now();
+    let mut cache = dedup_cache().lock().unwrap_or_else(|e| e.into_inner());
+    // Opportunistic prune so the map can't grow without bound.
+    if cache.len() > DEDUP_MAX_ENTRIES {
+        cache.retain(|_, &mut seen| now.duration_since(seen) < DEDUP_WINDOW);
+    }
+    match cache.get(&key) {
+        Some(&seen) if now.duration_since(seen) < DEDUP_WINDOW => true,
+        _ => {
+            cache.insert(key, now);
+            false
+        }
+    }
+}
+
 pub async fn ingest_events(
     State(state): State<AppState>,
     Json(events): Json<Vec<CreateEvent>>,
@@ -150,7 +211,16 @@ pub async fn ingest_events(
         .execute(&mut *tx)
         .await;
 
+    let mut throttled = 0usize;
     for event in events {
+        // Collapse the browser-history firehose: drop repeats of the same URL from the same
+        // endpoint seen within DEDUP_WINDOW. This is what keeps the events table from growing
+        // back to 411 GB; only the high-volume browser collectors are affected.
+        if is_throttled_duplicate(&event.agent_id, &event.event_type, &event.metadata) {
+            throttled += 1;
+            continue;
+        }
+
         // The agent doesn't send a category, so derive it from event_type. (Previously every
         // event was stored as "system", which made the dashboard's category bars read zero for
         // everything except browser.) Respect an explicit category if one is ever provided.
@@ -192,7 +262,8 @@ pub async fn ingest_events(
 
     Ok(Json(serde_json::json!({
         "status": "success",
-        "events_ingested": events_count,
+        "events_ingested": events_count - throttled,
+        "events_throttled": throttled,
         "organization_id": org_id
     })))
 }
