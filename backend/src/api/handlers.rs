@@ -1565,6 +1565,101 @@ pub async fn list_agent_critical_files(
     Ok(Json(serde_json::Value::Array(out)))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ScreenshotListQuery {
+    pub start_time: Option<chrono::DateTime<Utc>>,
+    pub end_time: Option<chrono::DateTime<Utc>>,
+    pub limit: Option<i64>,
+}
+
+/// List an agent's screenshots straight from the `files` table — the durable
+/// source of truth for the images — NOT the `events` feed. The gallery used to
+/// read `screenshot_captured` events, so any events purge (the normal 5-day
+/// archive purge, or the one-off 2026-10-07 table truncate) blanked it even
+/// though every image still lived in `files`. Reading files directly makes the
+/// gallery survive those purges. The output is shaped to match the Event objects
+/// the dashboard ScreenshotViewer already consumes (metadata.file_id drives the
+/// thumbnail + download). Duplicates are returned too; the frontend suppresses
+/// them via the screenshot-duplicates roster so the "N near-duplicates
+/// suppressed" chip keeps working. width/height aren't stored on files (they only
+/// ever lived in the event metadata), so they read "Unknown" in the UI.
+pub async fn list_agent_screenshots(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+    Query(params): Query<ScreenshotListQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let limit = params.limit.unwrap_or(1000).clamp(1, 1000);
+
+    let mut tx = state.db.begin_rls_tx(target_org_id).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Screenshots are the only files whose file_id carries the capture prefix
+    // `ss_` (agent monitoring/screenshots.rs). Backslash-escape the `_` so LIKE
+    // treats it literally rather than as a single-char wildcard.
+    let rows = sqlx::query(
+        r#"
+        SELECT id, file_id, file_name, file_size, created_at
+        FROM files
+        WHERE agent_id = $1
+          AND organization_id = $2
+          AND file_id LIKE 'ss\_%'
+          AND deleted_at IS NULL
+          AND ($3::timestamptz IS NULL OR created_at >= $3)
+          AND ($4::timestamptz IS NULL OR created_at <= $4)
+        ORDER BY created_at DESC
+        LIMIT $5
+        "#,
+    )
+    .bind(&agent_id)
+    .bind(target_org_id)
+    .bind(params.start_time)
+    .bind(params.end_time)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("list_agent_screenshots failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let out: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            let file_name: String = r.get("file_name");
+            // Derive the image format from the filename extension for the modal
+            // + download (the files table has no dedicated format column).
+            let format = file_name
+                .rsplit('.')
+                .next()
+                .filter(|ext| !ext.is_empty() && ext.len() <= 5 && *ext != file_name)
+                .map(|ext| ext.to_ascii_lowercase());
+            serde_json::json!({
+                "id": r.get::<Uuid, _>("id"),
+                "event_type": "screenshot_captured",
+                "timestamp": r.get::<chrono::DateTime<Utc>, _>("created_at"),
+                "agent_id": agent_id,
+                "metadata": {
+                    "file_id": r.get::<String, _>("file_id"),
+                    "file_size": r.get::<i64, _>("file_size"),
+                    "format": format,
+                }
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::Value::Array(out)))
+}
+
 /// Returns the set of file_ids for the given agent's screenshots that are
 /// marked as duplicates of another (older) screenshot. The dashboard's
 /// ScreenshotViewer fetches this alongside its event feed and filters those

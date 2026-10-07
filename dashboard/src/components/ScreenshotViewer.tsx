@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { formatWATTime, formatWATPattern } from '@/lib/time'
 import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown } from 'lucide-react'
-import { downloadFile, getEvents, getAgentScreenshotDuplicates } from '@/lib/api'
+import { downloadFile, getAgentScreenshots, getAgentScreenshotDuplicates } from '@/lib/api'
 import { Panel, PanelHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
 interface Event {
@@ -50,16 +50,19 @@ export default function ScreenshotViewer({
   const fetchEvents = useCallback(async (background = false) => {
     if (!background) setLoading(true)
     try {
-      const params: any = { agent_id: agentId, limit: 1000 }
+      // Read screenshots from the `files` table (durable source of truth for the
+      // images) instead of the `events` feed, so the gallery survives event
+      // purges (the 5-day archive purge or a one-off truncate) — the images
+      // persist in `files` even when their events are gone.
+      const params: { start_time?: string; end_time?: string; limit?: number } = { limit: 1000 }
       if (dateFilter) {
-        params.event_type = 'screenshot_captured'
         params.start_time = new Date(`${dateFilter}T00:00:00`).toISOString()
         params.end_time = new Date(`${dateFilter}T23:59:59.999`).toISOString()
       }
-      // Fetch events + dedup roster in parallel. Dedup call is best-effort;
+      // Fetch screenshots + dedup roster in parallel. Dedup call is best-effort;
       // if it fails we render everything (unfiltered) rather than block.
       const [data, dups] = await Promise.all([
-        getEvents(params),
+        getAgentScreenshots(agentId, params),
         getAgentScreenshotDuplicates(agentId).catch(() => []),
       ])
       setAllEvents(data as Event[])

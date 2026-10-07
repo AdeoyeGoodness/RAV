@@ -263,6 +263,24 @@ export async function getAgentScreenshotDuplicates(agentId: string): Promise<Scr
   return response.data.duplicates ?? []
 }
 
+/**
+ * Screenshots read straight from the `files` table (the durable source of truth
+ * for the images) rather than the `events` feed. This keeps the gallery working
+ * after any events purge — the normal 5-day archive purge or a one-off table
+ * truncate — since the images live in `files`, not `events`. Returns Event-shaped
+ * objects so the ScreenshotViewer consumes them unchanged (metadata.file_id drives
+ * the thumbnail + download). Duplicates are included; the caller suppresses them
+ * via getAgentScreenshotDuplicates.
+ */
+export async function getAgentScreenshots(agentId: string, params?: {
+  start_time?: string
+  end_time?: string
+  limit?: number
+}): Promise<Event[]> {
+  const response = await api.get(`/api/v1/agents/${agentId}/screenshots`, { params })
+  return response.data
+}
+
 // -------- Org user management ---------------------------------------------
 // Read-only 'user' accounts under an org, created by the org_admin so an
 // analyst can browse telemetry without being able to mutate anything.
