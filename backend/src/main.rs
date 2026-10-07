@@ -188,19 +188,34 @@ async fn main() -> Result<()> {
             // BYPASS transaction or it silently returns 0 rows.
             let result = async {
                 let mut tx = db_bg.begin_bypass_tx().await?;
+                // Cap this probe so a pathological scan can never hold a pooled
+                // connection open for the full server timeout and starve the
+                // rest of the backend (the "pool timed out" degradation).
+                sqlx::query("SET LOCAL statement_timeout = '20s'")
+                    .execute(&mut *tx)
+                    .await?;
+                // Agent-FIRST eligibility. Walk the small agents table and
+                // probe each with a short-circuiting EXISTS, instead of a
+                // SELECT DISTINCT over the entire (huge, never-purged) events
+                // table — that scan was taking 30 s+ and timing out. LIMIT
+                // keeps each 30 s tick's workload bounded so a large backlog
+                // is worked off incrementally rather than in one giant run.
                 let rows = sqlx::query(
                     r#"
-                    SELECT DISTINCT e.agent_id, e.organization_id
-                    FROM events e
-                    JOIN agents a
-                      ON a.agent_id = e.agent_id
-                     AND a.organization_id = e.organization_id
-                     AND a.deleted_at IS NULL
-                    WHERE e.created_at < NOW() - ($1 || ' days')::interval
+                    SELECT a.agent_id, a.organization_id
+                    FROM agents a
+                    WHERE a.deleted_at IS NULL
                       AND (
                           a.last_archived_at IS NULL
                           OR a.last_archived_at < NOW() - ($2 || ' days')::interval
                       )
+                      AND EXISTS (
+                          SELECT 1 FROM events e
+                          WHERE e.agent_id = a.agent_id
+                            AND e.organization_id = a.organization_id
+                            AND e.created_at < NOW() - ($1 || ' days')::interval
+                      )
+                    LIMIT 25
                     "#,
                 )
                 .bind(ARCHIVE_CUTOFF_DAYS.to_string())

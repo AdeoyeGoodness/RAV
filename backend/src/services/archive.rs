@@ -55,17 +55,25 @@ impl ArchiveService {
             .execute(&mut *tx)
             .await?;
 
-        // 1. Fetch events for the window
+        // 1. Fetch events for the window — BOUNDED. Without a cap, an agent
+        // with a huge backlog (the never-purged events table) would try to
+        // load millions of rows into memory at once and the archive would
+        // hang / OOM — which is exactly why archiving had never succeeded.
+        // We take the OLDEST batch; if a full batch comes back there's more
+        // to do and the agent stays eligible for the next sweep pass.
+        const ARCHIVE_BATCH_LIMIT: i64 = 20_000;
         let events = sqlx::query_as!(
             Event,
             r#"
             SELECT * FROM events
             WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
             ORDER BY created_at ASC
+            LIMIT $4
             "#,
             agent_id,
             org_id,
-            cutoff
+            cutoff,
+            ARCHIVE_BATCH_LIMIT
         )
         .fetch_all(&mut *tx)
         .await?;
@@ -73,6 +81,12 @@ impl ArchiveService {
         if events.is_empty() {
             return Ok(None);
         }
+
+        // Exact set we archived — delete only these, so a tie at the batch
+        // boundary can never purge an event we didn't bundle. caught_up is
+        // false when the batch was full (more backlog remains).
+        let archived_ids: Vec<Uuid> = events.iter().map(|e| e.id).collect();
+        let caught_up = (events.len() as i64) < ARCHIVE_BATCH_LIMIT;
 
         let event_count = events.len() as i32;
         // Use the actual event `timestamp` (when the event happened on the endpoint), NOT
@@ -210,15 +224,16 @@ impl ArchiveService {
         sqlx::query!(
             r#"
             DELETE FROM events
-            WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
+            WHERE id = ANY($1)
               AND id IS DISTINCT FROM (
                   SELECT id FROM events
-                  WHERE agent_id = $1 AND organization_id = $2
-                    AND event_type = 'wifi_changed' AND created_at < $3
+                  WHERE agent_id = $2 AND organization_id = $3
+                    AND event_type = 'wifi_changed' AND created_at < $4
                   ORDER BY created_at DESC
                   LIMIT 1
               )
             "#,
+            &archived_ids,
             agent_id,
             org_id,
             cutoff
@@ -231,15 +246,21 @@ impl ArchiveService {
         // agents-list path. `agents.last_archived_at` was declared on the model
         // back in migration 011 but was never written; wiring it here is the
         // one and only writer.
-        sqlx::query(
-            "UPDATE agents SET last_archived_at = $1 \
-             WHERE agent_id = $2 AND organization_id = $3",
-        )
-        .bind(now)
-        .bind(agent_id)
-        .bind(org_id)
-        .execute(&mut *tx)
-        .await?;
+        // Only stamp last_archived_at once the agent is fully caught up (the
+        // batch wasn't full). While backlog remains we deliberately leave it
+        // unset so the 5-day per-agent gate doesn't lock the agent out before
+        // the rest of its backlog is archived on subsequent sweep passes.
+        if caught_up {
+            sqlx::query(
+                "UPDATE agents SET last_archived_at = $1 \
+                 WHERE agent_id = $2 AND organization_id = $3",
+            )
+            .bind(now)
+            .bind(agent_id)
+            .bind(org_id)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         tx.commit().await?;
 
