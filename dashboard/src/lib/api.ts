@@ -442,6 +442,18 @@ export async function revokeEnrollmentToken(tokenId: string): Promise<void> {
   await api.delete(`/api/v1/org/enrollment-tokens/${tokenId}`)
 }
 
+/**
+ * Edit an existing (non-revoked) token's label, max device cap, and/or expiry.
+ * Any field omitted is left unchanged. Returns the updated token row.
+ */
+export async function updateEnrollmentToken(
+  tokenId: string,
+  data: { label?: string; max_agents?: number; expires_at?: string }
+): Promise<EnrollmentToken> {
+  const response = await api.patch(`/api/v1/org/enrollment-tokens/${tokenId}`, data)
+  return response.data
+}
+
 export async function updateOrganization(orgId: string, org: { name?: string, max_agents?: number, token_expiry?: string, status?: string }): Promise<Organization> {
   const response = await api.patch(`/api/v1/admin/organizations/${orgId}`, org)
   return response.data

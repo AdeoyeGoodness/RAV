@@ -1,12 +1,12 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { Key, Plus, Copy, Check, Loader2, CheckCircle2 } from 'lucide-react'
+import { Key, Plus, Copy, Check, Loader2, CheckCircle2, Pencil } from 'lucide-react'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import ExpiryBanner from '@/components/ExpiryBanner'
 import ArchiveBanner from '@/components/ArchiveBanner'
 import NextArchiveBanner from '@/components/NextArchiveBanner'
-import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, EnrollmentToken, getOrgDetails } from '@/lib/api'
+import { getEnrollmentTokens, createEnrollmentToken, revokeEnrollmentToken, updateEnrollmentToken, EnrollmentToken, getOrgDetails } from '@/lib/api'
 import { formatWATPattern } from '@/lib/time'
 import { Panel, PanelHead, SectionHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 import { useAuth } from '@/contexts/AuthContext'
@@ -27,6 +27,10 @@ export default function EnrollmentTokensPage() {
     expires_at: ''
   })
   const [generatedToken, setGeneratedToken] = useState<string | null>(null)
+
+  // Edit-token state. editingToken holds the row being edited; null = modal closed.
+  const [editingToken, setEditingToken] = useState<EnrollmentToken | null>(null)
+  const [editForm, setEditForm] = useState({ label: '', max_agents: 1, expires_at: '' })
 
   useEffect(() => {
     // Default expiry to 24 hours from now
@@ -88,6 +92,39 @@ export default function EnrollmentTokensPage() {
       fetchData()
     } catch (error) {
       alert('Failed to revoke token')
+    }
+  }
+
+  const openEdit = (token: EnrollmentToken) => {
+    setEditForm({
+      label: token.label || '',
+      max_agents: token.max_agents || 1,
+      expires_at: token.expires_at ? new Date(token.expires_at).toISOString().split('T')[0] : ''
+    })
+    setEditingToken(token)
+  }
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingToken) return
+    try {
+      let finalExpiry: string | undefined = undefined
+      if (editForm.expires_at) {
+        const now = new Date()
+        const selectedDate = new Date(editForm.expires_at)
+        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
+        finalExpiry = selectedDate.toISOString()
+      }
+      await updateEnrollmentToken(editingToken.token_id, {
+        label: editForm.label || undefined,
+        max_agents: editForm.max_agents,
+        expires_at: finalExpiry
+      })
+      setEditingToken(null)
+      fetchData()
+    } catch (error: any) {
+      console.error(error)
+      alert(error?.response?.data?.message || 'Failed to update token')
     }
   }
 
@@ -203,7 +240,13 @@ export default function EnrollmentTokensPage() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end space-x-2">
                             {!isInactive && canMutate && (
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                                <ActionButton onClick={() => openEdit(token)} variant="ghost">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Pencil className="w-3 h-3" />
+                                    Edit
+                                  </span>
+                                </ActionButton>
                                 <ActionButton onClick={() => handleRevoke(token.token_id)} variant="danger">
                                   Revoke
                                 </ActionButton>
@@ -282,6 +325,74 @@ export default function EnrollmentTokensPage() {
             </Panel>
           </div>
         )}
+
+        {/* Edit Token Modal */}
+        {editingToken && (() => {
+          // The headroom available to THIS token = free org slots + the slots it
+          // already holds (the backend excludes the token's own allocation too).
+          const editMax = remainingAgents + (editingToken.max_agents || 0)
+          return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ct-bg/85 backdrop-blur-sm">
+              <Panel className="w-full max-w-md">
+                <PanelHead title="Edit Deployment Token" meta={`${editingToken.agent_count} device(s) currently enrolled`} />
+                <form onSubmit={handleUpdate} className="p-6 space-y-4">
+                  <div>
+                    <Eyebrow className="mb-2">Label / Campaign Name</Eyebrow>
+                    <input
+                      type="text"
+                      required
+                      value={editForm.label}
+                      onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+                      placeholder="e.g. Finance Dept Rollout"
+                      className={inputBase}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Eyebrow className="mb-2">Max Enrollments</Eyebrow>
+                      <input
+                        type="number"
+                        min="1"
+                        max={editMax}
+                        value={editForm.max_agents}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value)
+                          if (!isNaN(val) && val >= 1 && val <= editMax) {
+                            setEditForm({ ...editForm, max_agents: val })
+                          }
+                        }}
+                        className={inputBase}
+                      />
+                      <p className="text-[10px] mt-1.5 text-ct-ink3 font-mono" style={{ letterSpacing: '0.12em' }}>
+                        UP TO {editMax} OF {orgMaxAgents}
+                      </p>
+                    </div>
+                    <div>
+                      <Eyebrow className="mb-2">Expiry Date</Eyebrow>
+                      <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().split('T')[0]}
+                        value={editForm.expires_at}
+                        onChange={(e) => setEditForm({ ...editForm, expires_at: e.target.value })}
+                        style={{ colorScheme: 'dark' }}
+                        className={inputBase}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex space-x-3 mt-6 pt-2">
+                    <ActionButton onClick={() => setEditingToken(null)} variant="ghost" className="flex-1 py-3">
+                      Cancel
+                    </ActionButton>
+                    <ActionButton type="submit" variant="primary" className="flex-1 py-3">
+                      Save Changes
+                    </ActionButton>
+                  </div>
+                </form>
+              </Panel>
+            </div>
+          )
+        })()}
 
         {/* Display Generated Token Modal */}
         {isModalOpen && generatedToken && (

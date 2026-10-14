@@ -130,7 +130,7 @@ pub async fn list_org_audit_logs(
 
 use rand::Rng;
 use sha2::Digest;
-use crate::db::models::{CreateEnrollmentToken, EnrollmentTokenResponse, EnrollmentToken};
+use crate::db::models::{CreateEnrollmentToken, EnrollmentTokenResponse, EnrollmentToken, UpdateEnrollmentToken};
 
 pub async fn create_enrollment_token(
     claims: Claims,
@@ -326,6 +326,132 @@ pub async fn revoke_enrollment_token(
     tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::OK)
+}
+
+/// Edit an existing (non-revoked) enrollment token's label, max_agents, and/or
+/// expiry. Raising max_agents is validated against the org ceiling the same way
+/// creation is, except THIS token's own current allocation is excluded from the
+/// committed total — so a token can be raised into the remaining headroom without
+/// being charged twice for the slots it already holds.
+pub async fn update_enrollment_token(
+    claims: Claims,
+    State(state): State<AppState>,
+    Path(token_id): Path<Uuid>,
+    Json(payload): Json<UpdateEnrollmentToken>,
+) -> Result<Json<EnrollmentToken>, (StatusCode, Json<serde_json::Value>)> {
+    let err = |status: StatusCode, msg: &str| -> (StatusCode, Json<serde_json::Value>) {
+        (status, Json(serde_json::json!({ "message": msg })))
+    };
+    let internal = || err(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
+
+    if let Err(status) = require_org_admin(&claims) {
+        return Err(err(status, "Forbidden."));
+    }
+    let org_id = claims.org_id.ok_or_else(|| err(StatusCode::UNAUTHORIZED, "Unauthorized."))?;
+
+    let mut tx = state.db.begin_rls_tx(org_id).await.map_err(|_| internal())?;
+
+    // Token must exist, belong to this org, and not be revoked.
+    let existing = sqlx::query!(
+        "SELECT revoked FROM enrollment_tokens WHERE token_id = $1 AND org_id = $2",
+        token_id, org_id
+    )
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| internal())?
+    .ok_or_else(|| err(StatusCode::NOT_FOUND, "Token not found."))?;
+    if existing.revoked {
+        return Err(err(StatusCode::BAD_REQUEST, "A revoked token cannot be edited."));
+    }
+
+    // Validate a new cap against the org ceiling, excluding this token's own slots.
+    if let Some(requested_max) = payload.max_agents {
+        if requested_max < 1 {
+            return Err(err(StatusCode::BAD_REQUEST, "Max enrollments must be at least 1."));
+        }
+        let org = sqlx::query!(
+            "SELECT COALESCE(max_agents, 1000) as max_agents FROM organizations WHERE id = $1",
+            org_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| internal())?;
+        let org_max = org.max_agents.unwrap_or(1000);
+
+        let allocated_by_others = sqlx::query!(
+            r#"
+            SELECT COALESCE(SUM(max_agents), 0)::bigint AS "allocated!"
+            FROM enrollment_tokens
+            WHERE org_id = $1 AND token_id <> $2 AND revoked = false
+              AND (expires_at IS NULL OR expires_at > NOW())
+            "#,
+            org_id, token_id
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|_| internal())?
+        .allocated;
+
+        let remaining = (org_max as i64) - allocated_by_others;
+        if (requested_max as i64) > remaining {
+            return Err(err(
+                StatusCode::BAD_REQUEST,
+                &format!(
+                    "Only {} of your organization's {} enrollment slots are available for this token.",
+                    remaining.max(0), org_max
+                ),
+            ));
+        }
+    }
+
+    // COALESCE keeps the current value for any field left out of the request.
+    sqlx::query!(
+        r#"
+        UPDATE enrollment_tokens
+        SET label = COALESCE($3, label),
+            max_agents = COALESCE($4, max_agents),
+            expires_at = COALESCE($5, expires_at)
+        WHERE token_id = $1 AND org_id = $2 AND revoked = false
+        "#,
+        token_id, org_id, payload.label, payload.max_agents, payload.expires_at
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update token: {}", e);
+        internal()
+    })?;
+
+    crate::services::audit::log_audit(
+        &mut tx,
+        ActorType::OrgAdmin,
+        Some(claims.sub),
+        Some(org_id),
+        "TOKEN_UPDATED",
+        "ENROLLMENT_TOKEN",
+        Some(token_id.to_string()),
+        serde_json::json!({ "max_agents": payload.max_agents, "label": payload.label }),
+        None, None
+    ).await.map_err(|_| internal())?;
+
+    // Return the updated row in the same shape list_enrollment_tokens uses.
+    let updated = sqlx::query_as!(
+        EnrollmentToken,
+        r#"
+        SELECT t.token_id, t.org_id, t.label, t.max_agents, t.expires_at, t.revoked, t.created_at,
+               (SELECT COUNT(*) FROM agents a
+                WHERE a.enrollment_token_id = t.token_id AND a.deleted_at IS NULL) AS "agent_count!"
+        FROM enrollment_tokens t
+        WHERE t.token_id = $1 AND t.org_id = $2
+        "#,
+        token_id, org_id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|_| internal())?;
+
+    tx.commit().await.map_err(|_| internal())?;
+    Ok(Json(updated))
 }
 
 // ============================================================================

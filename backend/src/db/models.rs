@@ -257,6 +257,15 @@ pub struct CreateEnrollmentToken {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
+/// Fields editable on an existing (non-revoked) enrollment token. Any field left
+/// out (None) is kept as-is — the handler COALESCEs against the current value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateEnrollmentToken {
+    pub label: Option<String>,
+    pub max_agents: Option<i32>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrollmentTokenResponse {
     pub token_id: Uuid,

@@ -292,7 +292,7 @@ async fn main() -> Result<()> {
         .route("/api/v1/org/settings/test", post(handlers::test_org_settings))
         .route("/api/v1/org/audits", get(api::org::list_org_audit_logs))
         .route("/api/v1/org/enrollment-tokens", get(api::org::list_enrollment_tokens).post(api::org::create_enrollment_token))
-        .route("/api/v1/org/enrollment-tokens/:token_id", delete(api::org::revoke_enrollment_token))
+        .route("/api/v1/org/enrollment-tokens/:token_id", delete(api::org::revoke_enrollment_token).patch(api::org::update_enrollment_token))
         .route("/api/v1/org/keywords", get(api::org::list_keywords).post(api::org::create_keyword))
         .route("/api/v1/org/keywords/:id", delete(api::org::delete_keyword))
         // Org-scoped user management. All mutating handlers gate on
