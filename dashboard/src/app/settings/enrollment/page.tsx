@@ -63,9 +63,10 @@ export default function EnrollmentTokensPage() {
     try {
       let finalExpiry: string | undefined = undefined;
       if (newToken.expires_at) {
-        const now = new Date();
         const selectedDate = new Date(newToken.expires_at);
-        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+        // Expire at the END of the chosen day, not the current time-of-day —
+        // otherwise a token dated "today" expires within minutes of creation.
+        selectedDate.setHours(23, 59, 59, 999);
         finalExpiry = selectedDate.toISOString();
       }
 
@@ -110,9 +111,9 @@ export default function EnrollmentTokensPage() {
     try {
       let finalExpiry: string | undefined = undefined
       if (editForm.expires_at) {
-        const now = new Date()
         const selectedDate = new Date(editForm.expires_at)
-        selectedDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
+        // End of the chosen day (see handleCreate) — keeps a same-day expiry valid.
+        selectedDate.setHours(23, 59, 59, 999)
         finalExpiry = selectedDate.toISOString()
       }
       await updateEnrollmentToken(editingToken.token_id, {
@@ -239,7 +240,10 @@ export default function EnrollmentTokensPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end space-x-2">
-                            {!isInactive && canMutate && (
+                            {/* Show actions on any NON-revoked token — incl. expired ones,
+                                so a mis-dated token can be extended (Edit) or cleared (Revoke)
+                                from the UI instead of needing SQL. Revoked rows stay action-less. */}
+                            {!isRevoked && canMutate && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
                                 <ActionButton onClick={() => openEdit(token)} variant="ghost">
                                   <span className="inline-flex items-center gap-1.5">
