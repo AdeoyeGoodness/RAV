@@ -28,6 +28,16 @@ const SCREENSHOT_MAX_WIDTH: u32 = 1000;
 /// (filename, bytes) pairs to drop into the archive zip. `events` must be sorted
 /// ascending by timestamp. The overview is always produced; section files only when
 /// that section has content.
+/// A critical (OCR-flagged) screenshot to embed in the report, sourced from the
+/// `files` table — NOT the events feed. Screenshots live in `files`, so matching
+/// against `screenshot_captured` events misses them (the "No OCR-flagged
+/// screenshots" bug while critical_screenshots/ had images).
+pub struct CriticalShot {
+    pub file_id: String,
+    pub captured_at: chrono::DateTime<chrono::Utc>,
+    pub ocr_matches: Vec<String>,
+}
+
 pub fn generate_section_reports(
     agent_id: &str,
     host_or_label: &str,
@@ -35,7 +45,7 @@ pub fn generate_section_reports(
     events: &[Event],
     file_storage_dir: &Path,
     max_screenshots: usize,
-    critical_ids: &std::collections::HashSet<String>,
+    critical: &[CriticalShot],
 ) -> anyhow::Result<Vec<(String, Vec<u8>)>> {
     let mut reports: Vec<(String, Vec<u8>)> = Vec::new();
 
@@ -50,9 +60,9 @@ pub fn generate_section_reports(
         ));
     }
 
-    if events.iter().any(|e| e.event_type.eq_ignore_ascii_case("screenshot_captured")) {
+    if !critical.is_empty() {
         let mut body = section_header_block(host_or_label, agent_id, events);
-        body.push_str(&screenshots_block(events, file_storage_dir, max_screenshots, critical_ids));
+        body.push_str(&screenshots_block(file_storage_dir, max_screenshots, critical));
         reports.push((
             "screenshots.html".to_string(),
             wrap_html("Critical Screenshots", &body).into_bytes(),
@@ -418,56 +428,43 @@ fn timeline_block(events: &[Event]) -> String {
     s
 }
 
-fn screenshots_block(events: &[Event], dir: &Path, max: usize, critical_ids: &std::collections::HashSet<String>) -> String {
-    // Embed ONLY critical (OCR-flagged) screenshots inline. The base64 gallery is
-    // what made archiving slow, and these are the evidence that matters. Every
-    // screenshot still lives in the files store + events.json, and the critical ones
-    // are also bundled as separate image files in the archive (critical_screenshots/).
-    let shots: Vec<&Event> = events
-        .iter()
-        .filter(|e| e.event_type.eq_ignore_ascii_case("screenshot_captured"))
-        .filter(|e| meta_str(e, "file_id").map(|id| critical_ids.contains(&id)).unwrap_or(false))
-        .collect();
-
-    if shots.is_empty() {
+fn screenshots_block(dir: &Path, max: usize, critical: &[CriticalShot]) -> String {
+    // Embed the critical (OCR-flagged) screenshots inline, sourced from the `files`
+    // table (passed in as CriticalShot) — NOT matched against events. These same
+    // images are also bundled as real files under critical_screenshots/.
+    if critical.is_empty() {
         return "<h2>Critical Screenshots</h2>\n<p class=\"muted\">No OCR-flagged screenshots in this window.</p>\n".to_string();
     }
 
-    let mut s = format!("<h2>Critical Screenshots ({})</h2>\n<div class=\"gallery\">\n", shots.len());
+    let mut s = format!("<h2>Critical Screenshots ({})</h2>\n<div class=\"gallery\">\n", critical.len());
     let mut embedded = 0usize;
-    for ev in &shots {
+    for shot in critical {
         if embedded >= max {
             s.push_str(&format!(
-                "<p class=\"muted\">(+{} more screenshots omitted to limit file size; all events remain in events.json)</p>\n",
-                shots.len() - embedded
+                "<p class=\"muted\">(+{} more omitted to limit file size; every critical image is in critical_screenshots/)</p>\n",
+                critical.len() - embedded
             ));
             break;
         }
-        let ts = ev.timestamp.format(TS_FMT).to_string();
-        let dims = match (meta_str(ev, "width"), meta_str(ev, "height")) {
-            (Some(w), Some(h)) => format!("{}x{}", w, h),
-            _ => "unknown size".to_string(),
+        let flagged = if shot.ocr_matches.is_empty() {
+            String::new()
+        } else {
+            format!("  ·  flagged: {}", shot.ocr_matches.join(", "))
         };
-        let fmt = meta_str(ev, "format").unwrap_or_else(|| "img".to_string());
-        let caption = html_escape(&format!("{}  ·  {}  ·  {}", ts, dims, fmt.to_uppercase()));
+        let caption = html_escape(&format!("{}{}", shot.captured_at.format(TS_FMT), flagged));
 
-        let file_id = match meta_str(ev, "file_id") {
-            Some(id) => id,
-            None => continue,
-        };
-
-        let img_html = match find_file_by_id(dir, &file_id) {
+        let img_html = match find_file_by_id(dir, &shot.file_id) {
             Some(path) => match screenshot_to_data_uri(&path, SCREENSHOT_MAX_WIDTH) {
-                Ok(uri) => format!("<img src=\"{}\" alt=\"screenshot\">", uri),
+                Ok(uri) => format!("<img src=\"{}\" alt=\"critical screenshot\">", uri),
                 Err(e) => format!(
-                    "<p class=\"muted\">[screenshot {} unavailable: {}]</p>",
-                    html_escape(&file_id),
+                    "<p class=\"muted\">[image {} unavailable: {}]</p>",
+                    html_escape(&shot.file_id),
                     html_escape(&e.to_string())
                 ),
             },
             None => format!(
-                "<p class=\"muted\">[screenshot {} not found on disk]</p>",
-                html_escape(&file_id)
+                "<p class=\"muted\">[image {} not on disk — see critical_screenshots/ in this archive]</p>",
+                html_escape(&shot.file_id)
             ),
         };
         s.push_str(&format!(

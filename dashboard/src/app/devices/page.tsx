@@ -86,12 +86,20 @@ export default function DevicesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | FleetStatus | 'stalled'>('all')
 
   useEffect(() => {
-    if (user) {
-      loadAgents()
-      const interval = setInterval(loadAgents, 30000)
-      return () => clearInterval(interval)
+    // Load on every mount (incl. back-navigation from a device page) and on window
+    // focus — not gated on `user`, which could delay/skip the fetch and leave the
+    // registry blank until a manual refresh. getAgents() auths via the session
+    // cookie, so it doesn't need the user object.
+    loadAgents()
+    const interval = setInterval(loadAgents, 30000)
+    const onFocus = () => loadAgents()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
     }
-  }, [user])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const loadAgents = async () => {
     try {

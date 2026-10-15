@@ -177,8 +177,14 @@ impl ArchiveService {
             warn!("Archive {}: critical-items query failed: {} — none embedded/bundled", agent_id, e);
             Vec::new()
         });
-        let critical_ids: std::collections::HashSet<String> =
-            critical_rows.iter().map(|r| r.get::<String, _>("file_id")).collect();
+        let critical_shots: Vec<crate::services::report::CriticalShot> = critical_rows
+            .iter()
+            .map(|r| crate::services::report::CriticalShot {
+                file_id: r.get::<String, _>("file_id"),
+                captured_at: r.get::<chrono::DateTime<Utc>, _>("created_at"),
+                ocr_matches: r.try_get::<Vec<String>, _>("ocr_matches").unwrap_or_default(),
+            })
+            .collect();
 
         // 2. Prepare JSON Payload (kept for machine analysis)
         let json_data = serde_json::to_string_pretty(&events)?;
@@ -214,7 +220,7 @@ impl ArchiveService {
             &events,
             &self.file_storage_dir,
             self.max_screenshots,
-            &critical_ids,
+            &critical_shots,
         ) {
             Ok(reports) => {
                 for (name, bytes) in reports {
