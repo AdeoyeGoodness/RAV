@@ -152,6 +152,11 @@ impl ArchiveService {
         // every screenshot still lives in the files store + events.json regardless.
         // Non-macro query: is_critical / ocr_matches / duplicate_of_file_id come from
         // migrations that run at startup, so we don't compile-check them here.
+        // Scoped to the SAME window as the archived events (created_at < cutoff) so the
+        // bundled critical images line up with the telemetry in this archive — not the
+        // agent's entire on-disk history. For a manual archive cutoff = now (all current
+        // critical items, bounded by the 7-day file retention); for the weekly sweep
+        // cutoff = now - 5 days (the aged-out window being archived).
         const CRITICAL_BUNDLE_LIMIT: i64 = 500;
         let critical_rows = sqlx::query(
             r#"
@@ -161,12 +166,14 @@ impl ArchiveService {
               AND is_critical = TRUE
               AND deleted_at IS NULL
               AND duplicate_of_file_id IS NULL
+              AND created_at < $3
             ORDER BY created_at DESC
-            LIMIT $3
+            LIMIT $4
             "#,
         )
         .bind(agent_id)
         .bind(org_id)
+        .bind(cutoff)
         .bind(CRITICAL_BUNDLE_LIMIT)
         .fetch_all(&mut *tx)
         .await
