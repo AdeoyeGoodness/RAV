@@ -93,6 +93,104 @@ pub fn generate_section_reports(
 // Page shell + headers
 // ---------------------------------------------------------------------------
 
+/// Shared stylesheet for every report section. Kept as its own const (normal CSS
+/// braces) so `wrap_html`'s format! template doesn't have to escape them.
+const REPORT_STYLE: &str = r##"
+  :root{
+    --ink:#0d0f14; --ink2:#363b47; --muted:#6b7280; --faint:#9aa1ad;
+    --bg:#eef0f4; --surface:#ffffff; --line:#e3e6ec; --line2:#eef0f4;
+    --accent:#3b5bdb; --crit:#c0362c; --crit-soft:#fdecea;
+    --warn:#b45309; --warn-soft:#fdf3e7; --ok:#15803d;
+  }
+  *{ box-sizing:border-box; }
+  html{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{ margin:0; color:var(--ink); background:var(--bg); font-size:14px; line-height:1.5;
+        font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .mono{ font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+
+  header.brand{ background:linear-gradient(135deg,#0b0e18,#141a2e); color:#fff; padding:26px 32px; }
+  header.brand .row{ max-width:1060px; margin:0 auto; display:flex; align-items:center;
+                     justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  header.brand .mark{ font-size:11px; letter-spacing:.34em; color:#8893ad; text-transform:uppercase; }
+  header.brand h1{ font-size:22px; margin:5px 0 0; letter-spacing:.01em; font-weight:700; }
+  header.brand .sub{ color:#aab2c5; font-size:12px; margin-top:6px; text-transform:uppercase; letter-spacing:.16em; }
+  .pill{ display:inline-block; font-size:10.5px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+         padding:6px 13px; border-radius:999px; background:rgba(192,54,44,.16); color:#ff8278; border:1px solid rgba(255,130,120,.4); }
+
+  .container{ max-width:1060px; margin:0 auto; padding:30px 32px 24px; }
+
+  h2{ font-size:12px; text-transform:uppercase; letter-spacing:.16em; color:var(--muted);
+      margin:34px 0 14px; display:flex; align-items:center; gap:10px; }
+  h2::before{ content:""; width:14px; height:2px; background:var(--accent); border-radius:2px; }
+  h2:first-child{ margin-top:0; }
+
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:0 1px 2px rgba(16,20,40,.04); }
+  .card.pad{ padding:18px 20px; }
+
+  .meta{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1px;
+         background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .meta .cell{ background:var(--surface); padding:14px 18px; }
+  .meta .k{ font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--faint); }
+  .meta .v{ font-size:14px; color:var(--ink); margin-top:5px; word-break:break-word; font-weight:600; }
+
+  .stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .stat{ background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; box-shadow:0 1px 2px rgba(16,20,40,.04); }
+  .stat .n{ font-size:28px; font-weight:750; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  .stat .l{ font-size:10px; text-transform:uppercase; letter-spacing:.13em; color:var(--muted); margin-top:9px; }
+  .stat.crit .n{ color:var(--crit); } .stat.warn .n{ color:var(--warn); }
+
+  .bars{ display:flex; flex-direction:column; gap:11px; }
+  .bar{ display:grid; grid-template-columns:140px 1fr 86px; align-items:center; gap:12px; }
+  .bar .cat{ font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .bar .dot{ width:9px; height:9px; border-radius:3px; flex:none; }
+  .bar .track{ height:9px; background:var(--line2); border-radius:999px; overflow:hidden; }
+  .bar .fill{ height:100%; border-radius:999px; }
+  .bar .num{ text-align:right; font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums; }
+
+  .alert{ padding:12px 16px; border-radius:9px; font-size:13px; margin-top:12px; }
+  .alert.crit{ background:var(--crit-soft); border:1px solid #f3c6c1; color:#8f241c; }
+  .alert.warn{ background:var(--warn-soft); border:1px solid #f0d6ad; color:#834406; }
+  .warn{ color:var(--crit); font-weight:700; }
+
+  .classified{ margin-top:18px; padding:13px 16px; border-radius:9px; font-size:12px; line-height:1.55;
+               background:#11131c; color:#c9cedb; border:1px solid #23283a; }
+  .classified .tag{ color:#ff8278; font-weight:700; letter-spacing:.08em; margin-right:8px; }
+
+  .timeline{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--surface); }
+  .tl{ display:grid; grid-template-columns:168px 10px 1fr; align-items:baseline; gap:10px;
+       padding:7px 16px; border-bottom:1px solid var(--line2); }
+  .tl:last-child{ border-bottom:none; }
+  .tl:nth-child(even){ background:#fafbfc; }
+  .tl .t{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; color:var(--muted);
+          white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .tl .d{ width:7px; height:7px; border-radius:2px; align-self:center; }
+  .tl .e{ font-size:12.5px; color:var(--ink2); word-break:break-word; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; background:var(--surface);
+         border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  th,td{ text-align:left; padding:9px 13px; border-bottom:1px solid var(--line2); vertical-align:top; }
+  th{ background:#f3f5f9; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:#5a6276; }
+  tr:last-child td{ border-bottom:none; }
+  a{ color:var(--accent); word-break:break-all; }
+  .kv td:first-child{ color:var(--muted); width:180px; font-weight:600; }
+  .muted{ color:var(--muted); font-size:12.5px; }
+
+  .gallery{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:18px; }
+  .gallery figure{ margin:0; }
+  .gallery img{ max-width:100%; border:1px solid var(--line); border-radius:8px; display:block; }
+  .gallery figcaption{ font-size:11.5px; color:var(--muted); margin-bottom:7px; font-family:ui-monospace,Menlo,Consolas,monospace; }
+
+  footer.foot{ max-width:1060px; margin:34px auto 0; padding:18px 32px 40px; color:var(--faint);
+               font-size:11px; text-align:center; letter-spacing:.04em; border-top:1px solid var(--line); }
+
+  @media print{
+    body{ background:#fff; }
+    .card,.stat,.meta,.timeline,table{ box-shadow:none; }
+    h2{ break-after:avoid; }
+    .tl,.bar,.stat,figure{ break-inside:avoid; }
+  }
+"##;
+
 fn wrap_html(section_title: &str, body: &str) -> String {
     format!(
         r#"<!DOCTYPE html>
@@ -101,47 +199,28 @@ fn wrap_html(section_title: &str, body: &str) -> String {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAV Forensic — {title}</title>
-<style>
-  * {{ box-sizing: border-box; }}
-  body {{ margin: 0; color: #16181f; background: #f4f5f8;
-         font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }}
-  header.brand {{ background: #0c0e1c; color: #fff; padding: 18px 28px; }}
-  header.brand h1 {{ font-size: 18px; margin: 0; letter-spacing: .04em; }}
-  header.brand .sub {{ color: #8b93a7; font-size: 12px; margin-top: 4px; text-transform: uppercase; letter-spacing: .12em; }}
-  .container {{ max-width: 1040px; margin: 0 auto; padding: 24px 28px 64px; }}
-  h2 {{ font-size: 16px; margin: 28px 0 10px; border-bottom: 2px solid #0c0e1c; padding-bottom: 6px; }}
-  table {{ width: 100%; border-collapse: collapse; font-size: 13px; background: #fff;
-          border: 1px solid #e2e5ec; border-radius: 6px; overflow: hidden; }}
-  th, td {{ text-align: left; padding: 8px 11px; border-bottom: 1px solid #eceef3; vertical-align: top; }}
-  th {{ background: #eef0f5; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #4a5163; }}
-  tr:last-child td {{ border-bottom: none; }}
-  a {{ color: #1558d6; word-break: break-all; }}
-  .kv td:first-child {{ color: #6b7280; width: 180px; font-weight: 600; }}
-  .confidential {{ margin-top: 16px; padding: 10px 14px; background: #fff4f4; border: 1px solid #f3c2c2;
-                   color: #97211f; font-size: 12px; border-radius: 6px; }}
-  .warn {{ color: #b00020; font-weight: 700; }}
-  .gallery figure {{ margin: 0 0 22px; }}
-  .gallery img {{ max-width: 100%; border: 1px solid #cfd3dc; border-radius: 6px; display: block; }}
-  .gallery figcaption {{ font-size: 12px; color: #555; margin-bottom: 6px; font-family: ui-monospace, Menlo, Consolas, monospace; }}
-  .timeline {{ background: #fff; border: 1px solid #e2e5ec; border-radius: 6px; padding: 6px 12px; }}
-  .timeline div {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
-                   padding: 3px 0; border-bottom: 1px solid #f3f4f7; white-space: pre-wrap; word-break: break-word; }}
-  .timeline div:last-child {{ border-bottom: none; }}
-  .muted {{ color: #6b7280; font-size: 12px; }}
-  @media print {{ body {{ background: #fff; }} a {{ color: #1558d6; }} }}
-</style>
+<style>{style}</style>
 </head>
 <body>
 <header class="brand">
-  <h1>RAV FORENSIC REPORT</h1>
-  <div class="sub">{title}</div>
+  <div class="row">
+    <div>
+      <div class="mark">RAV · Digital Forensics Platform</div>
+      <h1>Forensic Evidence Report</h1>
+      <div class="sub">{title}</div>
+    </div>
+    <span class="pill">Confidential</span>
+  </div>
 </header>
 <div class="container">
 {body}
 </div>
+<footer class="foot">RAV Forensic Report · generated {gen} UTC · handle per evidence-retention policy</footer>
 </body>
 </html>"#,
         title = html_escape(section_title),
+        style = REPORT_STYLE,
+        gen = Utc::now().format(TS_FMT),
         body = body
     )
 }
@@ -150,22 +229,71 @@ fn cover_block(agent_id: &str, host: &str, org: &str, events: &[Event]) -> Strin
     let host_label = if host.is_empty() { agent_id } else { host };
     let window = window_str(events);
     let mut s = String::new();
-    s.push_str("<h2>Case overview</h2>\n<table class=\"kv\">\n");
-    s.push_str(&kv_row("Endpoint", host_label));
-    s.push_str(&kv_row("Agent ID", agent_id));
+    s.push_str("<h2>Case overview</h2>\n<div class=\"meta\">\n");
+    s.push_str(&meta_cell("Endpoint", host_label));
+    s.push_str(&meta_cell("Agent ID", agent_id));
     if !org.is_empty() {
-        s.push_str(&kv_row("Organization", org));
+        s.push_str(&meta_cell("Organization", org));
     }
-    s.push_str(&kv_row("Coverage window", &window));
-    s.push_str(&kv_row("Total events", &events.len().to_string()));
-    s.push_str(&kv_row("Generated", &format!("{} UTC", Utc::now().format(TS_FMT))));
-    s.push_str("</table>\n");
+    s.push_str(&meta_cell("Coverage window", &window));
+    s.push_str(&meta_cell("Total events", &format_num(events.len())));
+    s.push_str(&meta_cell("Report generated", &format!("{} UTC", Utc::now().format(TS_FMT))));
+    s.push_str("</div>\n");
     s.push_str(
-        "<div class=\"confidential\">CONFIDENTIAL — Burn after reading. This archive is deleted \
-         from the vault after a single download, and the source telemetry has been purged from \
-         the live system.</div>\n",
+        "<div class=\"classified\"><span class=\"tag\">CONFIDENTIAL</span>\
+         Evidence copy — handle per evidence-retention policy. This archive is a point-in-time \
+         snapshot of the endpoint's telemetry for the coverage window above; the live platform \
+         retains its own recent copy independently.</div>\n",
     );
     s
+}
+
+fn meta_cell(k: &str, v: &str) -> String {
+    format!(
+        "<div class=\"cell\"><div class=\"k\">{}</div><div class=\"v\">{}</div></div>\n",
+        html_escape(k),
+        html_escape(v)
+    )
+}
+
+/// Thousands-separated integer for human-readable counts (e.g. 20000 -> "20,000").
+fn format_num(n: usize) -> String {
+    let digits = n.to_string();
+    let len = digits.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Stable accent colour per activity category (shared by the breakdown bars and the
+/// timeline dots) so the two read as one system.
+fn category_color(cat: &str) -> &'static str {
+    match cat {
+        "Screenshots" => "#3b5bdb",
+        "Browser" => "#0ea5e9",
+        "USB" => "#d97706",
+        "Network" => "#14b8a6",
+        "Wi-Fi" => "#8b5cf6",
+        "Processes" => "#64748b",
+        "Offline gaps" => "#b45309",
+        "Audit" => "#15803d",
+        _ => "#9aa1ad",
+    }
+}
+
+fn stat_card(kind: &str, number: &str, label: &str) -> String {
+    let cls = if kind.is_empty() { "stat".to_string() } else { format!("stat {}", kind) };
+    format!(
+        "<div class=\"{cls}\"><div class=\"n\">{n}</div><div class=\"l\">{l}</div></div>\n",
+        cls = cls,
+        n = html_escape(number),
+        l = html_escape(label)
+    )
 }
 
 fn section_header_block(host: &str, agent_id: &str, events: &[Event]) -> String {
@@ -198,33 +326,91 @@ fn summary_block(events: &[Event]) -> String {
         }
     }
 
-    let mut s = String::from("<h2>Executive summary</h2>\n<table>\n<tr><th>Category</th><th>Count</th></tr>\n");
-    for (cat, n) in &counts {
-        s.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>\n", html_escape(cat), n));
+    let total = events.len();
+    let browser = *counts.get("Browser").unwrap_or(&0);
+    let screenshots = *counts.get("Screenshots").unwrap_or(&0);
+
+    let mut s = String::from("<h2>Executive summary</h2>\n<div class=\"stats\">\n");
+    s.push_str(&stat_card("", &format_num(total), "Total events"));
+    s.push_str(&stat_card("", &format_num(browser), "Browser events"));
+    s.push_str(&stat_card("", &format_num(screenshots), "Screenshots"));
+    s.push_str(&stat_card("", &counts.len().to_string(), "Categories"));
+    if blind_spots > 0 {
+        s.push_str(&stat_card("warn", &format_num(blind_spots), "Offline gaps"));
     }
-    s.push_str("</table>\n");
+    if failed_uploads > 0 {
+        s.push_str(&stat_card("crit", &format_num(failed_uploads), "Upload failures"));
+    }
+    s.push_str("</div>\n");
+
+    // Activity breakdown — proportional bars, biggest category first.
+    if total > 0 && !counts.is_empty() {
+        let max = counts.values().copied().max().unwrap_or(1).max(1);
+        let mut cats: Vec<(&'static str, usize)> = counts.iter().map(|(k, v)| (*k, *v)).collect();
+        cats.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        s.push_str("<h2>Activity breakdown</h2>\n<div class=\"card pad\"><div class=\"bars\">\n");
+        for (cat, n) in cats {
+            let pct = ((n as f64 / total as f64) * 100.0).round() as u64;
+            let width = ((n as f64 / max as f64) * 100.0).round() as u64;
+            let color = category_color(cat);
+            s.push_str(&format!(
+                "<div class=\"bar\"><div class=\"cat\"><span class=\"dot\" style=\"background:{c}\"></span>{name}</div>\
+                 <div class=\"track\"><div class=\"fill\" style=\"width:{w}%;background:{c}\"></div></div>\
+                 <div class=\"num\">{n} · {pct}%</div></div>\n",
+                c = color,
+                name = html_escape(cat),
+                w = width,
+                n = format_num(n),
+                pct = pct
+            ));
+        }
+        s.push_str("</div></div>\n");
+    }
 
     if blind_spots > 0 {
         s.push_str(&format!(
-            "<p class=\"warn\">⚠ {} telemetry blind spot(s) detected (agent offline periods).</p>\n",
-            blind_spots
+            "<div class=\"alert warn\"><b>⚠ {} telemetry blind spot(s)</b> — the agent reported \
+             offline periods; activity during those gaps was not captured.</div>\n",
+            format_num(blind_spots)
         ));
     }
     if failed_uploads > 0 {
         s.push_str(&format!(
-            "<p class=\"warn\">⚠ {} screenshot upload failure(s) — image(s) may be unavailable.</p>\n",
-            failed_uploads
+            "<div class=\"alert crit\"><b>⚠ {} screenshot upload failure(s)</b> — the corresponding \
+             image(s) may be unavailable.</div>\n",
+            format_num(failed_uploads)
         ));
     }
     s
 }
 
 fn timeline_block(events: &[Event]) -> String {
-    let mut s = String::from("<h2>Chronological timeline</h2>\n<div class=\"timeline\">\n");
-    for ev in events {
+    // Cap the inline timeline so a large window doesn't produce a multi-MB overview;
+    // the complete, unabridged timeline is always in events.json. Show the MOST RECENT
+    // TIMELINE_MAX (events arrive oldest-first), kept in chronological order.
+    const TIMELINE_MAX: usize = 2000;
+    let total = events.len();
+    let shown: &[Event] = if total > TIMELINE_MAX {
+        &events[total - TIMELINE_MAX..]
+    } else {
+        events
+    };
+
+    let mut s = String::from("<h2>Chronological timeline</h2>\n");
+    if total > TIMELINE_MAX {
         s.push_str(&format!(
-            "<div>[{}]  {}</div>\n",
+            "<p class=\"muted\">Showing the most recent {} of {} events — the complete timeline is in \
+             <span class=\"mono\">events.json</span>.</p>\n",
+            format_num(TIMELINE_MAX),
+            format_num(total)
+        ));
+    }
+    s.push_str("<div class=\"timeline\">\n");
+    for ev in shown {
+        s.push_str(&format!(
+            "<div class=\"tl\"><span class=\"t\">{}</span><span class=\"d\" style=\"background:{}\"></span><span class=\"e\">{}</span></div>\n",
             ev.timestamp.format(TS_FMT),
+            category_color(bucket(ev)),
             html_escape(&describe_event(ev))
         ));
     }
@@ -530,10 +716,6 @@ fn html_escape(s: &str) -> String {
         }
     }
     out
-}
-
-fn kv_row(key: &str, value: &str) -> String {
-    format!("<tr><td>{}</td><td>{}</td></tr>\n", html_escape(key), html_escape(value))
 }
 
 fn window_str(events: &[Event]) -> String {
