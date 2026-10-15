@@ -471,10 +471,11 @@ export default function DeviceDetailsPage() {
                               setNameDraft(agent.display_name || '')
                               setEditingName(true)
                             }}
-                            className="p-1 rounded text-ct-ink3 hover:text-ct-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-ct-ink3 hover:text-ct-accent hover:bg-ct-panel-hi border border-ct-line hover:border-ct-accent-border transition-colors"
                             title="Rename device (label only)"
                           >
                             <Edit2 className="w-3 h-3" />
+                            <span className="text-[9px] font-mono uppercase" style={{ letterSpacing: '0.14em' }}>Rename</span>
                           </button>
                         )}
                       </div>

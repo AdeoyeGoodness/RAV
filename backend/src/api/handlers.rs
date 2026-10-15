@@ -897,13 +897,19 @@ pub async fn list_agents(
                    WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
                    ORDER BY l.received_at DESC LIMIT 1
                ) AS last_lifecycle_at,
-               -- Latest event timestamp per agent — powers the "uploader stalled"
-               -- detector. If heartbeat is fresh but this is stale, the agent's
-               -- event pipeline has jammed even though the tiny heartbeat POST
-               -- still slips through.
-               (
-                   SELECT MAX(e.timestamp) FROM events e
-                   WHERE e.agent_id = a.agent_id AND e.organization_id = a.organization_id
+               -- Latest activity timestamp per agent — powers the "uploader stalled"
+               -- detector and the "Latest event" cell. Uses SERVER receive-time
+               -- (created_at), not the agent-supplied event timestamp, so a skewed
+               -- endpoint clock can't make a live device read as 81d stale. Counts
+               -- BOTH telemetry events AND screenshot/file uploads (which land in
+               -- `files`, not `events`) — otherwise a device busily uploading
+               -- screenshots but quiet on events looks dead. GREATEST ignores NULLs.
+               GREATEST(
+                   (SELECT MAX(e.created_at) FROM events e
+                    WHERE e.agent_id = a.agent_id AND e.organization_id = a.organization_id),
+                   (SELECT MAX(f.created_at) FROM files f
+                    WHERE f.agent_id = a.agent_id AND f.organization_id = a.organization_id
+                      AND f.deleted_at IS NULL)
                ) AS latest_event_at
         FROM agents a
         LEFT JOIN enrollment_tokens t ON a.enrollment_token_id = t.token_id

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { formatWATTime, formatWATPattern } from '@/lib/time'
-import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown } from 'lucide-react'
+import { Camera, Download, ZoomIn, X, RefreshCw, Calendar as CalendarIcon, Trash2, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { downloadFile, getAgentScreenshots, getAgentScreenshotDuplicates } from '@/lib/api'
 import { Panel, PanelHead, Eyebrow, ActionButton, StatusPill } from '@/components/ct/primitives'
 
@@ -252,19 +252,41 @@ export default function ScreenshotViewer({
   }, [])
 
   useEffect(() => {
-    const handleEscKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && selectedScreenshot) {
+    if (!selectedScreenshot) return
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
         setSelectedScreenshot(null)
         if (imageUrl) {
           URL.revokeObjectURL(imageUrl)
           setImageUrl(null)
         }
+        return
+      }
+      // Left/right arrows step through the currently visible, sorted screenshots.
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const idx = sortedEvents.findIndex(e => e.id === selectedScreenshot.id)
+        if (idx === -1) return
+        const nextIdx = event.key === 'ArrowRight' ? idx + 1 : idx - 1
+        if (nextIdx >= 0 && nextIdx < sortedEvents.length) {
+          event.preventDefault()
+          loadScreenshotImage(sortedEvents[nextIdx])
+        }
       }
     }
 
-    window.addEventListener('keydown', handleEscKey)
-    return () => window.removeEventListener('keydown', handleEscKey)
-  }, [selectedScreenshot, imageUrl])
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedScreenshot, imageUrl, sortedEvents.map(e => e.id).join(',')])
+
+  // Position of the open screenshot within the visible, sorted list — drives the
+  // "N / total" counter and the prev/next arrows in the modal.
+  const currentIndex = selectedScreenshot
+    ? sortedEvents.findIndex(e => e.id === selectedScreenshot.id)
+    : -1
+  const goToScreenshot = (idx: number) => {
+    if (idx >= 0 && idx < sortedEvents.length) loadScreenshotImage(sortedEvents[idx])
+  }
 
   return (
     <Panel>
@@ -483,6 +505,11 @@ export default function ScreenshotViewer({
                     <span className="text-ct-accent font-mono">{formatWATPattern(selectedScreenshot.timestamp, 'PPpp')}</span>
                   </span>
                 }
+                meta={
+                  currentIndex >= 0 && sortedEvents.length > 0
+                    ? `${currentIndex + 1} of ${sortedEvents.length}`
+                    : undefined
+                }
                 right={
                   <button
                     onClick={() => {
@@ -519,7 +546,29 @@ export default function ScreenshotViewer({
                   </div>
                 ) : imageUrl ? (
                   <div className="space-y-5">
-                    <div className="rounded-sm border border-ct-line bg-ct-bg flex items-center justify-center overflow-hidden">
+                    <div className="relative rounded-sm border border-ct-line bg-ct-bg flex items-center justify-center overflow-hidden">
+                      {currentIndex > 0 && (
+                        <button
+                          onClick={() => goToScreenshot(currentIndex - 1)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full border border-ct-line text-ct-ink hover:text-ct-accent hover:border-ct-accent-border transition-colors"
+                          style={{ background: 'rgba(0,0,0,0.55)' }}
+                          title="Previous (←)"
+                          aria-label="Previous screenshot"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                      )}
+                      {currentIndex >= 0 && currentIndex < sortedEvents.length - 1 && (
+                        <button
+                          onClick={() => goToScreenshot(currentIndex + 1)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full border border-ct-line text-ct-ink hover:text-ct-accent hover:border-ct-accent-border transition-colors"
+                          style={{ background: 'rgba(0,0,0,0.55)' }}
+                          title="Next (→)"
+                          aria-label="Next screenshot"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      )}
                       <img
                         src={imageUrl}
                         alt="Screenshot"
