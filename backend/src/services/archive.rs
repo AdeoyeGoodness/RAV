@@ -39,11 +39,12 @@ impl ArchiveService {
     /// actually has events to write when the 5-day gate opens.
     pub async fn archive_agent_telemetry(&self, agent_id: &str, org_id: Uuid, include_recent: bool) -> Result<Option<Archive>> {
         let now = Utc::now();
-        let cutoff = if include_recent {
-            now
-        } else {
-            now - Duration::days(5)
-        };
+        // (b) Non-destructive snapshot model: archive the RECENT window as a COPY; a
+        // separate cleanup_old_events sweep handles purging. The scheduled sweep
+        // snapshots the last 5 days; a manual request snapshots everything still
+        // retained (~7 days) for a complete on-demand bundle.
+        let window_days: i64 = if include_recent { 7 } else { 5 };
+        let window_start = now - Duration::days(window_days);
 
         // All events/archives queries run inside ONE org-scoped transaction. The
         // events/archives tables have FORCE row-level security (migration 014); without
@@ -55,38 +56,32 @@ impl ArchiveService {
             .execute(&mut *tx)
             .await?;
 
-        // 1. Fetch events for the window — BOUNDED. Without a cap, an agent
-        // with a huge backlog (the never-purged events table) would try to
-        // load millions of rows into memory at once and the archive would
-        // hang / OOM — which is exactly why archiving had never succeeded.
-        // We take the OLDEST batch; if a full batch comes back there's more
-        // to do and the agent stays eligible for the next sweep pass.
+        // 1. Fetch events in the snapshot window — BOUNDED for memory safety. Take the
+        // most recent ARCHIVE_BATCH_LIMIT; with the ingest throttle a 5-7 day window is
+        // comfortably under this for a normal agent. This is a COPY — nothing is deleted
+        // here; cleanup_old_events handles retention separately.
         const ARCHIVE_BATCH_LIMIT: i64 = 20_000;
-        let events = sqlx::query_as!(
+        let mut events = sqlx::query_as!(
             Event,
             r#"
             SELECT * FROM events
-            WHERE agent_id = $1 AND organization_id = $2 AND created_at < $3
-            ORDER BY created_at ASC
+            WHERE agent_id = $1 AND organization_id = $2 AND created_at >= $3
+            ORDER BY created_at DESC
             LIMIT $4
             "#,
             agent_id,
             org_id,
-            cutoff,
+            window_start,
             ARCHIVE_BATCH_LIMIT
         )
         .fetch_all(&mut *tx)
         .await?;
+        // Fetched newest-first to respect the cap; reports/JSON read best oldest-first.
+        events.reverse();
 
         if events.is_empty() {
             return Ok(None);
         }
-
-        // Exact set we archived — delete only these, so a tie at the batch
-        // boundary can never purge an event we didn't bundle. caught_up is
-        // false when the batch was full (more backlog remains).
-        let archived_ids: Vec<Uuid> = events.iter().map(|e| e.id).collect();
-        let caught_up = (events.len() as i64) < ARCHIVE_BATCH_LIMIT;
 
         let event_count = events.len() as i32;
         // Use the actual event `timestamp` (when the event happened on the endpoint), NOT
@@ -133,8 +128,8 @@ impl ArchiveService {
         };
         if ss_total > 0 {
             info!(
-                "Archive {}: {} screenshot event(s), {} file(s) present on disk, cutoff={} limit={}",
-                agent_id, ss_total, ss_on_disk, cutoff, self.max_screenshots,
+                "Archive {}: {} screenshot event(s), {} file(s) present on disk, window_start={} limit={}",
+                agent_id, ss_total, ss_on_disk, window_start, self.max_screenshots,
             );
             if ss_on_disk < ss_total {
                 warn!(
@@ -152,11 +147,9 @@ impl ArchiveService {
         // every screenshot still lives in the files store + events.json regardless.
         // Non-macro query: is_critical / ocr_matches / duplicate_of_file_id come from
         // migrations that run at startup, so we don't compile-check them here.
-        // Scoped to the SAME window as the archived events (created_at < cutoff) so the
-        // bundled critical images line up with the telemetry in this archive — not the
-        // agent's entire on-disk history. For a manual archive cutoff = now (all current
-        // critical items, bounded by the 7-day file retention); for the weekly sweep
-        // cutoff = now - 5 days (the aged-out window being archived).
+        // Scoped to the SAME window as the archived events (created_at >= window_start)
+        // so the bundled critical images line up with the telemetry in this archive,
+        // not the agent's entire on-disk history.
         const CRITICAL_BUNDLE_LIMIT: i64 = 500;
         let critical_rows = sqlx::query(
             r#"
@@ -166,14 +159,14 @@ impl ArchiveService {
               AND is_critical = TRUE
               AND deleted_at IS NULL
               AND duplicate_of_file_id IS NULL
-              AND created_at < $3
+              AND created_at >= $3
             ORDER BY created_at DESC
             LIMIT $4
             "#,
         )
         .bind(agent_id)
         .bind(org_id)
-        .bind(cutoff)
+        .bind(window_start)
         .bind(CRITICAL_BUNDLE_LIMIT)
         .fetch_all(&mut *tx)
         .await
@@ -315,53 +308,22 @@ impl ArchiveService {
         .execute(&mut *tx)
         .await?;
 
-        // DELETE THE ARCHIVED EVENTS — but PRESERVE the most-recent wifi_changed so the
-        // device page's "Network Context" card (current network) survives the archive.
-        // wifi_changed is edge-triggered (only emitted on a real network change), so if we
-        // purged it the card would stay empty until the endpoint next switched networks.
-        // The kept event is still copied into the archive; a real network change later
-        // emits a fresh wifi_changed that supersedes it. IS DISTINCT FROM keeps the purge
-        // working normally when there is no wifi_changed (subquery is NULL).
-        sqlx::query!(
-            r#"
-            DELETE FROM events
-            WHERE id = ANY($1)
-              AND id IS DISTINCT FROM (
-                  SELECT id FROM events
-                  WHERE agent_id = $2 AND organization_id = $3
-                    AND event_type = 'wifi_changed' AND created_at < $4
-                  ORDER BY created_at DESC
-                  LIMIT 1
-              )
-            "#,
-            &archived_ids,
-            agent_id,
-            org_id,
-            cutoff
+        // (b) Non-destructive: events are NOT deleted here — the archive is a COPY.
+        // Retention is handled separately by cleanup_old_events (purges events older
+        // than EVENT_RETENTION_DAYS, a safe margin beyond this snapshot window), so the
+        // live dashboard keeps its recent data and nothing is purged before it's archived.
+
+        // Stamp the snapshot time so the dashboard "Last archive" cell + the per-agent
+        // 5-day cadence gate work. This is the one and only writer of last_archived_at.
+        sqlx::query(
+            "UPDATE agents SET last_archived_at = $1 \
+             WHERE agent_id = $2 AND organization_id = $3",
         )
+        .bind(now)
+        .bind(agent_id)
+        .bind(org_id)
         .execute(&mut *tx)
         .await?;
-
-        // Stamp the agent row with the archive time so the dashboard can render
-        // "Last archive: 3d" without having to join to archives from the hot
-        // agents-list path. `agents.last_archived_at` was declared on the model
-        // back in migration 011 but was never written; wiring it here is the
-        // one and only writer.
-        // Only stamp last_archived_at once the agent is fully caught up (the
-        // batch wasn't full). While backlog remains we deliberately leave it
-        // unset so the 5-day per-agent gate doesn't lock the agent out before
-        // the rest of its backlog is archived on subsequent sweep passes.
-        if caught_up {
-            sqlx::query(
-                "UPDATE agents SET last_archived_at = $1 \
-                 WHERE agent_id = $2 AND organization_id = $3",
-            )
-            .bind(now)
-            .bind(agent_id)
-            .bind(org_id)
-            .execute(&mut *tx)
-            .await?;
-        }
 
         tx.commit().await?;
 
@@ -439,6 +401,46 @@ impl ArchiveService {
             info!("Archive cleanup: purged {} archives older than {} days", count, max_age_days);
         }
         Ok(count)
+    }
+
+    /// Retention purge for the `events` table, decoupled from archiving (model b).
+    /// Deletes events older than `max_age_days` (by server receive-time), keeping the
+    /// live table bounded independently of whether archiving succeeds. `max_age_days`
+    /// MUST exceed the archive snapshot window so nothing is purged before it has been
+    /// snapshotted. The most-recent `wifi_changed` per agent is preserved regardless of
+    /// age so the device page's "Network Context" card survives. Runs BYPASS because the
+    /// events table has FORCE RLS; bounded by a statement_timeout so a large first-run
+    /// purge can't hold a connection long enough to starve the pool.
+    pub async fn cleanup_old_events(&self, max_age_days: i64) -> Result<u64> {
+        let cutoff = Utc::now() - Duration::days(max_age_days);
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL app.current_org_id = 'BYPASS'")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("SET LOCAL statement_timeout = '30s'")
+            .execute(&mut *tx)
+            .await?;
+        let res = sqlx::query(
+            r#"
+            DELETE FROM events
+            WHERE created_at < $1
+              AND id NOT IN (
+                  SELECT DISTINCT ON (agent_id) id FROM events
+                  WHERE event_type = 'wifi_changed'
+                  ORDER BY agent_id, created_at DESC
+              )
+            "#,
+        )
+        .bind(cutoff)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        let n = res.rows_affected();
+        if n > 0 {
+            info!("Event retention: purged {} events older than {} days", n, max_age_days);
+        }
+        Ok(n)
     }
 
     /// Delete uploaded blobs (screenshots, USB payloads) older than `max_age_days`.

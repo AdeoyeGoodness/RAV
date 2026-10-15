@@ -159,7 +159,8 @@ async fn main() -> Result<()> {
     // window from the auto path (manual triggers bypass the gate — see
     // handlers::trigger_agent_archive).
     //
-    // Cutoff: events older than 5 days go into the archive (was 7).
+    // Archive window: each archive is a non-destructive snapshot of the LAST 5 days
+    // of events (model b). Events are purged separately by cleanup_old_events.
     //
     // Vault retention (2 days) + file retention (bumped to match archive
     // cadence, see cleanup_old_files call below) also run on the same
@@ -174,6 +175,11 @@ async fn main() -> Result<()> {
     // so an agent has a wide safety window even if its archive is
     // slightly delayed.
     const FILE_RETENTION_DAYS: i64 = ARCHIVE_CUTOFF_DAYS + 2;
+    // Events retention (model b): archiving is now a non-destructive COPY of the last
+    // ARCHIVE_CUTOFF_DAYS, so a separate purge keeps the events table bounded. Same
+    // "+2 days past the archive window" margin as files, so an event is always
+    // snapshotted before it's ever purged, even if a sweep is slightly delayed.
+    const EVENT_RETENTION_DAYS: i64 = ARCHIVE_CUTOFF_DAYS + 2;
     let archive_bg = archive_service.clone();
     let notify_bg = notification_service.clone();
     let encryption_bg = encryption_service.clone();
@@ -182,10 +188,10 @@ async fn main() -> Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(SWEEP_INTERVAL_SECS)).await;
 
-            // Cross-org scan: which agents have events older than the cutoff
-            // AND haven't been archived in the last PER_AGENT_ARCHIVE_MIN_INTERVAL_DAYS.
-            // events + agents both have FORCE RLS, so this MUST run in a
-            // BYPASS transaction or it silently returns 0 rows.
+            // Cross-org scan: which agents have RECENT events (within the archive
+            // window) AND haven't been snapshotted in the last
+            // PER_AGENT_ARCHIVE_MIN_INTERVAL_DAYS. events + agents both have FORCE RLS,
+            // so this MUST run in a BYPASS transaction or it silently returns 0 rows.
             let result = async {
                 let mut tx = db_bg.begin_bypass_tx().await?;
                 // Cap this probe so a pathological scan can never hold a pooled
@@ -213,7 +219,7 @@ async fn main() -> Result<()> {
                           SELECT 1 FROM events e
                           WHERE e.agent_id = a.agent_id
                             AND e.organization_id = a.organization_id
-                            AND e.created_at < NOW() - ($1 || ' days')::interval
+                            AND e.created_at >= NOW() - ($1 || ' days')::interval
                       )
                     LIMIT 25
                     "#,
@@ -260,6 +266,14 @@ async fn main() -> Result<()> {
             // bundled yet.
             if let Err(e) = archive_bg.cleanup_old_files(FILE_RETENTION_DAYS as i64).await {
                 tracing::error!("File cleanup failed: {}", e);
+            }
+
+            // Events retention (model b). Archiving no longer deletes events, so this
+            // dedicated purge is what bounds the events table. EVENT_RETENTION_DAYS is
+            // kept a safe margin above the archive window so nothing is purged before
+            // it has been snapshotted into an archive.
+            if let Err(e) = archive_bg.cleanup_old_events(EVENT_RETENTION_DAYS as i64).await {
+                tracing::error!("Event cleanup failed: {}", e);
             }
         }
     });
