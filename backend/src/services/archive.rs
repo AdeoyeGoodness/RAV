@@ -56,11 +56,14 @@ impl ArchiveService {
             .execute(&mut *tx)
             .await?;
 
-        // 1. Fetch events in the snapshot window — BOUNDED for memory safety. Take the
-        // most recent ARCHIVE_BATCH_LIMIT; with the ingest throttle a 5-7 day window is
-        // comfortably under this for a normal agent. This is a COPY — nothing is deleted
-        // here; cleanup_old_events handles retention separately.
-        const ARCHIVE_BATCH_LIMIT: i64 = 20_000;
+        // 1. Fetch events in the snapshot window — BOUNDED for memory safety. The cap is
+        // well above a realistic throttled 5-7 day window so the full window is captured
+        // (a busy box was hitting the old 20k cap, truncating its archive — and because
+        // model-b purges by time, truncated events would be lost unarchived). The sweep
+        // archives one agent at a time, so even the worst case is a bounded, transient
+        // allocation. This is a COPY — nothing is deleted here; cleanup_old_events
+        // handles retention separately.
+        const ARCHIVE_BATCH_LIMIT: i64 = 100_000;
         let mut events = sqlx::query_as!(
             Event,
             r#"
