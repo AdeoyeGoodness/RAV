@@ -116,6 +116,7 @@ export default function DeviceDetailsPage() {
   const [nameDraft, setNameDraft] = useState('')
   const [savingName, setSavingName] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
+  const [archiving, setArchiving] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
 
   const loadDeviceData = useCallback(
@@ -627,8 +628,10 @@ export default function DeviceDetailsPage() {
               right={
                 (user?.role === 'org_admin' || user?.role === 'super_admin') && (
                   <ActionButton
+                    disabled={archiving}
                     onClick={async () => {
                       if (confirm('Trigger immediate forensic archival for this device? This will bundle ALL current telemetry into a secure ZIP for retrieval.')) {
+                        setArchiving(true)
                         try {
                           const res = await triggerManualArchive(agentId)
                           if (res.status === 'success') {
@@ -638,11 +641,14 @@ export default function DeviceDetailsPage() {
                           }
                         } catch {
                           alert('Failed to reach archival orchestrator.')
+                        } finally {
+                          setArchiving(false)
                         }
                       }
                     }}
                   >
-                    <Archive className="w-3 h-3 inline mr-2" /> Request archive
+                    <Archive className={`w-3 h-3 inline mr-2 ${archiving ? 'animate-pulse' : ''}`} />
+                    {archiving ? 'Archiving… (up to a minute)' : 'Request archive'}
                   </ActionButton>
                 )
               }

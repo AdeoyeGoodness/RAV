@@ -145,6 +145,38 @@ impl ArchiveService {
             }
         }
 
+        // Critical (OCR-flagged) screenshots for this agent — queried ONCE and used
+        // twice: (1) the HTML report embeds only these inline, and (2) they're bundled
+        // as real image files under critical_screenshots/. Embedding only the flagged
+        // shots (instead of hundreds of base64 images) is what keeps archiving fast;
+        // every screenshot still lives in the files store + events.json regardless.
+        // Non-macro query: is_critical / ocr_matches / duplicate_of_file_id come from
+        // migrations that run at startup, so we don't compile-check them here.
+        const CRITICAL_BUNDLE_LIMIT: i64 = 500;
+        let critical_rows = sqlx::query(
+            r#"
+            SELECT file_id, file_name, file_size, ocr_matches, created_at
+            FROM files
+            WHERE agent_id = $1 AND organization_id = $2
+              AND is_critical = TRUE
+              AND deleted_at IS NULL
+              AND duplicate_of_file_id IS NULL
+            ORDER BY created_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(agent_id)
+        .bind(org_id)
+        .bind(CRITICAL_BUNDLE_LIMIT)
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap_or_else(|e| {
+            warn!("Archive {}: critical-items query failed: {} — none embedded/bundled", agent_id, e);
+            Vec::new()
+        });
+        let critical_ids: std::collections::HashSet<String> =
+            critical_rows.iter().map(|r| r.get::<String, _>("file_id")).collect();
+
         // 2. Prepare JSON Payload (kept for machine analysis)
         let json_data = serde_json::to_string_pretty(&events)?;
 
@@ -179,6 +211,7 @@ impl ArchiveService {
             &events,
             &self.file_storage_dir,
             self.max_screenshots,
+            &critical_ids,
         ) {
             Ok(reports) => {
                 for (name, bytes) in reports {
@@ -191,36 +224,10 @@ impl ArchiveService {
             }
         }
 
-        // 3b. Bundle this agent's CRITICAL screenshots (the OCR-flagged items) as real
-        // image files inside the archive, under critical_screenshots/, plus a manifest.
+        // 3b. Bundle the CRITICAL screenshots (queried above, reused here) as real
+        // image files under critical_screenshots/, plus a critical_items.json manifest.
         // The archive is the permanent record, whereas screenshot blobs on disk are
-        // purged after FILE_RETENTION_DAYS — so embedding the flagged ones here is what
-        // preserves that evidence long-term. Representatives only (duplicate_of_file_id
-        // IS NULL), capped at max_screenshots. Non-macro query: the is_critical /
-        // ocr_matches / duplicate_of_file_id columns come from migrations that run at
-        // binary startup, so we don't compile-check them against the live DB.
-        let critical_rows = sqlx::query(
-            r#"
-            SELECT file_id, file_name, file_size, ocr_matches, created_at
-            FROM files
-            WHERE agent_id = $1 AND organization_id = $2
-              AND is_critical = TRUE
-              AND deleted_at IS NULL
-              AND duplicate_of_file_id IS NULL
-            ORDER BY created_at DESC
-            LIMIT $3
-            "#,
-        )
-        .bind(agent_id)
-        .bind(org_id)
-        .bind(self.max_screenshots as i64)
-        .fetch_all(&mut *tx)
-        .await
-        .unwrap_or_else(|e| {
-            warn!("Archive {}: critical-items query failed: {} — bundling none", agent_id, e);
-            Vec::new()
-        });
-
+        // purged after FILE_RETENTION_DAYS — so this preserves the flagged evidence.
         if !critical_rows.is_empty() {
             // One directory scan → stem (file_id) to on-disk path. Blobs live at
             // {file_id}.{ext} (see cleanup_old_files), so the stem is the file_id.

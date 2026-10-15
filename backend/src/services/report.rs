@@ -35,6 +35,7 @@ pub fn generate_section_reports(
     events: &[Event],
     file_storage_dir: &Path,
     max_screenshots: usize,
+    critical_ids: &std::collections::HashSet<String>,
 ) -> anyhow::Result<Vec<(String, Vec<u8>)>> {
     let mut reports: Vec<(String, Vec<u8>)> = Vec::new();
 
@@ -51,10 +52,10 @@ pub fn generate_section_reports(
 
     if events.iter().any(|e| e.event_type.eq_ignore_ascii_case("screenshot_captured")) {
         let mut body = section_header_block(host_or_label, agent_id, events);
-        body.push_str(&screenshots_block(events, file_storage_dir, max_screenshots));
+        body.push_str(&screenshots_block(events, file_storage_dir, max_screenshots, critical_ids));
         reports.push((
             "screenshots.html".to_string(),
-            wrap_html("Screenshots", &body).into_bytes(),
+            wrap_html("Critical Screenshots", &body).into_bytes(),
         ));
     }
 
@@ -231,13 +232,22 @@ fn timeline_block(events: &[Event]) -> String {
     s
 }
 
-fn screenshots_block(events: &[Event], dir: &Path, max: usize) -> String {
+fn screenshots_block(events: &[Event], dir: &Path, max: usize, critical_ids: &std::collections::HashSet<String>) -> String {
+    // Embed ONLY critical (OCR-flagged) screenshots inline. The base64 gallery is
+    // what made archiving slow, and these are the evidence that matters. Every
+    // screenshot still lives in the files store + events.json, and the critical ones
+    // are also bundled as separate image files in the archive (critical_screenshots/).
     let shots: Vec<&Event> = events
         .iter()
         .filter(|e| e.event_type.eq_ignore_ascii_case("screenshot_captured"))
+        .filter(|e| meta_str(e, "file_id").map(|id| critical_ids.contains(&id)).unwrap_or(false))
         .collect();
 
-    let mut s = format!("<h2>Screenshots ({})</h2>\n<div class=\"gallery\">\n", shots.len());
+    if shots.is_empty() {
+        return "<h2>Critical Screenshots</h2>\n<p class=\"muted\">No OCR-flagged screenshots in this window.</p>\n".to_string();
+    }
+
+    let mut s = format!("<h2>Critical Screenshots ({})</h2>\n<div class=\"gallery\">\n", shots.len());
     let mut embedded = 0usize;
     for ev in &shots {
         if embedded >= max {
