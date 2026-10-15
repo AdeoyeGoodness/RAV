@@ -1,5 +1,5 @@
 use crate::db::models::{Event, Archive};
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Transaction, Row};
 use anyhow::{Result, Context};
 use chrono::{DateTime, Utc, Duration};
 use std::fs;
@@ -189,6 +189,93 @@ impl ArchiveService {
             Err(e) => {
                 warn!("PDF report generation failed for {}: {} — archiving JSON only", agent_id, e);
             }
+        }
+
+        // 3b. Bundle this agent's CRITICAL screenshots (the OCR-flagged items) as real
+        // image files inside the archive, under critical_screenshots/, plus a manifest.
+        // The archive is the permanent record, whereas screenshot blobs on disk are
+        // purged after FILE_RETENTION_DAYS — so embedding the flagged ones here is what
+        // preserves that evidence long-term. Representatives only (duplicate_of_file_id
+        // IS NULL), capped at max_screenshots. Non-macro query: the is_critical /
+        // ocr_matches / duplicate_of_file_id columns come from migrations that run at
+        // binary startup, so we don't compile-check them against the live DB.
+        let critical_rows = sqlx::query(
+            r#"
+            SELECT file_id, file_name, file_size, ocr_matches, created_at
+            FROM files
+            WHERE agent_id = $1 AND organization_id = $2
+              AND is_critical = TRUE
+              AND deleted_at IS NULL
+              AND duplicate_of_file_id IS NULL
+            ORDER BY created_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(agent_id)
+        .bind(org_id)
+        .bind(self.max_screenshots as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .unwrap_or_else(|e| {
+            warn!("Archive {}: critical-items query failed: {} — bundling none", agent_id, e);
+            Vec::new()
+        });
+
+        if !critical_rows.is_empty() {
+            // One directory scan → stem (file_id) to on-disk path. Blobs live at
+            // {file_id}.{ext} (see cleanup_old_files), so the stem is the file_id.
+            let mut on_disk: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+            if let Ok(entries) = fs::read_dir(&self.file_storage_dir) {
+                for e in entries.flatten() {
+                    let p = e.path();
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        on_disk.insert(stem.to_string(), p);
+                    }
+                }
+            }
+
+            let mut manifest: Vec<serde_json::Value> = Vec::new();
+            let mut embedded = 0usize;
+            for row in &critical_rows {
+                let file_id: String = row.get("file_id");
+                let file_name: String = row.get("file_name");
+                let file_size: i64 = row.get("file_size");
+                let matches: Vec<String> = row.try_get("ocr_matches").unwrap_or_default();
+                let created_at: DateTime<Utc> = row.get("created_at");
+
+                // null bundled_as => the blob was already purged from disk before this
+                // archive ran; the manifest still records that the item existed + why.
+                let mut bundled_as: Option<String> = None;
+                if let Some(path) = on_disk.get(&file_id) {
+                    if let Ok(bytes) = fs::read(path) {
+                        let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("bin");
+                        let entry = format!("critical_screenshots/{}.{}", file_id, ext);
+                        if zip.start_file(&entry, options).is_ok() && zip.write_all(&bytes).is_ok() {
+                            bundled_as = Some(entry);
+                            embedded += 1;
+                        }
+                    }
+                }
+
+                manifest.push(serde_json::json!({
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "created_at": created_at,
+                    "ocr_matches": matches,
+                    "bundled_as": bundled_as,
+                }));
+            }
+
+            if let Ok(manifest_json) = serde_json::to_string_pretty(&manifest) {
+                if zip.start_file("critical_items.json", options).is_ok() {
+                    let _ = zip.write_all(manifest_json.as_bytes());
+                }
+            }
+            info!(
+                "Archive {}: bundled {}/{} critical screenshot(s) into the zip",
+                agent_id, embedded, critical_rows.len()
+            );
         }
 
         zip.finish()?;
