@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://172.16.100.41'
+// Default to same-origin (relative) so the dashboard works behind nginx on ANY host
+// — private IP, public IP, or a domain — without rebaking a per-host URL. Dev sets
+// NEXT_PUBLIC_API_URL=http://localhost:8080 explicitly (backend is a different port).
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 const api = axios.create({
   baseURL: API_BASE_URL,

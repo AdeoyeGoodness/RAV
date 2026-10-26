@@ -33,7 +33,7 @@ export default function NotificationSettings() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/settings`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/settings`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('rav_token')}` }
       });
       if (res.ok) {
@@ -88,7 +88,7 @@ export default function NotificationSettings() {
     setIsSaving(true);
     setStatus(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/settings/verify`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/settings/verify`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ export default function NotificationSettings() {
     setStatus(null);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/settings`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/settings`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -151,7 +151,7 @@ export default function NotificationSettings() {
     setIsTesting(true);
     setStatus(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/settings/test`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/settings/test`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

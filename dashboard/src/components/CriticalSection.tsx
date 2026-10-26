@@ -32,7 +32,7 @@ export default function CriticalSection({ agentId }: Props) {
     setError(null)
     try {
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/${agentId}/critical`,
+        `${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/agents/${agentId}/critical`,
         { credentials: 'include' },
       )
       if (!res.ok) throw new Error(`status ${res.status}`)
@@ -122,7 +122,7 @@ export default function CriticalSection({ agentId }: Props) {
               >
                 <div className="relative aspect-video" style={{ background: '#000' }}>
                   <img
-                    src={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/files/${f.file_id}`}
+                    src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/files/${f.file_id}`}
                     alt={f.file_name}
                     loading="lazy"
                     className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
@@ -232,7 +232,7 @@ export default function CriticalSection({ agentId }: Props) {
               </button>
             </div>
             <img
-              src={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/files/${selected.file_id}`}
+              src={`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/files/${selected.file_id}`}
               alt={selected.file_name}
               className="w-full h-full object-contain rounded-sm"
               style={{ border: '1px solid var(--ct-line2)' }}

@@ -34,7 +34,7 @@ export default function KeywordsSettings() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/keywords`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/keywords`, {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(`status ${res.status}`)
@@ -56,7 +56,7 @@ export default function KeywordsSettings() {
     setAdding(true)
     setError(null)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/keywords`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/keywords`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -88,7 +88,7 @@ export default function KeywordsSettings() {
     const before = rows
     setRows((prev) => prev.filter((r) => r.id !== id))
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/org/keywords/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/org/keywords/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       })

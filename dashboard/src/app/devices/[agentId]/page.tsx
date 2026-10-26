@@ -689,7 +689,7 @@ function ArchivesList({ agentId }: { agentId: string }) {
   const [downloading, setDownloading] = React.useState(false)
 
   React.useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/${agentId}/archives`, { credentials: 'include' })
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/agents/${agentId}/archives`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
         setArchives(Array.isArray(data) ? data : [])
