@@ -10,7 +10,7 @@
   
   <Package Name="Asset Telemetry Service"
            Manufacturer="RAV Security"
-           Version="2.0.0.0"
+           Version="2.0.1.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -18,7 +18,7 @@
     <MediaTemplate EmbedCab="yes" />
 
     <!-- INSTALL-TIME PROPERTIES -->
-    <Property Id="BACKEND_URL" Value="http://172.16.100.41" />
+    <Property Id="BACKEND_URL" Value="http://172.16.100.41" Secure="yes" />
     <Property Id="ENROLLMENT_TOKEN" Secure="yes" />
     <Property Id="SCREENSHOT_INTERVAL" Value="60" /> <!-- Default 1 minute -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
@@ -63,10 +63,13 @@
         <Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="15" Transparent="yes" NoPrefix="yes" Text="Connect this agent to your organization." />
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
         
-        <Control Id="TokenLabel" Type="Text" X="20" Y="65" Width="330" Height="15" NoPrefix="yes" Text="Enrollment Token (from your IT administrator):" />
-        <Control Id="TokenEdit" Type="Edit" X="20" Y="80" Width="330" Height="18" Property="ENROLLMENT_TOKEN" />
+        <Control Id="ServerLabel" Type="Text" X="20" Y="56" Width="330" Height="15" NoPrefix="yes" Text="Server address (from your IT administrator):" />
+        <Control Id="ServerEdit" Type="Edit" X="20" Y="71" Width="330" Height="18" Property="BACKEND_URL" />
 
-        <Control Id="InfoText" Type="Text" X="20" Y="110" Width="330" Height="40" NoPrefix="yes" Text="Your IT administrator will provide you with the enrollment token. This links the agent to your organization's monitoring dashboard." />
+        <Control Id="TokenLabel" Type="Text" X="20" Y="98" Width="330" Height="15" NoPrefix="yes" Text="Enrollment Token (from your IT administrator):" />
+        <Control Id="TokenEdit" Type="Edit" X="20" Y="113" Width="330" Height="18" Property="ENROLLMENT_TOKEN" />
+
+        <Control Id="InfoText" Type="Text" X="20" Y="143" Width="330" Height="50" NoPrefix="yes" Text="Both values are provided by your IT administrator. The server address is where this agent reports (e.g. http://your-server-ip); the enrollment token links it to your organization's monitoring dashboard." />
 
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="&amp;Back">
