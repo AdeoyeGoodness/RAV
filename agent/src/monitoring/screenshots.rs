@@ -238,7 +238,7 @@ async fn capture_windows_screenshot(config: &Config) -> Result<(Vec<u8>, u32, u3
                 // We're in Session 0 (service mode) - switch to helper folder
                 SERVICE_MODE_DETECTED.store(true, Ordering::Relaxed);
                 info!("Service mode detected - switching to helper-based screenshots");
-                info!("Ensure AssetTelemetry.exe --screenshot-helper is running in user session");
+                info!("Ensure RavMonitor.exe --screenshot-helper is running in user session");
                 
                 // Try reading from helper folder
                 read_from_helper_folder(config).await

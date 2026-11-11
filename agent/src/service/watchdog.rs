@@ -1,15 +1,15 @@
 //! Endpoint-side watchdog.
 //!
-//! Invoked as `AssetTelemetry.exe --watchdog` by a Windows Scheduled Task
+//! Invoked as `RavMonitor.exe --watchdog` by a Windows Scheduled Task
 //! installed by the MSI. Runs every few minutes under LocalSystem,
-//! INDEPENDENTLY of the main AssetTelemetryService — so it keeps reporting
+//! INDEPENDENTLY of the main monitoring service — so it keeps reporting
 //! even when the main service is stopped, killed, or removed. This is what
 //! lets the backend tell a killed/crashed agent apart from a clean uninstall
 //! apart from a machine that's simply turned off.
 //!
 //! What it reports per run (POST /api/v1/agents/watchdog):
 //!   - service_state:    Running | Stopped | NotInstalled | Unknown
-//!   - binary_present:   does AssetTelemetry.exe still exist on disk?
+//!   - binary_present:   does the agent exe still exist on disk?
 //!   - watchdog_version: this build's CARGO_PKG_VERSION
 //!
 //! Defense in depth: if it sees the service stopped but the binary present,
@@ -24,15 +24,19 @@ use tracing::{info, warn};
 use crate::config::Config;
 
 // MUST match the ServiceInstall Name in agent-wix/Product.wxs and the runtime
-// SERVICE_NAME in service/windows.rs — renamed from "RAVAgent" in 0.1.8.
+// SERVICE_NAME in service/windows.rs. This internal SCM key is kept stable
+// ("AssetTelemetryService") across product renames for upgrade continuity.
 const SERVICE_NAME: &str = "AssetTelemetryService";
 
-/// Paths the MSI may have installed the agent to. Renamed from "RAV Agent"
-/// install folder + "rav-agent.exe" in 0.1.8 — keep this in lockstep with
+/// Paths the MSI may have installed the agent to. Keep this in lockstep with
 /// Product.wxs's INSTALLFOLDER Name + the [[bin]] name in agent/Cargo.toml.
-/// We check both Program Files variants because per-machine MSIs can land on
-/// either depending on package bitness vs OS.
+/// Both the NEW ("RAV Monitoring Agent" / RavMonitor.exe) and the previous
+/// ("Asset Telemetry" / AssetTelemetry.exe) locations are listed so a watchdog
+/// run during a rename upgrade still finds the binary. Both Program Files
+/// variants are checked because per-machine MSIs can land on either.
 const INSTALL_PATH_CANDIDATES: &[&str] = &[
+    "C:\\Program Files\\RAV Monitoring Agent\\RavMonitor.exe",
+    "C:\\Program Files (x86)\\RAV Monitoring Agent\\RavMonitor.exe",
     "C:\\Program Files\\Asset Telemetry\\AssetTelemetry.exe",
     "C:\\Program Files (x86)\\Asset Telemetry\\AssetTelemetry.exe",
 ];
@@ -104,7 +108,49 @@ fn check_service_status() -> (String, bool, bool) {
         Err(_) => return ("Unknown".to_string(), binary_present, false),
     };
 
-    let state_str = match status.current_state {
+    // Self-heal: if the service is cleanly Stopped and the binary is still on
+    // disk, try to bring it back, then CONFIRM it actually reached Running
+    // before reporting. Transitional states (StartPending / StopPending) are
+    // left alone so we don't issue a second start while one is already in
+    // progress — we just report what we see. The backend gets the report
+    // either way so the stop is logged.
+    let mut attempted_restart = false;
+    let mut final_state = status.current_state;
+
+    if status.current_state == ServiceState::Stopped && binary_present {
+        match svc.start::<&str>(&[]) {
+            Ok(()) => {
+                attempted_restart = true;
+                info!("Watchdog: issued start for {}, confirming it reaches Running...", SERVICE_NAME);
+                // Poll up to ~15s for the service to actually come up.
+                for _ in 0..15 {
+                    std::thread::sleep(Duration::from_secs(1));
+                    match svc.query_status() {
+                        Ok(s) => {
+                            final_state = s.current_state;
+                            if s.current_state == ServiceState::Running {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                if final_state == ServiceState::Running {
+                    info!("Watchdog: {} confirmed Running after restart", SERVICE_NAME);
+                } else {
+                    warn!(
+                        "Watchdog: {} did not reach Running (state={:?}) within 15s of start",
+                        SERVICE_NAME, final_state
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("Watchdog: tried to start {} but failed: {}", SERVICE_NAME, e);
+            }
+        }
+    }
+
+    let final_state_str = match final_state {
         ServiceState::Running => "Running",
         ServiceState::Stopped => "Stopped",
         ServiceState::StartPending => "StartPending",
@@ -115,20 +161,7 @@ fn check_service_status() -> (String, bool, bool) {
     }
     .to_string();
 
-    // Self-heal: if the service is just Stopped and the binary is still on
-    // disk, try to bring it back. The backend still gets the report so the
-    // stop is logged.
-    let mut attempted_restart = false;
-    if status.current_state == ServiceState::Stopped && binary_present {
-        if let Err(e) = svc.start::<&str>(&[]) {
-            warn!("Watchdog: tried to start {} but failed: {}", SERVICE_NAME, e);
-        } else {
-            info!("Watchdog: restarted {} service", SERVICE_NAME);
-            attempted_restart = true;
-        }
-    }
-
-    (state_str, binary_present, attempted_restart)
+    (final_state_str, binary_present, attempted_restart)
 }
 
 #[cfg(not(windows))]

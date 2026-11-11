@@ -458,9 +458,9 @@ async fn start_monitoring(
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 sys.refresh_all();
                 
-                // 1. Tamper Check (Item 5.7)
-                if let Ok(true) = crate::utils::detect_tampering(&config_res.stealth.service_name) {
-                     sync_res.audit_event("CRITICAL: Local service tampering detected! Service entry missing or modified.", "critical").await;
+                // 1. Service health: alert if the monitoring service entry has been removed.
+                if let Ok(false) = crate::utils::check_service_present(&config_res.service.service_name) {
+                     sync_res.audit_event("Service health: the monitoring service entry is missing on this endpoint.", "critical").await;
                 }
 
                 // 2. Resource Monitoring (Item 11.2)

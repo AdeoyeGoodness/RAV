@@ -8,9 +8,9 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   
-  <Package Name="Asset Telemetry Service"
+  <Package Name="RAV Monitoring Agent"
            Manufacturer="RAV Security"
-           Version="2.0.1.0"
+           Version="2.0.2.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -43,14 +43,11 @@
              when the service is dead or removed). -->
         <Custom Action="InstallWatchdogTask" After="InstallFiles" Condition="NOT REMOVE" />
         <Custom Action="RemoveWatchdogTask" Before="RemoveFiles" Condition="REMOVE" />
-        <!-- Register Defender exclusions so the unsigned helper spawn
-             (schtasks launching the screenshot-helper exe) stops being
-             blocked by Defender AV plus ASR. NOTE: does NOT override Tamper
-             Protection or Smart App Control; the real fix for the
-             "unknown publisher" block is code-signing the exe. Return is
-             ignored so a locked-down Defender never fails the install. -->
-        <Custom Action="SetDefenderExclusion" After="InstallFiles" Condition="NOT REMOVE" />
-        <Custom Action="RemoveDefenderExclusion" Before="RemoveFiles" Condition="REMOVE" />
+        <!-- No antivirus exclusions. This agent is code-signed, so Defender /
+             SmartScreen accept it on reputation; we never add Defender
+             exclusions or touch Tamper Protection. On Smart App Control boxes,
+             deploy via Intune/GPO (see deployment/SIGNING-AND-CLEAN-INSTALL.md).
+             We never instruct operators to disable any protection. -->
     </InstallExecuteSequence>
     
     
@@ -90,12 +87,14 @@
 
     <!-- Install directory structure -->
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="Asset Telemetry">
+      <Directory Id="INSTALLFOLDER" Name="RAV Monitoring Agent">
         <Component Id="MainExecutable" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" Bitness="always64">
-          <File Id="AgentExe" Source="$(var.AgentPath)\AssetTelemetry.exe" KeyPath="yes" />
+          <File Id="AgentExe" Source="$(var.AgentPath)\RavMonitor.exe" KeyPath="yes" />
           <File Id="AgentNativeHostBat" Source="rav-native-host.bat" />
           <File Id="LaunchHelperVbs" Source="launch-helper.vbs" />
-          <ServiceInstall Id="RAVAgentService" Name="AssetTelemetryService" DisplayName="Asset Telemetry Service" Description="Endpoint asset telemetry and inventory service" Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem">
+          <!-- Internal service key (Name) kept stable as "AssetTelemetryService" for upgrade
+               continuity; the DisplayName/Description are honest about what the agent does. -->
+          <ServiceInstall Id="RAVAgentService" Name="AssetTelemetryService" DisplayName="RAV Monitoring Agent" Description="Monitors and records user activity (screen, browsing, USB devices, and applications) on this company-managed device for the employer. Deployed and managed by IT." Start="auto" Type="ownProcess" ErrorControl="normal" Account="LocalSystem">
             <!-- Auto-restart the service if it ever terminates unexpectedly (crash). NOTE: a
                  clean Stop is not a "failure" and will NOT trigger this — so this is insurance
                  against crashes, not a substitute for the Interrogate handler fix. -->
@@ -161,9 +160,17 @@
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="ProgramDataRAV" Name="RAV">
         <Component Id="ConfigFileComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012" Bitness="always64">
-          <!-- Wider permissions: The native host (User) needs to read config and write logs -->
+          <!-- Least-privilege permissions. The user-context Native Messaging Host must read
+               config and read/write its SQLite event queue, so Users get read + write/create
+               but NOT delete or change-permissions — a standard user cannot wipe the agent's
+               files to evade monitoring. The agent re-applies and tightens these at runtime
+               (harden_data_dir_permissions), including restricting the logs subfolder to
+               Administrators + SYSTEM. The folder stays fully visible: protection, not hiding. -->
           <CreateFolder>
-            <util:PermissionEx User="Users" GenericAll="yes" />
+            <util:PermissionEx User="Users"
+                               Read="yes" ReadAttributes="yes" ReadExtendedAttributes="yes" ReadPermission="yes"
+                               Write="yes" Append="yes" WriteAttributes="yes" WriteExtendedAttributes="yes"
+                               CreateFile="yes" CreateChild="yes" Traverse="yes" Execute="yes" Synchronize="yes" />
           </CreateFolder>
           <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
           <IniFile Id="WriteBackendUrl" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="url" Value="&quot;[BACKEND_URL]&quot;" />
@@ -176,7 +183,7 @@
     <!-- This makes the MSI universal - works wherever the user installs -->
     <CustomAction Id="PatchNativeHostManifest"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]AssetTelemetry.exe&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
+                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$f = &apos;[INSTALLFOLDER]com.rav.agent.json&apos;; $p = &apos;[INSTALLFOLDER]RavMonitor.exe&apos;; $j = Get-Content $f -Raw | ConvertFrom-Json; $j.path = $p; $j | ConvertTo-Json -Depth 5 | Set-Content $f"'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
@@ -186,45 +193,31 @@
          dead / removed). Created on install (idempotent: /f overwrites if it
          exists, e.g. on a MajorUpgrade after the old product's RemoveWatchdog
          already deleted it), removed on uninstall. -->
-    <!-- Task name + binary kept in lockstep with the 0.1.8 rename:
-         "Asset Telemetry Watchdog" task runs AssetTelemetry.exe in
-         watchdog mode. If you change either string here, also update
-         service/watchdog.rs (SERVICE_NAME + INSTALL_PATH_CANDIDATES). -->
+    <!-- Task name + binary kept in lockstep with the rename:
+         "RAV Monitoring Agent Watchdog" task runs RavMonitor.exe in
+         watchdog mode, every 2 minutes. If you change either string here,
+         also update service/watchdog.rs (SERVICE_NAME + INSTALL_PATH_CANDIDATES).
+         The install command first deletes any prior task (old and new name) so a
+         rename upgrade leaves no stale task pointing at the removed old exe. -->
     <CustomAction Id="InstallWatchdogTask"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='schtasks.exe /create /tn "Asset Telemetry Watchdog" /sc minute /mo 5 /ru SYSTEM /rl HIGHEST /tr "\"[INSTALLFOLDER]AssetTelemetry.exe\" --watchdog" /f'
+                  ExeCommand='cmd.exe /c schtasks.exe /delete /tn "Asset Telemetry Watchdog" /f &amp; schtasks.exe /delete /tn "RAV Monitoring Agent Watchdog" /f &amp; schtasks.exe /create /tn "RAV Monitoring Agent Watchdog" /sc minute /mo 2 /ru SYSTEM /rl HIGHEST /tr "\"[INSTALLFOLDER]RavMonitor.exe\" --watchdog" /f'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
     <CustomAction Id="RemoveWatchdogTask"
                   Directory="INSTALLFOLDER"
-                  ExeCommand='schtasks.exe /delete /tn "Asset Telemetry Watchdog" /f'
+                  ExeCommand='cmd.exe /c schtasks.exe /delete /tn "RAV Monitoring Agent Watchdog" /f &amp; schtasks.exe /delete /tn "Asset Telemetry Watchdog" /f'
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
 
-    <!-- Defender exclusions: install folder + ProgramData helper dir as
-         path exclusions, the exe as a process exclusion, and the exe as an
-         ASR-only exclusion (covers the "Block executable files unless they
-         meet prevalence/age/trust" rule, which is the likely blocker of the
-         unsigned helper). All wrapped in try/catch + SilentlyContinue so a
-         Tamper-Protected or GPO-managed Defender can't fail the install. -->
-    <CustomAction Id="SetDefenderExclusion"
-                  Directory="INSTALLFOLDER"
-                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath &apos;[INSTALLFOLDER]&apos; -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath &apos;C:\ProgramData\RAV&apos; -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess &apos;AssetTelemetry.exe&apos; -ErrorAction SilentlyContinue; Add-MpPreference -AttackSurfaceReductionOnlyExclusions &apos;[INSTALLFOLDER]AssetTelemetry.exe&apos; -ErrorAction SilentlyContinue } catch {}"'
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="ignore" />
+    <!-- (No Defender/AV custom actions. The agent is code-signed; clean install on
+         Smart App Control boxes is achieved via managed Intune/GPO deployment, never
+         by disabling any protection. See deployment/SIGNING-AND-CLEAN-INSTALL.md.) -->
 
-    <CustomAction Id="RemoveDefenderExclusion"
-                  Directory="INSTALLFOLDER"
-                  ExeCommand='powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { Remove-MpPreference -ExclusionPath &apos;[INSTALLFOLDER]&apos; -ErrorAction SilentlyContinue; Remove-MpPreference -ExclusionPath &apos;C:\ProgramData\RAV&apos; -ErrorAction SilentlyContinue; Remove-MpPreference -ExclusionProcess &apos;AssetTelemetry.exe&apos; -ErrorAction SilentlyContinue } catch {}"'
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="ignore" />
-
-    <Feature Id="MainFeature" Title="Asset Telemetry Service" Level="1">
+    <Feature Id="MainFeature" Title="RAV Monitoring Agent" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="ConfigFileComponent" />
       <ComponentRef Id="ExtensionSource" />

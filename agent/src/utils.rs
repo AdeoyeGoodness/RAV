@@ -2,35 +2,19 @@ use anyhow::Result;
 use std::path::Path;
 use tracing::info;
 
-#[cfg(windows)]
-use winapi::um::fileapi::SetFileAttributesW;
-#[cfg(windows)]
-use winapi::um::winnt::{FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM};
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
-pub fn hide_file(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Ok(());
-    }
-
-    #[cfg(windows)]
-    {
-        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-        let result = unsafe {
-            SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)
-        };
-
-        if result == 0 {
-            anyhow::bail!("Failed to set file attributes for stealth: {}", std::io::Error::last_os_error());
-        }
-        info!("Stealth: File/Directory hidden and marked as system: {:?}", path);
-    }
-
-    Ok(())
-}
-
-pub fn set_directory_permissions(path: &Path) -> Result<()> {
+/// Harden the ACLs on the agent's data directory (`C:\ProgramData\RAV`).
+///
+/// This is protection through access control, NOT concealment: the folder stays
+/// fully visible in Explorer. The goals are (1) a standard (non-admin) user must
+/// not be able to delete or wipe the agent's files to evade monitoring, and
+/// (2) the logs/captures are readable only by Administrators + SYSTEM. At the same
+/// time the user-context Native Messaging Host (which runs as the logged-in user)
+/// must still be able to read `config.toml` and read/write its SQLite event queue,
+/// so Users keep read + write (create/append) on the root — but NOT delete.
+///
+/// All steps are best-effort: a failure is logged and ignored so a locked-down or
+/// GPO-managed box never prevents the agent from running.
+pub fn harden_data_dir_permissions(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
@@ -40,35 +24,67 @@ pub fn set_directory_permissions(path: &Path) -> Result<()> {
         use std::process::Command;
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
-        let path_str = path.to_string_lossy();
-        
-        // Grant "Users" Full Control (F) to this folder and all subfolders/files (OI)(CI)
-        let output = Command::new("icacls")
-            .arg(path_str.as_ref())
-            .arg("/grant")
-            .arg("Users:(OI)(CI)F")
-            .arg("/T")
-            .arg("/Q") // Quiet mode
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
 
-        if let Ok(out) = output {
-            if out.status.success() {
-                info!("Directory permissions explicitly relaxed for: {:?}", path);
-            } else {
-                let err = String::from_utf8_lossy(&out.stderr);
-                tracing::warn!("Failed to set permissions for {:?}: {}", path, err);
+        let run = |args: &[&str]| {
+            let out = Command::new("icacls")
+                .args(args)
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            match out {
+                Ok(o) if o.status.success() => true,
+                Ok(o) => {
+                    tracing::warn!(
+                        "icacls {:?} failed: {}",
+                        args,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    );
+                    false
+                }
+                Err(e) => {
+                    tracing::warn!("icacls {:?} could not run: {}", args, e);
+                    false
+                }
             }
+        };
+
+        let root = path.to_string_lossy();
+
+        // 1. SYSTEM + Administrators keep full control (explicit, inheritable).
+        run(&[&root, "/grant", "SYSTEM:(OI)(CI)F", "/T", "/C", "/Q"]);
+        run(&[&root, "/grant", "*S-1-5-32-544:(OI)(CI)F", "/T", "/C", "/Q"]);
+
+        // 2. Remove any previously-granted broad "Users" rights (older builds granted
+        //    Users Full Control, which let a standard user delete the agent's files).
+        run(&[&root, "/remove:g", "*S-1-5-32-545", "/T", "/C", "/Q"]);
+
+        // 3. Re-grant Users the minimum the user-context native host needs: read +
+        //    write/create (RX,W) but NOT delete. Without DELETE/DC a standard user
+        //    cannot remove config.toml or the event-queue DB to break monitoring.
+        run(&[&root, "/grant", "*S-1-5-32-545:(OI)(CI)(RX,W)", "/C", "/Q"]);
+
+        // 4. Lock the logs subfolder down to Administrators + SYSTEM only — captured
+        //    activity and logs are not readable by the monitored user.
+        let logs = path.join("logs");
+        if logs.exists() {
+            let logs_str = logs.to_string_lossy();
+            run(&[&logs_str, "/inheritance:r", "/C", "/Q"]);
+            run(&[&logs_str, "/grant", "SYSTEM:(OI)(CI)F", "/T", "/C", "/Q"]);
+            run(&[&logs_str, "/grant", "*S-1-5-32-544:(OI)(CI)F", "/T", "/C", "/Q"]);
         }
+
+        info!("Data directory ACLs hardened (Users: read/write, no delete; logs: admin-only): {:?}", path);
     }
 
     Ok(())
 }
 
-pub fn detect_tampering(service_name: &str) -> Result<bool> {
-    // 1. Check if config still exists 
-    // Usually Config::get_config_path() but we'll use a standard check for the data dir
+/// Report whether the agent's Windows service is still registered.
+///
+/// Part of the agent's own health/integrity reporting on an openly-deployed,
+/// managed service — it detects when the service entry has been removed so the
+/// backend can surface a "service missing" alert to admins. It takes no action
+/// and never hides anything.
+pub fn check_service_present(service_name: &str) -> Result<bool> {
     #[cfg(windows)]
     {
         use std::process::Command;
@@ -79,16 +95,16 @@ pub fn detect_tampering(service_name: &str) -> Result<bool> {
             .arg(service_name)
             .creation_flags(CREATE_NO_WINDOW)
             .output();
-            
+
         if let Ok(out) = output {
             if !out.status.success() {
-                info!("Tamper Alert: Service '{}' is missing or could not be queried.", service_name);
-                return Ok(true);
+                info!("Service health: '{}' is not registered (service entry missing).", service_name);
+                return Ok(false);
             }
         }
     }
-    
-    Ok(false)
+
+    Ok(true)
 }
 
 /// Self-repair the Native Messaging Host manifest and registry keys.

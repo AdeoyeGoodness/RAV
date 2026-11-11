@@ -133,7 +133,7 @@ pub fn start_service(service_name: &str) -> Result<()> {
 // Entry point for Service Execution
 pub fn run_as_service() -> Result<()> {
     let config = Config::load().unwrap_or_default();
-    let service_name = config.stealth.service_name.clone();
+    let service_name = config.service.service_name.clone();
     service_dispatcher::start(service_name, ffi_service_main)
         .context("Failed to start service dispatcher")?;
     Ok(())

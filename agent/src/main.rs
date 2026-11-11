@@ -18,7 +18,7 @@ pub mod update;
 use config::Config;
 use sync::SyncManager;
 use agent_logic::generate_hardware_fingerprint;
-use utils::{hide_file, set_directory_permissions};
+use utils::harden_data_dir_permissions;
 
 fn main() -> Result<()> {
     // Keep the tracing guard alive for the duration of the process
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
     if helper_flag {
         // Screenshot Helper: No file logging (Security requirement: No disk writes)
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "AssetTelemetry=info,rav_agent=info".into()))
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
             .init();
         info!("RAV Screenshot Helper starting...");
     } else {
@@ -82,17 +82,18 @@ fn main() -> Result<()> {
         let log_dir = "C:\\ProgramData\\RAV\\logs";
         let _ = std::fs::create_dir_all(log_dir);
         
-        // Item 4 Fix: Grant regular user accounts read/write access to this folder
-        // so the browser extension's Native Messaging Host can open the SQLite queue.
-        let _ = set_directory_permissions(std::path::Path::new("C:\\ProgramData\\RAV"));
-        
-        // let _ = hide_file(std::path::Path::new(log_dir)); // Temporarily disabled so you can see logs
+        // Harden the data dir ACLs: the user-context Native Messaging Host must still
+        // read config and append to its SQLite queue, but a standard user must not be
+        // able to delete or tamper with the agent's files to evade monitoring, and the
+        // logs/captures subfolders are restricted to Administrators + SYSTEM. This
+        // protects the data openly (visible folder, locked contents) rather than hiding it.
+        let _ = harden_data_dir_permissions(std::path::Path::new("C:\\ProgramData\\RAV"));
         let file_appender = tracing_appender::rolling::daily(log_dir, "agent.log");
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
         _tracing_guard = Some(guard);
 
         tracing_subscriber::fmt()
-            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "AssetTelemetry=info,rav_agent=info".into()))
+            .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "rav_agent=info".into()))
             .with_writer(non_blocking)
             .init();
         
@@ -199,7 +200,7 @@ fn main() -> Result<()> {
         if uninstall_flag {
              let config = Config::load().unwrap_or_default();
              #[cfg(windows)]
-             service::windows::uninstall_service(&config.stealth.service_name)?;
+             service::windows::uninstall_service(&config.service.service_name)?;
              return Ok(());
         }
 
@@ -262,23 +263,17 @@ fn main() -> Result<()> {
         // Install Service (Implicit or Explicit)
         #[cfg(windows)]
         {
-            info!("Installing service '{}'...", config.stealth.service_name);
-            if let Err(e) = service::windows::install_service(&config.stealth.service_name, &config.stealth.service_display_name) {
+            info!("Installing service '{}'...", config.service.service_name);
+            if let Err(e) = service::windows::install_service(&config.service.service_name, &config.service.service_display_name) {
                tracing::warn!("Service installation note: {}", e);
             }
             
             // Self-repair Native Messaging Host manifest and registry
             // This ensures the extension can always connect, even if the MSI custom action failed
             utils::repair_native_messaging_host();
-            
-            // Item 5.3: Self-Hide
-            // if let Ok(exe_path) = std::env::current_exe() {
-            //     let _ = hide_file(&exe_path);
-            // }
-            // let _ = hide_file(std::path::Path::new(&config.agent.data_dir));
 
-            info!("Starting service '{}'...", config.stealth.service_name);
-            if let Err(e) = service::windows::start_service(&config.stealth.service_name) {
+            info!("Starting service '{}'...", config.service.service_name);
+            if let Err(e) = service::windows::start_service(&config.service.service_name) {
                 tracing::warn!("Service start note: {}", e);
             }
         }
@@ -306,7 +301,7 @@ fn main() -> Result<()> {
             // Failed to run as service -> We are running in Console Mode
             // Check if service is already running (to avoid duplicate)
             let config = Config::load().unwrap_or_default();
-            if let Ok(true) = service::windows::is_service_running(&config.stealth.service_name) {
+            if let Ok(true) = service::windows::is_service_running(&config.service.service_name) {
                 println!("RAV Agent is already running as a background service.");
                 return Ok(());
             }

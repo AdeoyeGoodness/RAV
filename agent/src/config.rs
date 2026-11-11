@@ -10,32 +10,33 @@ pub struct Config {
     pub encryption: EncryptionConfig,
     pub monitoring: MonitoringConfig,
     #[serde(default)]
-    pub stealth: StealthConfig,
+    pub service: ServiceConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
     #[serde(default)]
     pub performance: PerformanceConfig,
 }
 
+/// Identity of the Windows service this agent installs and manages.
+///
+/// This is an openly-identified monitoring agent: the display name and the
+/// installer's service description plainly state that it monitors and records
+/// user activity for the employer. The internal `service_name` (the SCM key) is
+/// deliberately kept stable across product renames so that in-place upgrades of
+/// already-deployed agents do not break their service registration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StealthConfig {
-    pub enabled: bool,
-    pub hide_files: bool,
+pub struct ServiceConfig {
     pub service_name: String,
     pub service_display_name: String,
-    pub process_name: Option<String>,
-    pub tamper_detection: bool,
 }
 
-impl Default for StealthConfig {
+impl Default for ServiceConfig {
     fn default() -> Self {
-        StealthConfig {
-            enabled: false,
-            hide_files: false,
+        ServiceConfig {
+            // Internal SCM key — kept stable for upgrade continuity.
             service_name: "AssetTelemetryService".to_string(),
-            service_display_name: "Asset Telemetry Service".to_string(),
-            process_name: None,
-            tamper_detection: false,
+            // What a user sees in services.msc — honest.
+            service_display_name: "RAV Monitoring Agent".to_string(),
         }
     }
 }
@@ -305,7 +306,7 @@ impl Config {
                 processes: ProcessMonitoringConfig::default(),
                 browser: BrowserMonitoringConfig::default(),
             },
-            stealth: StealthConfig::default(),
+            service: ServiceConfig::default(),
             persistence: PersistenceConfig {
                 save_interval_minutes: 30, // Default to 30 mins for safety
                 state_dir: Self::get_default_data_dir()?.join("state"),

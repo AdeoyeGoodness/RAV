@@ -41,9 +41,8 @@ compression_quality = 60
 max_width = 1280
 format = "jpeg"
 
-[stealth]
-enabled = false
-hide_files = false
-tamper_detection = false
+[service]
+# Internal SCM key — kept stable across renames for upgrade continuity.
 service_name = "AssetTelemetryService"
-service_display_name = "Asset Telemetry Service"
+# What a user sees in services.msc — honest.
+service_display_name = "RAV Monitoring Agent"
