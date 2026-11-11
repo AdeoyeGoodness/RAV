@@ -80,7 +80,7 @@ hostname = "0.3"
 # Platform-specific dependencies
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.6"
-winapi = { version = "0.3", features = ["winuser", "winsvc", "winreg", "winnls", "wincon", "dpapi", "wincrypt", "fileapi", "shlobj"] }
+winapi = { version = "0.3", features = ["winuser", "winsvc", "winreg", "winnls", "wincon", "dpapi", "wincrypt", "fileapi", "shlobj", "shellapi", "libloaderapi"] }
 wmi = "0.13"
 screenshots = "0.8"
 

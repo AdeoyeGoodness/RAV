@@ -14,6 +14,8 @@ pub mod agent_logic;
 pub mod storage;
 pub mod utils;
 pub mod update;
+#[cfg(windows)]
+pub mod indicator;
 
 use config::Config;
 use sync::SyncManager;
@@ -189,6 +191,11 @@ fn main() -> Result<()> {
             }
             
             info!("RAV Agent: Running in Screenshot Helper mode (Interval: {}s)...", interval_secs);
+            // Transparent monitoring indicator: an un-hideable system-tray presence plus a
+            // one-time disclosure notice, shown in the user's session alongside screen capture.
+            // Runs on its own thread with a Win32 message loop; failures never stop capture.
+            #[cfg(windows)]
+            std::thread::spawn(|| crate::indicator::run_indicator());
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async {
                 monitoring::screenshots::run_helper(interval_secs).await
