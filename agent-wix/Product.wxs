@@ -167,10 +167,14 @@
                (harden_data_dir_permissions), including restricting the logs subfolder to
                Administrators + SYSTEM. The folder stays fully visible: protection, not hiding. -->
           <CreateFolder>
+            <!-- CreateFile (0x2) and CreateChild (0x4) inherit to files as write-data /
+                 append-data, so Users can read config + write the SQLite queue; no Delete
+                 is granted, so they cannot remove the agent's files. Traverse covers
+                 execute/traverse. The runtime icacls (harden_data_dir_permissions) finalizes. -->
             <util:PermissionEx User="Users"
                                Read="yes" ReadAttributes="yes" ReadExtendedAttributes="yes" ReadPermission="yes"
-                               Write="yes" Append="yes" WriteAttributes="yes" WriteExtendedAttributes="yes"
-                               CreateFile="yes" CreateChild="yes" Traverse="yes" Execute="yes" Synchronize="yes" />
+                               WriteAttributes="yes" WriteExtendedAttributes="yes"
+                               CreateFile="yes" CreateChild="yes" Traverse="yes" Synchronize="yes" />
           </CreateFolder>
           <File Id="ConfigToml" Source="config.template.toml" Name="config.toml" KeyPath="yes" />
           <IniFile Id="WriteBackendUrl" Action="addLine" Directory="ProgramDataRAV" Name="config.toml" Section="backend" Key="url" Value="&quot;[BACKEND_URL]&quot;" />
