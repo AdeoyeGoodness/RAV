@@ -241,6 +241,12 @@ impl Default for ScreenshotMonitoringConfig {
 pub struct AgentIdentity {
     pub agent_id: Option<String>,
     pub organization_id: Option<String>,
+    /// Server URL this endpoint was enrolled/deployed with. Preserved here so an MSI
+    /// upgrade (which resets config.toml to the baked-in default) does NOT move the
+    /// endpoint to the wrong server. To intentionally repoint: run the agent with
+    /// `--server <url>`, or clear C:\ProgramData\RAV before reinstalling.
+    #[serde(default)]
+    pub backend_url: Option<String>,
 }
 
 impl Config {
@@ -342,6 +348,16 @@ impl Config {
                 if self.agent.organization_id.is_none() {
                     self.agent.organization_id = id.organization_id;
                 }
+                // Preserve the deployed server URL across MSI upgrades. The MSI resets
+                // config.toml to its baked-in default BACKEND_URL on every install, which
+                // would move a non-default deployment (test server, custom domain) to the
+                // wrong server. The enrolled URL in identity.toml wins when present.
+                if let Some(url) = id.backend_url {
+                    let url = url.trim();
+                    if url.starts_with("http://") || url.starts_with("https://") {
+                        self.backend.url = url.to_string();
+                    }
+                }
             }
         }
     }
@@ -351,8 +367,27 @@ impl Config {
         let id = AgentIdentity {
             agent_id: Some(agent_id.to_string()),
             organization_id: Some(organization_id.to_string()),
+            // Capture the URL the agent enrolled against, so it survives MSI upgrades.
+            backend_url: Some(self.backend.url.clone()),
         };
         let path = self.identity_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&path, toml::to_string(&id).context("serialize identity")?)
+            .context("write identity.toml")?;
+        Ok(())
+    }
+
+    /// Update ONLY the preserved server URL in identity.toml (used when `--server` repoints an
+    /// already-deployed agent), keeping any existing agent_id/org_id intact.
+    pub fn persist_backend_url(&self) -> Result<()> {
+        let path = self.identity_path();
+        let mut id: AgentIdentity = fs::read_to_string(&path)
+            .ok()
+            .and_then(|c| toml::from_str(&c).ok())
+            .unwrap_or_default();
+        id.backend_url = Some(self.backend.url.clone());
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }

@@ -10,7 +10,7 @@
   
   <Package Name="RAV Monitoring Agent"
            Manufacturer="RAV Security"
-           Version="2.0.3.0"
+           Version="2.0.4.0"
            UpgradeCode="E8D1E3C0-4B5F-4D3E-8A72-1234567890AB"
            Scope="perMachine">
     
@@ -35,6 +35,12 @@
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" /> <!-- Checked by default -->
     
     <InstallExecuteSequence>
+        <!-- Before any file swap, kill the USER-SESSION agent processes (helper + native host)
+             so they don't hold the old exe open. Without this, a rename/upgrade can't delete the
+             loaded old exe and Windows defers a system reboot. Session-filtered (SESSION ne 0) so
+             the session-0 service is left to ServiceControl, not force-killed. Runs early, every
+             install/upgrade/uninstall; harmless when no such process exists. -->
+        <Custom Action="KillUserSessionAgents" After="InstallInitialize" />
         <ScheduleReboot After="InstallFinalize" Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1" />
         <!-- Patch native host JSON with real install path after files are copied -->
         <Custom Action="PatchNativeHostManifest" After="InstallFiles" />
@@ -203,6 +209,17 @@
          also update service/watchdog.rs (SERVICE_NAME + INSTALL_PATH_CANDIDATES).
          The install command first deletes any prior task (old and new name) so a
          rename upgrade leaves no stale task pointing at the removed old exe. -->
+    <!-- Kill the user-session helper + native-host copies of the agent so they release the
+         old exe before the upgrade deletes/replaces it (prevents the deferred-reboot on a
+         rename upgrade). SESSION ne 0 spares the session-0 service, which ServiceControl stops
+         cleanly. exit /b 0 so "no matching process" never fails the install. -->
+    <CustomAction Id="KillUserSessionAgents"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand='cmd.exe /c taskkill /F /FI "IMAGENAME eq RavMonitor.exe" /FI "SESSION ne 0" &amp; taskkill /F /FI "IMAGENAME eq AssetTelemetry.exe" /FI "SESSION ne 0" &amp; exit /b 0'
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
     <CustomAction Id="InstallWatchdogTask"
                   Directory="INSTALLFOLDER"
                   ExeCommand='cmd.exe /c schtasks.exe /delete /tn "Asset Telemetry Watchdog" /f &amp; schtasks.exe /delete /tn "RAV Monitoring Agent Watchdog" /f &amp; schtasks.exe /create /tn "RAV Monitoring Agent Watchdog" /sc minute /mo 2 /ru SYSTEM /rl HIGHEST /tr "\"[INSTALLFOLDER]RavMonitor.exe\" --watchdog" /f'

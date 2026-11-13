@@ -228,6 +228,11 @@ fn main() -> Result<()> {
             info!("Updated Backend URL: {}", url);
             config.backend.url = url;
             dirty = true;
+            // Persist the repointed URL to identity.toml so a later MSI upgrade (which
+            // resets config.toml to the baked-in default) doesn't move the agent back.
+            if let Err(e) = config.persist_backend_url() {
+                tracing::warn!("Could not persist backend URL to identity.toml: {}", e);
+            }
         }
 
         // Handle Enrollment
