@@ -16,12 +16,15 @@ struct Rule {
     title: &'static str,
 }
 
+// Order matters: the FIRST matching rule wins, so specific sub-module signatures must come
+// before the broad agent-level one. Matched only against WARN/ERROR lines (see parse loop),
+// so a benign INFO line can never trip a rule.
 const RULES: &[Rule] = &[
     Rule {
         needles: &[
             "os error 10060", "connection refused", "error sending request", "dns error",
             "Heartbeat failed", "Enrollment request failed", "failed to lookup address",
-            "os error 11001", "timed out",
+            "os error 11001",
         ],
         severity: "error",
         title: "Couldn't reach the server (network or connectivity issue).",
@@ -32,27 +35,44 @@ const RULES: &[Rule] = &[
         title: "The server rejected the enrollment token.",
     },
     Rule {
+        needles: &["No screenshots in helper folder", "helper may not be running"],
+        severity: "warning",
+        title: "Screenshots aren't being captured right now (the capture helper isn't running).",
+    },
+    Rule {
         needles: &[
-            "Failed to save screenshot", "Failed to create helper screenshot",
-            "Failed to save screenshot to disk",
+            "Failed to save screenshot", "Failed to save screenshot to disk",
+            "Failed to create helper screenshot",
         ],
         severity: "error",
         title: "Couldn't save screenshots (a permissions or disk problem).",
     },
     Rule {
-        needles: &["Capture failed", "Failed to list screens"],
+        needles: &["Failed to capture screenshot", "Capture failed", "Failed to list screens"],
         severity: "warning",
         title: "Screen capture failed on one or more attempts.",
     },
+    // A sub-module hiccup that recovers on its own — NOT the whole agent crashing.
     Rule {
-        needles: &["service entry is missing", "tampering", "tamper"],
+        needles: &["Browser scraper module CRASHED"],
+        severity: "warning",
+        title: "The browser-history monitor restarted (it recovers on its own).",
+    },
+    Rule {
+        needles: &["Native Messaging Host FATAL"],
+        severity: "warning",
+        title: "The browser-extension connection hit an error (it reconnects).",
+    },
+    Rule {
+        needles: &["service entry is missing", "tampering"],
         severity: "error",
         title: "The monitoring service was missing (possible removal or tampering).",
     },
+    // A genuine agent-level crash is a Rust panic.
     Rule {
-        needles: &["panic", "CRASHED", "FATAL"],
+        needles: &["panicked at", "panic occurred"],
         severity: "error",
-        title: "The agent crashed and was restarted automatically.",
+        title: "The agent hit an internal error and restarted.",
     },
     Rule {
         needles: &["Could not copy history file"],
@@ -99,8 +119,12 @@ pub fn parse_log_problems(log: &str) -> Vec<serde_json::Value> {
     let mut generic: Vec<(Option<String>, String)> = Vec::new();
 
     for line in log.lines() {
-        let is_error =
-            line.contains(" ERROR ") || line.contains("ERROR ") || line.contains("error:");
+        let is_warn = line.contains(" WARN ");
+        let is_error = line.contains(" ERROR ") || line.contains("error:");
+        // Only consider problem-level lines; a normal INFO line can never be a "problem".
+        if !is_warn && !is_error {
+            continue;
+        }
         let mut matched = false;
         for rule in RULES {
             if rule.needles.iter().any(|n| line.contains(n)) {
