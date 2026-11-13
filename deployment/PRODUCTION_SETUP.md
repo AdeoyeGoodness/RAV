@@ -126,10 +126,16 @@ sudo npm install -g pm2
 # MinIO binary + client
 sudo curl -L https://dl.min.io/server/minio/release/linux-amd64/minio -o /usr/local/bin/minio
 sudo chmod +x /usr/local/bin/minio
-sudo curl -L https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+# NOTE: MinIO retired the dl.min.io "latest" mc URL (it now returns HTTP 410) and
+# archived the community client. Pull mc from the pinned GitHub release instead:
+sudo curl -fL https://github.com/minio/mc/releases/download/RELEASE.2025-08-13T08-35-41Z/mc.linux-amd64.RELEASE.2025-08-13T08-35-41Z -o /usr/local/bin/mc
 sudo chmod +x /usr/local/bin/mc
+file /usr/local/bin/mc   # sanity-check: must be "ELF 64-bit ... executable", not ASCII text
 
 # Postgres role + db
+# IMPORTANT: use a URL-SAFE password (e.g. `openssl rand -hex 24`). The password is
+# embedded in DATABASE_URL, so /, +, :, @ or = (as produced by `openssl rand -base64`)
+# break URL parsing — sqlx then fails with "invalid port number".
 sudo -u postgres psql -c "CREATE USER rav_user WITH PASSWORD '<db-password>';"
 sudo -u postgres psql -c "CREATE DATABASE rav_db OWNER rav_user;"
 
