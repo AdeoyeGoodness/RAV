@@ -205,6 +205,12 @@ fn run_service_logic(service_name: &str) -> Result<()> {
         }
     };
 
+    // Ensure the user-session screenshot helper is running NOW, rather than waiting for the
+    // next logon. This covers the post-upgrade case (the installer kills the old helper) and
+    // first install (no more "first screenshot takes 17 minutes"). Best-effort; the logon Run
+    // key remains the fallback, and a per-session mutex in the helper prevents duplicates.
+    launch_helper_in_active_session();
+
     // Run Async Runtime for Agent Logic
     let rt = tokio::runtime::Runtime::new()?;
     // We create an async future that completes when `shutdown_rx` receives a message
@@ -257,4 +263,111 @@ fn run_service_logic(service_name: &str) -> Result<()> {
     })?;
 
     Ok(())
+}
+
+/// Launch the user-session screenshot helper (`RavMonitor.exe --screenshot-helper`) into the
+/// active interactive desktop, so screen capture resumes immediately after an upgrade or
+/// install without waiting for a logon. Runs as SYSTEM: grab the logged-on user's token for
+/// the active console session and CreateProcessAsUser onto their desktop. Best-effort — on any
+/// failure (no one logged on, etc.) it just returns and the logon Run key stays the fallback.
+/// A per-session mutex in the helper itself prevents a duplicate if one is already running.
+#[cfg(windows)]
+pub fn launch_helper_in_active_session() {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use std::ptr;
+    use winapi::shared::minwindef::{DWORD, FALSE, LPVOID};
+    use winapi::um::errhandlingapi::GetLastError;
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::processthreadsapi::{CreateProcessAsUserW, PROCESS_INFORMATION, STARTUPINFOW};
+    use winapi::um::securitybaseapi::DuplicateTokenEx;
+    use winapi::um::userenv::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
+    use winapi::um::winbase::{
+        CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, WTSGetActiveConsoleSessionId,
+    };
+    use winapi::um::winnt::{SecurityIdentification, TokenPrimary, HANDLE, MAXIMUM_ALLOWED};
+    use winapi::um::wtsapi32::WTSQueryUserToken;
+
+    unsafe {
+        let session_id = WTSGetActiveConsoleSessionId();
+        if session_id == 0xFFFF_FFFF {
+            info!("Helper launch: no active console session; logon Run key will handle it");
+            return;
+        }
+
+        let mut user_token: HANDLE = ptr::null_mut();
+        if WTSQueryUserToken(session_id, &mut user_token) == 0 {
+            info!("Helper launch: no user logged on in session {}", session_id);
+            return;
+        }
+
+        let mut primary_token: HANDLE = ptr::null_mut();
+        let dup_ok = DuplicateTokenEx(
+            user_token,
+            MAXIMUM_ALLOWED,
+            ptr::null_mut(),
+            SecurityIdentification,
+            TokenPrimary,
+            &mut primary_token,
+        );
+        CloseHandle(user_token);
+        if dup_ok == 0 {
+            tracing::warn!("Helper launch: DuplicateTokenEx failed ({})", GetLastError());
+            return;
+        }
+
+        let mut env_block: LPVOID = ptr::null_mut();
+        let have_env = CreateEnvironmentBlock(&mut env_block, primary_token, FALSE) != 0;
+
+        let exe = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(_) => {
+                if have_env {
+                    DestroyEnvironmentBlock(env_block);
+                }
+                CloseHandle(primary_token);
+                return;
+            }
+        };
+        let cmd = format!("\"{}\" --screenshot-helper --interval 30", exe.to_string_lossy());
+        let mut cmd_w: Vec<u16> = OsStr::new(&cmd).encode_wide().chain(std::iter::once(0)).collect();
+        // Run on the interactive desktop so it can actually see the screen.
+        let mut desktop: Vec<u16> = OsStr::new("winsta0\\default")
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        let mut si: STARTUPINFOW = std::mem::zeroed();
+        si.cb = std::mem::size_of::<STARTUPINFOW>() as DWORD;
+        si.lpDesktop = desktop.as_mut_ptr();
+        let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
+
+        let flags = CREATE_NO_WINDOW | if have_env { CREATE_UNICODE_ENVIRONMENT } else { 0 };
+        let ok = CreateProcessAsUserW(
+            primary_token,
+            ptr::null(),
+            cmd_w.as_mut_ptr(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            FALSE,
+            flags,
+            if have_env { env_block } else { ptr::null_mut() },
+            ptr::null(),
+            &mut si,
+            &mut pi,
+        );
+
+        if ok != 0 {
+            info!("Helper launch: started screenshot helper in session {}", session_id);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        } else {
+            tracing::warn!("Helper launch: CreateProcessAsUser failed ({})", GetLastError());
+        }
+
+        if have_env {
+            DestroyEnvironmentBlock(env_block);
+        }
+        CloseHandle(primary_token);
+    }
 }

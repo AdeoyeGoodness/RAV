@@ -190,6 +190,30 @@ fn main() -> Result<()> {
                 return Ok(());
             }
             
+            // Singleton per session: if a screenshot helper is already running here (both the
+            // logon Run key and the service's session-launch can try), this duplicate exits so
+            // we never double-capture. The mutex is held for the lifetime of this process.
+            #[cfg(windows)]
+            {
+                use std::ffi::OsStr;
+                use std::os::windows::ffi::OsStrExt;
+                use winapi::um::errhandlingapi::GetLastError;
+                use winapi::um::synchapi::CreateMutexW;
+                const ERROR_ALREADY_EXISTS: u32 = 183;
+                let name: Vec<u16> = OsStr::new("Local\\RavMonitorScreenshotHelper")
+                    .encode_wide()
+                    .chain(std::iter::once(0))
+                    .collect();
+                unsafe {
+                    let h = CreateMutexW(std::ptr::null_mut(), 0, name.as_ptr());
+                    if h.is_null() || GetLastError() == ERROR_ALREADY_EXISTS {
+                        info!("Screenshot helper already running in this session; exiting duplicate");
+                        return Ok(());
+                    }
+                    std::mem::forget(h); // keep the mutex held for this process's lifetime
+                }
+            }
+
             info!("RAV Agent: Running in Screenshot Helper mode (Interval: {}s)...", interval_secs);
             // Transparent monitoring indicator: an un-hideable system-tray presence plus a
             // one-time disclosure notice, shown in the user's session alongside screen capture.
