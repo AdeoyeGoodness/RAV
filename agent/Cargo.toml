@@ -1,6 +1,6 @@
 [package]
 name = "rav-agent"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2021"
 # Disable Cargo's auto-discovered binary (named after the package) so the explicit [[bin]]
 # below is the only build target. The exe filename is the process name shown in Task Manager;
