@@ -218,10 +218,25 @@ fn run_service_logic(service_name: &str) -> Result<()> {
     // Since `shutdown_rx.recv()` is blocking, we can spawn a thread to wait for it and notify an async Notify/Channel.
     
     let (async_stop_tx, async_stop_rx) = tokio::sync::oneshot::channel();
-    
+
+    // When a Stop arrives, IMMEDIATELY tell the SCM we're stopping (StopPending with a
+    // wait hint) so it waits for the graceful shutdown instead of timing out and reporting
+    // "stop failed" (which is why `Restart-Service` kept failing). Then signal the async
+    // agent loop to wind down. ServiceStatusHandle is a Copy handle, so the main thread can
+    // still report Stopped once run_agent returns.
+    let stop_status_handle = status_handle;
     std::thread::spawn(move || {
-        let _ = shutdown_rx.recv(); // Block until stop
-        let _ = async_stop_tx.send(()); // Notify async world
+        let _ = shutdown_rx.recv(); // block until Stop
+        let _ = stop_status_handle.set_service_status(ServiceStatus {
+            service_type: SERVICE_TYPE,
+            current_state: ServiceState::StopPending,
+            controls_accepted: ServiceControlAccept::empty(),
+            exit_code: ServiceExitCode::Win32(0),
+            checkpoint: 0,
+            wait_hint: Duration::from_secs(30),
+            process_id: None,
+        });
+        let _ = async_stop_tx.send(()); // notify the async agent loop
     });
 
     let shutdown_signal = async move {
