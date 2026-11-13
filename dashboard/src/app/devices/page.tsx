@@ -333,7 +333,7 @@ export default function DevicesPage() {
                         {formatWATDate(agent.created_at)}
                       </div>
                       <div className="font-mono text-[11px] text-ct-ink3 truncate">
-                        {agent.watchdog_version || '—'}
+                        {agent.agent_version || agent.watchdog_version || '—'}
                       </div>
                       <div className="flex items-center gap-1 flex-wrap">
                         <StatusPill tone={statusPillTone[st]}>{st}</StatusPill>

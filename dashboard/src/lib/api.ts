@@ -121,6 +121,9 @@ export interface Agent {
   watchdog_service_state?: string | null  // Running | Stopped | NotInstalled | Unknown
   watchdog_binary_present?: boolean | null
   watchdog_version?: string | null
+  /** Running agent version (CARGO_PKG_VERSION), set on every heartbeat. Authoritative
+   *  "what's actually installed" — prefer this over watchdog_version for display. */
+  agent_version?: string | null
   last_lifecycle_state?: string | null    // started | stopping | uninstalling
   last_lifecycle_at?: string | null
   // Server-computed uploader health. Distinguishes "beaconing but not

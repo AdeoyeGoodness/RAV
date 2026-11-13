@@ -1040,7 +1040,7 @@ pub async fn list_agents(
                a.display_name, a.last_seen, a.created_at, a.updated_at,
                a.enrollment_token_id, t.label AS token_label,
                a.watchdog_last_seen, a.watchdog_service_state, a.watchdog_binary_present,
-               a.watchdog_version, a.last_archived_at,
+               a.watchdog_version, a.agent_version, a.last_archived_at,
                (
                    SELECT state FROM agent_lifecycle_events l
                    WHERE l.agent_id = a.agent_id AND l.organization_id = a.organization_id
@@ -1156,6 +1156,10 @@ pub async fn list_agents(
                 "watchdog_service_state": row.get::<Option<String>, _>("watchdog_service_state"),
                 "watchdog_binary_present": row.get::<Option<bool>, _>("watchdog_binary_present"),
                 "watchdog_version": row.get::<Option<String>, _>("watchdog_version"),
+                // The RUNNING agent version, set on every heartbeat (CARGO_PKG_VERSION).
+                // Authoritative "what's actually installed" — the devices list shows this,
+                // not watchdog_version (which lags and comes from a separate report path).
+                "agent_version": row.get::<Option<String>, _>("agent_version"),
                 "last_lifecycle_state": row.get::<Option<String>, _>("last_lifecycle_state"),
                 "last_lifecycle_at": row.get::<Option<chrono::DateTime<Utc>>, _>("last_lifecycle_at"),
                 "latest_event_at": latest_event_at,
