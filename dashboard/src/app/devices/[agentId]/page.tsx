@@ -41,6 +41,7 @@ import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatWAT, formatWATDate } from '@/lib/time'
+import { eventServerTime, eventServerMs, formatSkew } from '@/lib/eventTime'
 import { Panel, PanelHead, Eyebrow, StatusPill, ActionButton } from '@/components/ct/primitives'
 import { Counter } from '@/components/ct/Counter'
 
@@ -69,6 +70,7 @@ interface Event {
   event_type: string
   timestamp: string
   metadata: any
+  received_at?: string
   created_at: string
 }
 
@@ -134,18 +136,18 @@ export default function DeviceDetailsPage() {
         setAgent(foundAgent || null)
 
         const filteredEvents = clearTimestamp
-          ? eventsData.filter((event) => new Date(event.timestamp) > clearTimestamp)
+          ? eventsData.filter((event) => eventServerMs(event) > clearTimestamp.getTime())
           : eventsData
 
         if (clearTimestamp) {
           const uniqueEvents = Array.from(new Map(filteredEvents.map((e) => [e.id, e])).values())
-          setEvents(uniqueEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()))
+          setEvents(uniqueEvents.sort((a, b) => eventServerMs(b) - eventServerMs(a)))
         } else {
           setEvents((prevEvents) => {
             const existingEventMap = new Map(prevEvents.map((e) => [e.id, e]))
             filteredEvents.forEach((event) => existingEventMap.set(event.id, event))
             return Array.from(existingEventMap.values()).sort(
-              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+              (a, b) => eventServerMs(b) - eventServerMs(a),
             )
           })
         }
@@ -179,8 +181,8 @@ export default function DeviceDetailsPage() {
       setClearTimestamp(now)
       setEvents((prevEvents) =>
         prevEvents
-          .filter((event) => new Date(event.timestamp) > now)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+          .filter((event) => eventServerMs(event) > now.getTime())
+          .sort((a, b) => eventServerMs(b) - eventServerMs(a)),
       )
     }
   }

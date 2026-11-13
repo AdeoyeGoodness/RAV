@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { formatWATPattern } from '@/lib/time'
+import { eventServerTime, eventServerMs, formatSkew } from '@/lib/eventTime'
 import { Globe, Download, Search, RefreshCw, Calendar, Filter, ExternalLink, Eye } from 'lucide-react'
 import { getEvents } from '@/lib/api'
 import { Panel, PanelHead, Eyebrow, Stat, StatusPill } from '@/components/ct/primitives'
@@ -62,7 +63,7 @@ export default function BrowserHistoryViewer({
   }, [autoRefresh, fetchEvents])
 
   const events = clearTimestamp
-    ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
+    ? allEvents.filter(e => eventServerMs(e) > clearTimestamp.getTime())
     : allEvents
 
   // Accept ANY event_type prefixed `browser_` — different extension
@@ -96,7 +97,7 @@ export default function BrowserHistoryViewer({
 
   const dateFilteredEvents = dateFilter
     ? browserEvents.filter(e => {
-      const eventDate = new Date(e.timestamp)
+      const eventDate = new Date(eventServerTime(e) ?? e.timestamp)
       const filterDate = new Date(`${dateFilter}T00:00:00`)
       return eventDate.toDateString() === filterDate.toDateString()
     })
@@ -135,7 +136,7 @@ export default function BrowserHistoryViewer({
   const dedupedEvents: DisplayEvent[] = (() => {
     // Sort by timestamp ascending so we always keep the earliest and count later dupes into it.
     const chrono = [...searchFilteredEvents].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      (a, b) => eventServerMs(a) - eventServerMs(b)
     )
     const survivors: DisplayEvent[] = []
     const keyFor = (e: Event) =>
@@ -145,7 +146,7 @@ export default function BrowserHistoryViewer({
       const k = keyFor(ev)
       const prev = lastByKey.get(k)
       if (prev) {
-        const dt = new Date(ev.timestamp).getTime() - new Date(prev.timestamp).getTime()
+        const dt = eventServerMs(ev) - eventServerMs(prev)
         if (Math.abs(dt) <= dedupeWindowMs) {
           prev._dupCount = (prev._dupCount || 1) + 1
           continue
@@ -174,8 +175,8 @@ export default function BrowserHistoryViewer({
   }
 
   const sortedEvents = [...dedupedEvents].sort((a, b) => {
-    const timeA = new Date(a.timestamp).getTime()
-    const timeB = new Date(b.timestamp).getTime()
+    const timeA = eventServerMs(a)
+    const timeB = eventServerMs(b)
     return sortOrder === 'newest' ? timeB - timeA : timeA - timeB
   })
   const suppressedCount = searchFilteredEvents.length - dedupedEvents.length
@@ -395,7 +396,10 @@ export default function BrowserHistoryViewer({
                           <StatusPill tone="idle" dot={false}>
                             {(event.metadata?.browser || 'unknown').toUpperCase()}
                           </StatusPill>
-                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
+                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(eventServerTime(event), 'MMM dd, yyyy HH:mm:ss')}</span>
+                          {formatSkew(event) && (
+                            <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="font-mono text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                          )}
                         </div>
                       </>
                     )}
@@ -420,7 +424,10 @@ export default function BrowserHistoryViewer({
                           <StatusPill tone="idle" dot={false}>
                             {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                           </StatusPill>
-                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
+                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(eventServerTime(event), 'MMM dd, yyyy HH:mm:ss')}</span>
+                          {formatSkew(event) && (
+                            <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="font-mono text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                          )}
                         </div>
                       </>
                     )}
@@ -450,7 +457,10 @@ export default function BrowserHistoryViewer({
                           <StatusPill tone="idle" dot={false}>
                             {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                           </StatusPill>
-                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
+                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(eventServerTime(event), 'MMM dd, yyyy HH:mm:ss')}</span>
+                          {formatSkew(event) && (
+                            <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="font-mono text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                          )}
                         </div>
                       </>
                     )}
@@ -468,7 +478,10 @@ export default function BrowserHistoryViewer({
                           <StatusPill tone="idle" dot={false}>
                             {(event.metadata?.browser_type || event.metadata?.browser || 'unknown').toUpperCase()}
                           </StatusPill>
-                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(event.timestamp, 'MMM dd, yyyy HH:mm:ss')}</span>
+                          <span className="font-mono text-[10px] text-ct-ink3 tabular-nums">{formatWATPattern(eventServerTime(event), 'MMM dd, yyyy HH:mm:ss')}</span>
+                          {formatSkew(event) && (
+                            <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="font-mono text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                          )}
                         </div>
                       </>
                     )}

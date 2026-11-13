@@ -3,6 +3,7 @@ import { getAuditLogs, getOrgAuditLogs, getEvents, AuditLog, Event, getAgents, A
 import { useAuth } from '@/contexts/AuthContext'
 import { differenceInMinutes, isSameDay } from 'date-fns'
 import { formatWATTime, formatWATPattern } from '@/lib/time'
+import { eventServerTime, formatSkew } from '@/lib/eventTime'
 import {
     Shield,
     Activity,
@@ -28,6 +29,9 @@ type TimelineItem = {
     category?: string
     severity?: string
     metadata: any
+    /** For telemetry: non-empty when the endpoint clock diverged from the server
+     *  (e.g. "1h ahead"). Shown as a badge so a skewed/manipulated box is visible. */
+    skew?: string
     raw: AuditLog | Event
 }
 
@@ -97,12 +101,16 @@ export function NarrativeTimeline() {
             })),
             ...telemetry.map(t => ({
                 id: t.id,
-                timestamp: new Date(t.timestamp),
+                // Order on SERVER-received time (authoritative), not the endpoint's
+                // own `timestamp` — a drifted/manipulated box must not be able to
+                // reorder the forensic timeline. Endpoint time is preserved as `skew`.
+                timestamp: new Date(eventServerTime(t) ?? t.timestamp),
                 type: 'telemetry' as const,
                 category: t.category,
                 severity: t.severity,
                 action: t.event_type,
                 metadata: t.metadata,
+                skew: formatSkew(t),
                 raw: t
             }))
         ]
@@ -263,6 +271,11 @@ export function NarrativeTimeline() {
                             <div key={item.id} className="bg-[#0A0A0B] rounded-xl border border-white/5 overflow-hidden group hover:border-cyan-500/20 transition-all">
                                 <div className="px-5 py-3 border-b border-white/5 bg-white/[0.01] flex items-center gap-4">
                                     <span className="text-xs font-mono font-bold text-cyan-400">{formatWATTime(item.timestamp)}</span>
+                                    {item.skew && (
+                                        <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. The time shown is the server-received time (authoritative)." className="text-[9px] font-mono font-bold text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+                                            ⚠ endpoint clock {item.skew}
+                                        </span>
+                                    )}
                                     <span className="text-xs font-bold text-slate-200">{item.action}</span>
                                 </div>
                                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
@@ -388,6 +401,11 @@ export function NarrativeTimeline() {
                                                 <div key={item.id} className="p-4 bg-[#0A0A0B] rounded-xl border border-white/5 relative">
                                                     <div className="flex items-center gap-3 mb-3">
                                                         <span className="text-[10px] font-mono text-slate-500">{formatWATTime(item.timestamp)}</span>
+                                                        {item.skew && (
+                                                            <span title="Endpoint clock disagreed with the server by this much; time shown is server-received (authoritative)." className="text-[8px] font-mono font-bold text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">
+                                                                ⚠ {item.skew}
+                                                            </span>
+                                                        )}
                                                         <span className="text-xs font-bold text-slate-300">{item.action}</span>
                                                     </div>
                                                     <div className="grid grid-cols-3 gap-4">

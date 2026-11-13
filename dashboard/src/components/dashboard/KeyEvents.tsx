@@ -4,12 +4,15 @@ import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { AlertTriangle, ArrowUpRight } from 'lucide-react'
 import { Panel, PanelHead, StatusPill } from '../ct/primitives'
+import { eventServerTime } from '@/lib/eventTime'
 
 interface KeyEvent {
   id: string
   event_type: string
   severity: string
   timestamp: string
+  received_at?: string
+  created_at?: string
   metadata?: any
   agent_id?: string
 }
@@ -80,7 +83,7 @@ export function KeyEvents({ events }: { events: KeyEvent[] }) {
                   </div>
                   <p className="text-[11px] text-ct-ink2 truncate">{eventDesc(event)}</p>
                   <div className="flex items-center gap-2 mt-1 font-mono text-[10px] text-ct-ink3" style={{ letterSpacing: '0.06em' }}>
-                    <span>{formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}</span>
+                    <span>{formatDistanceToNow(new Date(eventServerTime(event) ?? event.timestamp), { addSuffix: true })}</span>
                     {event.agent_id && (
                       <>
                         <span>·</span>

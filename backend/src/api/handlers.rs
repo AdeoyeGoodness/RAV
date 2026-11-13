@@ -338,10 +338,17 @@ pub async fn query_events(
           AND ($2::text IS NULL OR event_type = $2)
           AND ($3::text IS NULL OR category = $3)
           AND ($4::text IS NULL OR severity = $4)
-          AND ($5::timestamptz IS NULL OR timestamp >= $5)
-          AND ($6::timestamptz IS NULL OR timestamp <= $6)
-          AND deleted_at IS NULL 
-        ORDER BY timestamp DESC 
+          -- Filter and ORDER on SERVER-received time (received_at, server clock,
+          -- falling back to created_at), NOT the agent-supplied `timestamp`. The
+          -- endpoint clock is drift- and tamper-exposed, so using it to order the
+          -- forensic timeline lets a skewed/manipulated box push its events into
+          -- the future or hide them in the past, and breaks cross-device ordering.
+          -- `timestamp` (endpoint-reported) is still returned, as evidence, so the
+          -- UI can show it alongside and flag any divergence.
+          AND ($5::timestamptz IS NULL OR COALESCE(received_at, created_at) >= $5)
+          AND ($6::timestamptz IS NULL OR COALESCE(received_at, created_at) <= $6)
+          AND deleted_at IS NULL
+        ORDER BY COALESCE(received_at, created_at) DESC
         LIMIT $7
         "#
     )

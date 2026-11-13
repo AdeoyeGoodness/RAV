@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getEvents, getAgents, Event, Agent } from '@/lib/api'
 import { isToday, isYesterday, parseISO, subHours, subDays } from 'date-fns'
 import { formatWATPattern } from '@/lib/time'
+import { eventServerTime, formatSkew } from '@/lib/eventTime'
 import {
     Monitor,
     ChevronDown,
@@ -78,12 +79,16 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
     const exportToCSV = () => {
         if (events.length === 0) return
 
-        const headers = ['Timestamp', 'Agent ID', 'Hostname', 'Event Type', 'Category', 'Severity', 'Metadata']
+        // Forensic export carries BOTH clocks: the authoritative server-received
+        // time, the endpoint's own reported time, and the divergence between them.
+        const headers = ['Server Received Time', 'Endpoint Reported Time', 'Clock Skew', 'Agent ID', 'Hostname', 'Event Type', 'Category', 'Severity', 'Metadata']
 
         const rows = events.map(event => {
             const agent = agents.find(a => a.agent_id === event.agent_id)
             return [
+                eventServerTime(event),
                 event.timestamp,
+                formatSkew(event) || 'in sync',
                 event.agent_id,
                 agent?.hostname || 'Unknown',
                 event.event_type,
@@ -117,7 +122,7 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
         const groups: { [key: string]: Event[] } = {}
 
         paginatedEvents.forEach(event => {
-            const date = parseISO(event.timestamp)
+            const date = parseISO(eventServerTime(event) ?? event.timestamp)
             let dateKey: string
 
             if (isToday(date)) {
@@ -452,7 +457,10 @@ export function TelemetryExplorer({ initialAgentId }: { initialAgentId?: string 
                                                         {expandedRow === event.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                                                     </td>
                                                     <td className="px-4 py-3 font-mono text-[11px] text-ct-ink2 tabular-nums">
-                                                        {formatWATPattern(event.timestamp, 'hh:mm:ss a')}
+                                                        {formatWATPattern(eventServerTime(event), 'hh:mm:ss a')}
+                                                        {formatSkew(event) && (
+                                                            <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="ml-1.5 text-[9px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5 whitespace-nowrap">⚠ {formatSkew(event)}</span>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex items-center gap-2">

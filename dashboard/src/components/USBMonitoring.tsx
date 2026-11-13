@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { formatWATTime } from '@/lib/time'
+import { eventServerTime, eventServerMs, formatSkew } from '@/lib/eventTime'
 import { RefreshCw, Download, Upload, Usb, X, Eye, Trash2, Calendar, Clock } from 'lucide-react'
 import { getEvents } from '@/lib/api'
 import { Panel, PanelHead, Chip, StatusPill } from '@/components/ct/primitives'
@@ -61,7 +62,7 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
 
   // Apply the global "Clear" timestamp to this section's own data
   const events = clearTimestamp
-    ? allEvents.filter(e => new Date(e.timestamp) > clearTimestamp)
+    ? allEvents.filter(e => eventServerMs(e) > clearTimestamp.getTime())
     : allEvents
 
   // Filter USB events - explicitly exclude browser_download events
@@ -76,7 +77,7 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
 
   const dateFilteredEvents = dateFilter
     ? usbEvents.filter(e => {
-      const eventDate = parseSafeDate(e.timestamp)
+      const eventDate = parseSafeDate(eventServerTime(e) ?? e.timestamp)
       const filterDate = new Date(`${dateFilter}T00:00:00`)
       return eventDate.toDateString() === filterDate.toDateString()
     })
@@ -307,8 +308,11 @@ export default function USBMonitoring({ agentId, onClear, clearTimestamp, onRese
                       <div className="flex items-center flex-wrap gap-2 text-[11px] font-mono text-ct-ink3">
                         <StatusPill tone="idle" dot={false}>DEV: {details.device.substring(0, 30)}</StatusPill>
                         {details.fileSize && <StatusPill tone="accent" dot={false}>SIZE: {details.fileSize}</StatusPill>}
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(parseSafeDate(event.timestamp), { addSuffix: true })}</span>
-                        <span className="tabular-nums">{formatWATTime(event.timestamp)}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDistanceToNow(parseSafeDate(eventServerTime(event) ?? event.timestamp), { addSuffix: true })}</span>
+                        <span className="tabular-nums">{formatWATTime(eventServerTime(event))}</span>
+                        {formatSkew(event) && (
+                          <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                        )}
                       </div>
                       {event.event_type === 'usb_file_transfer' && event.metadata?.file_path && (
                         <button

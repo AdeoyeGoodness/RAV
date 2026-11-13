@@ -86,10 +86,15 @@ export interface Event {
   organization_id: string
   agent_id: string
   event_type: string
+  /** Endpoint-reported ("captured_at") time — the monitored device's own clock.
+   *  Evidence, not authority: drift- and tamper-exposed. Show it, don't sort by it. */
   timestamp: string
   metadata: any
   severity: 'low' | 'medium' | 'high' | 'critical'
   category: 'system' | 'user' | 'process' | 'network' | 'file' | 'security'
+  /** Server-received time (backend clock). Authoritative for ordering + primary
+   *  display — see lib/eventTime.ts. Present on every row (column DEFAULT NOW()). */
+  received_at?: string
   created_at: string
 }
 

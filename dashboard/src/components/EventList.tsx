@@ -1,12 +1,15 @@
 'use client'
 
 import { formatWATPattern } from '@/lib/time'
+import { eventServerTime, formatSkew } from '@/lib/eventTime'
 
 interface Event {
   id: string
   agent_id: string
   event_type: string
   timestamp: string
+  received_at?: string
+  created_at?: string
   metadata: any
 }
 
@@ -56,7 +59,10 @@ export default function EventList({ events, loading }: EventListProps) {
             {events.map((event) => (
               <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                  {formatWATPattern(event.timestamp, 'yyyy-MM-dd HH:mm:ss')}
+                  {formatWATPattern(eventServerTime(event), 'yyyy-MM-dd HH:mm:ss')}
+                  {formatSkew(event) && (
+                    <span title="The endpoint's own clock disagreed with the server by this much when the event arrived. Time shown is server-received (authoritative)." className="ml-2 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded px-1 py-0.5">⚠ clock {formatSkew(event)}</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                   {event.agent_id}
