@@ -266,6 +266,32 @@ export async function getAgentScreenshotDuplicates(agentId: string): Promise<Scr
   return response.data.duplicates ?? []
 }
 
+// ---- Agent log reports: admin-initiated pull of an endpoint's diagnostics, shown as a
+// plain-language health report (problems derived from the uploaded agent.log) + raw log. ----
+export interface LogReportProblem {
+  severity: string // "error" | "warning"
+  title: string
+  detail?: string
+}
+export interface LogReport {
+  id: string
+  status: string // "requested" | "ready" | "failed"
+  trigger: string // "manual" | "auto"
+  reason?: string | null
+  file_id?: string | null
+  problems?: LogReportProblem[] | null
+  requested_at: string
+  completed_at?: string | null
+}
+export async function requestLogReport(agentId: string): Promise<{ status: string; report_id: string }> {
+  const response = await api.post(`/api/v1/agents/${agentId}/log-report`)
+  return response.data
+}
+export async function getLogReports(agentId: string): Promise<LogReport[]> {
+  const response = await api.get(`/api/v1/agents/${agentId}/log-reports`)
+  return response.data.reports ?? []
+}
+
 /**
  * Screenshots read straight from the `files` table (the durable source of truth
  * for the images) rather than the `events` feed. This keeps the gallery working

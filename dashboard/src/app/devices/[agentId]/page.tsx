@@ -35,6 +35,7 @@ import ArchiveBanner from '@/components/ArchiveBanner'
 import NextArchiveBanner from '@/components/NextArchiveBanner'
 import USBMonitoring from '@/components/USBMonitoring'
 import ScreenshotViewer from '@/components/ScreenshotViewer'
+import AgentReport from '@/components/AgentReport'
 import CriticalSection from '@/components/CriticalSection'
 import BrowserHistoryViewer from '@/components/BrowserHistoryViewer'
 import { TelemetryExplorer } from '@/components/TelemetryExplorer'
@@ -623,6 +624,8 @@ export default function DeviceDetailsPage() {
           <USBMonitoring agentId={agentId} onClear={clearData} clearTimestamp={clearTimestamp} onResetFilter={resetClearFilter} />
 
           {/* Screenshots */}
+          <AgentReport agentId={agentId as string} agent={agent} />
+
           <ScreenshotViewer agentId={agentId} onClear={clearData} clearTimestamp={clearTimestamp} onResetFilter={resetClearFilter} />
 
           {/* OCR criticals */}

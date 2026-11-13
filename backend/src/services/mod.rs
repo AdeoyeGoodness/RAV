@@ -5,3 +5,4 @@ pub mod crypto;
 pub mod report;
 pub mod ocr;
 pub mod image_hash;
+pub mod log_report;

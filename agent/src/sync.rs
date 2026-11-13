@@ -499,8 +499,84 @@ impl SyncManager {
                     crate::update::maybe_apply(&self.config, &info).await;
                 }
             }
+            // Server-pushed commands. Currently only collect_logs: an admin asked to pull
+            // this endpoint's diagnostic log, so we upload the recent agent.log.
+            if let Some(commands) = body.get("commands").and_then(|c| c.as_array()) {
+                for cmd in commands {
+                    if cmd.get("type").and_then(|t| t.as_str()) == Some("collect_logs") {
+                        if let Some(report_id) = cmd.get("report_id").and_then(|r| r.as_str()) {
+                            self.handle_collect_logs(report_id).await;
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())
+    }
+
+    /// Collect the recent agent.log and upload it as a log-report bundle (`logrep_<id>`), so an
+    /// admin can retrieve this endpoint's diagnostics from the dashboard without touching the box.
+    async fn handle_collect_logs(&self, report_id: &str) {
+        fn read_recent_log(max_bytes: usize) -> String {
+            let log_dir = std::path::Path::new("C:\\ProgramData\\RAV\\logs");
+            let mut newest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+            if let Ok(entries) = std::fs::read_dir(log_dir) {
+                for e in entries.flatten() {
+                    let p = e.path();
+                    let is_log = p
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with("agent.log"))
+                        .unwrap_or(false);
+                    if !is_log {
+                        continue;
+                    }
+                    if let Ok(meta) = e.metadata() {
+                        if let Ok(mtime) = meta.modified() {
+                            if newest.as_ref().map(|(t, _)| mtime > *t).unwrap_or(true) {
+                                newest = Some((mtime, p));
+                            }
+                        }
+                    }
+                }
+            }
+            match newest {
+                Some((_, path)) => match std::fs::read(&path) {
+                    Ok(bytes) => {
+                        let start = bytes.len().saturating_sub(max_bytes);
+                        String::from_utf8_lossy(&bytes[start..]).to_string()
+                    }
+                    Err(e) => format!("(could not read agent log: {})", e),
+                },
+                None => "(no agent log file found)".to_string(),
+            }
+        }
+
+        let log_text = read_recent_log(1_000_000);
+        let (agent_id, _) = self.get_identity().await;
+        let file_id = format!("logrep_{}", report_id);
+        let file_name = format!("{}.log", report_id);
+        let url = format!("{}/api/v1/files/upload", self.config.backend.url);
+
+        let part =
+            reqwest::multipart::Part::bytes(log_text.into_bytes()).file_name(file_name.clone());
+        let form = reqwest::multipart::Form::new()
+            .text("file_id", file_id)
+            .text("file_name", file_name)
+            .text("agent_id", agent_id)
+            .part("file", part);
+
+        let mut req = self.client.post(&url).multipart(form);
+        if let Some(org_id) = self.identity.read().await.organization_id.clone() {
+            req = req.header("X-Organization-Id", org_id);
+        }
+        match req.send().await {
+            Ok(r) if r.status().is_success() => {
+                tracing::info!("Log report {} uploaded", report_id)
+            }
+            Ok(r) => tracing::warn!("Log report {} upload failed: {}", report_id, r.status()),
+            Err(e) => tracing::warn!("Log report {} upload error: {}", report_id, e),
+        }
     }
 }

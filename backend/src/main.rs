@@ -277,7 +277,38 @@ async fn main() -> Result<()> {
             }
         }
     });
-    
+
+    // Auto log-report on trouble. When the watchdog reports an endpoint's service as
+    // Stopped or NotInstalled, queue a diagnostic log pull (at most once per 12h per
+    // agent) so the plain-language report is waiting when an admin opens the device. The
+    // collect_logs command rides the next main heartbeat (i.e. after the service recovers).
+    let db_autolog = db.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // every 5 min
+            if let Ok(mut tx) = db_autolog.begin_bypass_tx().await {
+                let _ = sqlx::query(
+                    r#"
+                    INSERT INTO agent_log_reports (agent_id, organization_id, status, trigger_kind, reason)
+                    SELECT a.agent_id, a.organization_id, 'requested', 'auto', 'service reported not running'
+                    FROM agents a
+                    WHERE a.deleted_at IS NULL
+                      AND a.watchdog_service_state IN ('Stopped', 'NotInstalled')
+                      AND a.watchdog_last_seen > NOW() - INTERVAL '30 minutes'
+                      AND NOT EXISTS (
+                          SELECT 1 FROM agent_log_reports r
+                          WHERE r.agent_id = a.agent_id
+                            AND (r.status = 'requested' OR r.requested_at > NOW() - INTERVAL '12 hours')
+                      )
+                    "#,
+                )
+                .execute(&mut *tx)
+                .await;
+                let _ = tx.commit().await;
+            }
+        }
+    });
+
     // Build application
     let app = Router::new()
         .route("/health", get(health_check))
@@ -336,6 +367,8 @@ async fn main() -> Result<()> {
         .route("/api/v1/agents/:agent_id/critical", get(handlers::list_agent_critical_files))
         .route("/api/v1/agents/:agent_id/screenshots", get(handlers::list_agent_screenshots))
         .route("/api/v1/agents/:agent_id/screenshot-duplicates", get(handlers::list_agent_screenshot_duplicates))
+        .route("/api/v1/agents/:agent_id/log-report", post(handlers::request_log_report))
+        .route("/api/v1/agents/:agent_id/log-reports", get(handlers::list_log_reports))
         .route("/api/v1/archives/:archive_id/download", post(handlers::download_archive))
         .route("/api/v1/archives", get(handlers::get_all_archives))
         .route("/api/v1/archives/collate", post(handlers::trigger_org_archive))

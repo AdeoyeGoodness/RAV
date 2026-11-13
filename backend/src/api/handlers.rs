@@ -832,6 +832,30 @@ pub async fn heartbeat(
         });
     }
 
+    // Pending commands for this agent (currently: collect_logs for a requested log report).
+    if let Ok(mut ctx) = state.db.begin_rls_tx(org_id).await {
+        if let Ok(rows) = sqlx::query(
+            "SELECT id FROM agent_log_reports WHERE agent_id = $1 AND status = 'requested' \
+             ORDER BY requested_at ASC LIMIT 3",
+        )
+        .bind(&heartbeat.agent_id)
+        .fetch_all(&mut *ctx)
+        .await
+        {
+            let cmds: Vec<serde_json::Value> = rows
+                .iter()
+                .map(|row| {
+                    let id: Uuid = row.get("id");
+                    serde_json::json!({ "type": "collect_logs", "report_id": id.to_string() })
+                })
+                .collect();
+            if !cmds.is_empty() {
+                body["commands"] = serde_json::Value::Array(cmds);
+            }
+        }
+        let _ = ctx.commit().await;
+    }
+
     Ok(Json(body))
 }
 
@@ -854,6 +878,129 @@ pub async fn download_agent_installer(
         .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename))
         .body(Body::from(data))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?)
+}
+
+/// Queue a log-report pull for an agent. The collect_logs command rides the agent's next
+/// heartbeat; the agent then uploads its recent agent.log and the backend parses it into
+/// plain-language problems. Admin-initiated, audit-logged.
+pub async fn request_log_report(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+    let requested_by = Some(claims.sub);
+
+    let mut tx = state
+        .db
+        .begin_rls_tx(target_org_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let row = sqlx::query(
+        "INSERT INTO agent_log_reports (agent_id, organization_id, status, trigger_kind, requested_by) \
+         VALUES ($1, $2, 'requested', 'manual', $3) RETURNING id",
+    )
+    .bind(&agent_id)
+    .bind(target_org_id)
+    .bind(requested_by)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("request_log_report insert failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let report_id: Uuid = row.get("id");
+
+    let (ip, ua) = extract_request_meta(&headers);
+    let _ = log_audit(
+        &mut tx,
+        actor_type_from_role(&claims.role),
+        requested_by,
+        Some(target_org_id),
+        "AGENT_LOG_PULL_REQUESTED",
+        "AGENT",
+        Some(agent_id.clone()),
+        serde_json::json!({ "report_id": report_id.to_string() }),
+        ip,
+        ua,
+    )
+    .await;
+
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "status": "requested", "report_id": report_id.to_string() })))
+}
+
+/// List an agent's log reports (latest first), including the parsed plain-language problems.
+pub async fn list_log_reports(
+    State(state): State<AppState>,
+    claims: Claims,
+    headers: HeaderMap,
+    Path(agent_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let target_org_id = if claims.role == "super_admin" {
+        headers
+            .get("X-Organization-Id")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or(StatusCode::BAD_REQUEST)?
+    } else {
+        claims.org_id.ok_or(StatusCode::UNAUTHORIZED)?
+    };
+
+    let mut tx = state
+        .db
+        .begin_rls_tx(target_org_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let rows = sqlx::query(
+        "SELECT id, status, trigger_kind, reason, file_id, problems::text AS problems, \
+         requested_at, completed_at \
+         FROM agent_log_reports WHERE agent_id = $1 AND organization_id = $2 \
+         ORDER BY requested_at DESC LIMIT 20",
+    )
+    .bind(&agent_id)
+    .bind(target_org_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!("list_log_reports failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let out: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            // problems comes back as a JSON string (::text) — reparse to embed it as JSON.
+            let problems: Option<serde_json::Value> = r
+                .get::<Option<String>, _>("problems")
+                .and_then(|s| serde_json::from_str(&s).ok());
+            serde_json::json!({
+                "id": r.get::<Uuid, _>("id").to_string(),
+                "status": r.get::<String, _>("status"),
+                "trigger": r.get::<String, _>("trigger_kind"),
+                "reason": r.get::<Option<String>, _>("reason"),
+                "file_id": r.get::<Option<String>, _>("file_id"),
+                "problems": problems,
+                "requested_at": r.get::<chrono::DateTime<Utc>, _>("requested_at"),
+                "completed_at": r.get::<Option<chrono::DateTime<Utc>>, _>("completed_at"),
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "reports": out })))
 }
 
 pub async fn list_agents(
@@ -1086,6 +1233,35 @@ pub async fn upload_file(
     let extension = std::path::Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("bin");
     let file_path_storage = state.file_storage_dir.join(format!("{}.{}", file_id, extension));
     std::fs::write(&file_path_storage, &data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Log-report upload: the agent sends its recent agent.log with a `logrep_<report_id>`
+    // file id. Parse it into plain-language problems and mark the report ready. The raw log
+    // stays in file storage for the "download full technical log" button.
+    if let Some(report_id) = file_id.strip_prefix("logrep_") {
+        if let Ok(report_uuid) = Uuid::parse_str(report_id) {
+            let log_text = String::from_utf8_lossy(&data).to_string();
+            let problems = crate::services::log_report::parse_log_problems(&log_text);
+            // Bind as a JSON string + cast ($2::jsonb) so we don't need sqlx's `json` feature.
+            let problems_str = serde_json::to_string(&serde_json::Value::Array(problems))
+                .unwrap_or_else(|_| "[]".to_string());
+            if let Ok(mut rtx) = state.db.begin_rls_tx(org_id).await {
+                let _ = sqlx::query(
+                    "UPDATE agent_log_reports SET status = 'ready', file_id = $1, problems = $2::jsonb, \
+                     completed_at = NOW() WHERE id = $3 AND organization_id = $4",
+                )
+                .bind(&file_id)
+                .bind(problems_str)
+                .bind(report_uuid)
+                .bind(org_id)
+                .execute(&mut *rtx)
+                .await;
+                let _ = rtx.commit().await;
+            }
+        }
+        return Ok(Json(serde_json::json!({
+            "status": "success", "file_id": file_id, "file_name": file_name, "file_size": data.len()
+        })));
+    }
 
     // Perceptual-hash dedup for screenshots. Non-image uploads (archives,
     // browser exports, etc.) skip this entirely — extension check is the
