@@ -226,7 +226,7 @@ impl Default for ScreenshotMonitoringConfig {
     fn default() -> Self {
         ScreenshotMonitoringConfig {
             enabled: true,
-            capture_interval_seconds: 120, // 2 minutes
+            capture_interval_seconds: 30, // 30s — matches helper + template
             compression_quality: 60,
             max_width: default_max_width(),
             format: "jpeg".to_string(),
@@ -298,7 +298,7 @@ impl Config {
                 },
                 screenshots: ScreenshotMonitoringConfig {
                     enabled: true,
-                    capture_interval_seconds: 120, // Default: 2 minutes
+                    capture_interval_seconds: 30, // 30s — matches helper + template
                     compression_quality: 60, // Reduced quality to shrink storage/bandwidth
                     max_width: default_max_width(), // Downscale wide captures to 1280px
                     format: "jpeg".to_string(),

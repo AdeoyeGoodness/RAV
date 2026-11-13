@@ -307,7 +307,7 @@ export default function DeviceDetailsPage() {
 
           {/* Profile row */}
           <Panel padding={false}>
-            <div className="grid grid-cols-2 md:grid-cols-5 divide-x divide-ct-line">
+            <div className="grid grid-cols-2 md:grid-cols-6 divide-x divide-ct-line">
               <ProfileMeta
                 label="Status"
                 value={
@@ -322,6 +322,17 @@ export default function DeviceDetailsPage() {
                 }
               />
               <ProfileMeta label="Campaign" value={agent.campaign ? <StatusPill tone="accent" dot={false}>{agent.campaign}</StatusPill> : <span className="text-ct-ink3 font-mono text-[11px]">Unassigned</span>} />
+              <ProfileMeta
+                label="Registered"
+                value={
+                  <span
+                    className="font-mono text-[12px] text-ct-ink2 tabular-nums"
+                    title="When this device enrolled into the dashboard"
+                  >
+                    {agent.created_at ? formatWAT(agent.created_at) : '—'}
+                  </span>
+                }
+              />
               <ProfileMeta
                 label="Last heartbeat"
                 value={

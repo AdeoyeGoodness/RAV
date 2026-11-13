@@ -45,6 +45,10 @@ export default function ScreenshotViewer({
   // of an older screenshot. We hide those thumbnails and surface the count
   // as an "N duplicates suppressed" chip.
   const [duplicateIds, setDuplicateIds] = useState<Set<string>>(new Set())
+  // Integrity view toggle. OFF (default) shows the clean unique set; ON reveals
+  // every capture including the near-duplicates, each badged, so continuity can be
+  // audited to show the stream wasn't tampered with.
+  const [showDuplicates, setShowDuplicates] = useState(false)
 
   // This section owns its own data, so refreshing it never touches the others.
   const fetchEvents = useCallback(async (background = false) => {
@@ -86,13 +90,15 @@ export default function ScreenshotViewer({
     : allEvents
 
   const allScreenshotEvents = events.filter(e => e.event_type === 'screenshot_captured' || e.event_type === 'screenshot_upload_failed')
-  // Filter out near-duplicate captures the backend flagged. Failed uploads
-  // (screenshot_upload_failed) don't have a file_id, so they always pass.
-  const screenshotEvents = allScreenshotEvents.filter(e => {
+  // Unique set = everything minus the near-duplicates the backend flagged. Failed
+  // uploads (screenshot_upload_failed) have no file_id, so they always pass.
+  const uniqueEvents = allScreenshotEvents.filter(e => {
     const fid = e.metadata?.file_id
     return !fid || !duplicateIds.has(fid)
   })
-  const suppressedDuplicates = allScreenshotEvents.length - screenshotEvents.length
+  const suppressedDuplicates = allScreenshotEvents.length - uniqueEvents.length
+  // Integrity view ON -> show every capture (duplicates included); OFF -> clean unique set.
+  const screenshotEvents = showDuplicates ? allScreenshotEvents : uniqueEvents
 
   const parseSafeDate = (ts: string) => {
     let iso = ts.replace(' ', 'T')
@@ -101,6 +107,13 @@ export default function ScreenshotViewer({
     }
     return new Date(iso)
   }
+
+  // Earliest capture across the full set = the "first screenshot" for this device.
+  const firstCaptureTs = allScreenshotEvents.length
+    ? allScreenshotEvents.reduce((min, e) =>
+        parseSafeDate(e.timestamp).getTime() < parseSafeDate(min.timestamp).getTime() ? e : min
+      ).timestamp
+    : null
 
   const dateFilteredEvents = dateFilter
     ? screenshotEvents.filter(e => {
@@ -298,9 +311,15 @@ export default function ScreenshotViewer({
           </span>
         }
         meta={
-          suppressedDuplicates > 0
-            ? `${screenshotEvents.length} captures · ${suppressedDuplicates} near-duplicate${suppressedDuplicates === 1 ? '' : 's'} suppressed`
-            : `${screenshotEvents.length} captures`
+          [
+            `${screenshotEvents.length} ${showDuplicates ? 'captures (all)' : 'captures'}`,
+            firstCaptureTs ? `first ${formatWATTime(firstCaptureTs)}` : null,
+            suppressedDuplicates > 0
+              ? (showDuplicates
+                  ? `${suppressedDuplicates} duplicate${suppressedDuplicates === 1 ? '' : 's'} shown`
+                  : `${suppressedDuplicates} near-duplicate${suppressedDuplicates === 1 ? '' : 's'} hidden`)
+              : null,
+          ].filter(Boolean).join(' · ')
         }
         live={autoRefresh}
         right={
@@ -312,6 +331,21 @@ export default function ScreenshotViewer({
                 style={{ background: 'var(--ct-accent-soft)', letterSpacing: '0.18em' }}
               >
                 Show All
+              </button>
+            )}
+            {suppressedDuplicates > 0 && (
+              <button
+                onClick={() => setShowDuplicates(v => !v)}
+                className="font-mono text-[10px] uppercase px-2 py-1 rounded-sm border transition-colors"
+                style={{
+                  color: showDuplicates ? 'var(--ct-warn)' : 'var(--ct-ink3)',
+                  borderColor: showDuplicates ? 'var(--ct-warn-border)' : 'var(--ct-line2)',
+                  background: showDuplicates ? 'var(--ct-warn-soft)' : 'transparent',
+                  letterSpacing: '0.18em',
+                }}
+                title="Show every capture including near-duplicates (integrity / tamper-evidence view)"
+              >
+                Duplicates {showDuplicates ? 'On' : 'Off'}
               </button>
             )}
             <button
@@ -423,6 +457,15 @@ export default function ScreenshotViewer({
                 <div
                   className="aspect-video rounded-sm mb-2 flex items-center justify-center relative overflow-hidden bg-ct-bg border border-ct-line group-hover:border-ct-accent-border transition-colors"
                 >
+                  {event.metadata?.file_id && duplicateIds.has(event.metadata.file_id) && (
+                    <span
+                      className="absolute top-1 left-1 z-20 font-mono text-[9px] uppercase px-1 py-0.5 rounded-sm"
+                      style={{ background: 'var(--ct-warn-soft)', color: 'var(--ct-warn)', letterSpacing: '0.1em' }}
+                      title="Near-duplicate of an earlier capture - shown for continuity/integrity"
+                    >
+                      DUP
+                    </span>
+                  )}
                   {event.event_type === 'screenshot_upload_failed' ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center" style={{ background: 'var(--ct-crit-soft)' }}>
                       <Camera className="w-6 h-6 text-ct-crit mb-1" />
