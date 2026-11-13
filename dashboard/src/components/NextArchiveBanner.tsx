@@ -51,8 +51,14 @@ export default function NextArchiveBanner() {
         const agents = await getAgents()
         let soonest: number | null = null
         for (const a of agents) {
+          // A device with no telemetry yet has nothing to archive. The backend
+          // only snapshots endpoints that have events within the window, so a
+          // freshly-enrolled, event-less device must NOT show up as an archive
+          // "due now" — that's what made new devices look like they already had
+          // a forensic bundle in progress.
+          if (!a.latest_event_at_ms) continue
           const last = a.last_archived_at_ms ?? null
-          // Never-archived endpoints are due immediately.
+          // A never-archived endpoint that DOES have telemetry is due now.
           const due = last === null ? Date.now() : last + ARCHIVE_CADENCE_MS
           if (soonest === null || due < soonest) soonest = due
         }
