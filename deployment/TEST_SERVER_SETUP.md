@@ -16,6 +16,15 @@ It is a clean replica of production (`deployment/PRODUCTION_SETUP.md` §5). Ever
 the same except the server's address. Let `TEST_ADDR` = the test server's reachable
 address (IP or host, e.g. `http://203.0.113.10` or `http://rav-test.example.com`).
 
+> **Skip MinIO.** The current backend does NOT use S3/MinIO — the `aws-sdk-s3`
+> dependency is commented out in `backend/Cargo.toml` ("enable in Phase 2"), and every
+> file handler reads/writes the local filesystem under `~/RAV/backend/storage/`
+> (`files/`, `archives/`). The `S3_*` env vars are read into config but never used to
+> connect. So you do NOT need the `minio` server, the `mc` client, or a bucket — and
+> MinIO community binaries are no longer downloadable anyway (dl.min.io returns 410,
+> Docker Hub/quay are gone/gated). Ignore the MinIO steps; the `/minio/` and `/console/`
+> nginx routes are harmless no-ops. Screenshots and archives just land on local disk.
+
 Change these from the prod doc to `TEST_ADDR`:
 
 | File / place | Value | Set to |
